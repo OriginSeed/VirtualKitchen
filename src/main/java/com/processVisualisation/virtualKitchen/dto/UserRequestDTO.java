@@ -6,11 +6,12 @@ import jakarta.validation.constraints.Size;
 import lombok.Data;
 
 @Data
-public class UserRequestInputDTO {
+public class UserRequestDTO {
+
         @NotBlank(message = "Name is required")
         private String name;
 
-        @Email(message = "Invalid email format")
+        @Email
         @NotBlank(message = "Email is required")
         private String email;
 

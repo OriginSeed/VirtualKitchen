@@ -1,9 +1,16 @@
 package com.processVisualisation.virtualKitchen.service;
 
-import com.processVisualisation.virtualKitchen.dto.UserRequestInputDTO;
-import com.processVisualisation.virtualKitchen.model.User;
+import com.processVisualisation.virtualKitchen.dto.UserRequestDTO;
+import com.processVisualisation.virtualKitchen.dto.UserResponseDTO;
+import com.processVisualisation.virtualKitchen.dto.UserUpdateDTO;
 
 public interface IUserService {
-    Long createUser(UserRequestInputDTO request);
-    User getUserById(Long id);
+
+    UserResponseDTO createUser(UserRequestDTO request);
+
+    UserResponseDTO getUserById(Long id);
+
+    UserResponseDTO updateUser(Long id, UserUpdateDTO request);
+
+    void deleteUser(Long id);
 }
