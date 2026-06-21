@@ -1,33 +1,17 @@
 import React from 'react'
-import { Handle, Position } from '@xyflow/react'
+import { Handle, Position, NodeResizer } from '@xyflow/react'
 
-const sectionStyles = {
-  prep: {
-    border: '#86efac',
-    iconBg: '#dcfce7',
-    accent: '#16a34a',
-    badge: '#f0fdf4',
-  },
-  cook: {
-    border: '#fcd34d',
-    iconBg: '#fef3c7',
-    accent: '#d97706',
-    badge: '#fffbeb',
-  },
-  serve: {
-    border: '#93c5fd',
-    iconBg: '#dbeafe',
-    accent: '#2563eb',
-    badge: '#eff6ff',
-  },
-} as const
-
-type SectionId = keyof typeof sectionStyles
+const defaultStyle = {
+  border: '#e5e7eb',
+  iconBg: '#f9fafb',
+  accent: '#6366f1',
+  badge: '#eff6ff',
+}
 
 interface RecipeStepNodeProps {
   selected: boolean
+  style?: React.CSSProperties
   data: {
-    sectionId?: SectionId
     icon: React.ReactNode
     title: string
     description: string
@@ -36,19 +20,18 @@ interface RecipeStepNodeProps {
   }
 }
 
-export default function RecipeStepNode({ selected, data }: RecipeStepNodeProps) {
-  const style = sectionStyles[data.sectionId ?? 'prep'] ?? {
-    border: '#e5e7eb',
-    iconBg: '#f9fafb',
-    accent: '#6b7280',
-    badge: '#f3f4f6',
-  }
+export default function RecipeStepNode({ selected, style: nodeStyle, data }: RecipeStepNodeProps) {
+  const style = defaultStyle
+  const width = nodeStyle?.width ?? 300
+  const height = nodeStyle?.height ?? 140
 
   return (
     <div
       style={{
-        minWidth: 260,
-        maxWidth: 320,
+        width,
+        minWidth: 220,
+        maxWidth: 520,
+        height,
         background: 'white',
         borderRadius: 12,
         border: `1.5px solid ${selected ? style.accent : '#e5e7eb'}`,
@@ -60,6 +43,13 @@ export default function RecipeStepNode({ selected, data }: RecipeStepNodeProps) 
         position: 'relative',
       }}
     >
+      <NodeResizer
+        minWidth={220}
+        minHeight={120}
+        isVisible={selected}
+        lineStyle={{ borderColor: style.accent }}
+        handleStyle={{ borderColor: style.accent, background: '#fff' }}
+      />
       <Handle
         type="target"
         position={Position.Top}
