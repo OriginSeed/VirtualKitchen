@@ -1,7 +1,7 @@
 from merger import merge_video
 
 merge_video(
-    "uploads/bowl.jpg",
+    "uploads/",
     "uploads/water.mp4",
     "outputs/result.mp4"
 )

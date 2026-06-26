@@ -1,6 +1,51 @@
 import cv2
 import numpy as np
 
+def printImage(img):
+    cv2.imshow("Preview", img)
+    cv2.waitKey(0)
+    cv2.destroyAllWindows()
+
+def removeGreenScreen(img):
+    FRAME_WIDTH = 800
+    FRAME_HEIGHT = 600
+    img = cv2.resize(img, (FRAME_WIDTH, FRAME_HEIGHT))
+    hsv = cv2.cvtColor(img, cv2.COLOR_BGR2HSV)
+    lower_green = np.array([35, 40, 40])
+    upper_green = np.array([85, 255, 255])
+    green_mask = cv2.inRange(hsv, lower_green, upper_green)
+    non_screen_mask = cv2.bitwise_not(green_mask)
+    imgWater = cv2.bitwise_and(img, img, mask=non_screen_mask)
+    #printImage(imgWater)
+    return imgWater
+
+def videoReading(videoPath):
+    video = cv2.VideoCapture(videoPath)
+    while True:
+        success, frame = video.read()
+        if not success:
+            break
+        cv2.imshow("Video", frame)
+        if cv2.waitKey(30) == ord('q'):
+            break
+    video.release()
+    cv2.destroyAllWindows()
+
+def mergeStaticImgWithVideo(imagePath, videoPath):
+    bowl = cv2.imread(imagePath)
+    bowl = removeGreenScreen(bowl)
+    video = cv2.VideoCapture(videoPath)
+    while True:
+        success, frame = video.read()
+        if not success:
+            break
+        frame = removeGreenScreen(frame)
+        merged = cv2.add(frame, bowl)
+        cv2.imshow("Video", merged)
+        if cv2.waitKey(30) == ord('q'):
+            break
+    video.release()
+    cv2.destroyAllWindows()
 
 def merge_video(bowl_image_path, water_video_path, output_video_path):
     BOWL_X = 180
