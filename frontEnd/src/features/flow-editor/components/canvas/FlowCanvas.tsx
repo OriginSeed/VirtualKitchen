@@ -1,6 +1,9 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import Sidebar from '../sidebar/Sidebar'
 import PropertiesPanel from '../toolbar/PropertiesPanel'
+import FlowEditorTopBar from '../toolbar/FlowEditorTopBar'
+
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8080'
 
 import {
   ReactFlow,
@@ -32,8 +35,13 @@ import {
 const initialNodes: Node[] = []
 const initialEdges: Edge[] = []
 
+type FlowCanvasProps = {
+  recipe: { id: number; title: string }
+  onBack: () => void
+}
+
 // ─── Component ────────────────────────────────────────────────────────────────
-export default function FlowCanvas() {
+export default function FlowCanvas({ recipe, onBack }: FlowCanvasProps) {
   const [nodes, setNodes, onNodesChange] = useNodesState(initialNodes)
   const [edges, setEdges, onEdgesChange] = useEdgesState(initialEdges)
   const [collapsedSections, setCollapsedSections] = useState<Set<string>>(new Set())
@@ -191,6 +199,104 @@ export default function FlowCanvas() {
     })
   }, [exportJson])
 
+  useEffect(() => {
+    const loadExistingFlow = async () => {
+      try {
+        const response = await fetch(`${API_BASE_URL}/api/v1/flows/${recipe.id}`)
+        if (!response.ok) return
+        const result = await response.json()
+        const flowData = result?.data
+        if (!flowData?.nodes && !flowData?.edges) return
+
+        const loadedNodes = (flowData.nodes ?? []).map((node: any) => ({
+          id: node.id,
+          type: node.type ?? 'recipeStepNode',
+          position: node.position ?? { x: 0, y: 0 },
+          data: node.data ?? {},
+          measured: node.measured,
+          parentId: node.parentId,
+          extent: node.extent,
+          draggable: node.draggable,
+          selectable: node.selectable,
+          deletable: node.deletable,
+          style: node.style,
+        }))
+
+        const loadedEdges = (flowData.edges ?? []).map((edge: any) => ({
+          id: edge.id,
+          source: edge.source,
+          target: edge.target,
+          sourceHandle: edge.sourceHandle,
+          targetHandle: edge.targetHandle,
+          type: edge.type,
+          animated: edge.animated,
+          style: edge.style,
+          data: edge.data,
+          label: edge.label,
+        }))
+
+        setNodes(loadedNodes)
+        setEdges(loadedEdges)
+        setHistory([])
+        setFuture([])
+      } catch (error) {
+        console.error('Unable to load existing flow', error)
+      }
+    }
+
+    void loadExistingFlow()
+  }, [recipe.id, setNodes, setEdges])
+
+  const saveFlow = useCallback(async () => {
+    try {
+      const payload = {
+        flowId: String(recipe.id),
+        userId: 'demo-user',
+        nodes: nodes.map(node => ({
+          id: node.id,
+          type: node.type,
+          position: node.position,
+          measured: node.measured,
+          parentId: node.parentId,
+          extent: node.extent,
+          draggable: node.draggable,
+          selectable: node.selectable,
+          deletable: node.deletable,
+          data: node.data,
+        })),
+        edges: edges.map(edge => ({
+          id: edge.id,
+          source: edge.source,
+          target: edge.target,
+          sourceHandle: edge.sourceHandle,
+          targetHandle: edge.targetHandle,
+          type: edge.type,
+          animated: edge.animated,
+          style: edge.style,
+          data: edge.data,
+          label: edge.label,
+        })),
+      }
+
+      const response = await fetch(`${API_BASE_URL}/api/v1/flows/${payload.flowId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      })
+
+      if (!response.ok) {
+        throw new Error('Failed to save flow')
+      }
+
+      const result = await response.json()
+      console.log('Flow saved:', result)
+      alert('Flow saved successfully')
+    } catch (error) {
+      console.error(error)
+      alert('Unable to save flow right now')
+    }
+  }, [nodes, edges])
+
   // ── Display nodes ─────────────────────────────────────────────────────────
   const displayNodes = nodes.map(node => {
     if (node.type !== 'sectionNode') {
@@ -246,14 +352,6 @@ export default function FlowCanvas() {
     return () => window.removeEventListener('keydown', onKey)
   }, [deleteSelected, undo, redo])
 
-  // ── Shared button styles ──────────────────────────────────────────────────
-  const tbBtn = (extra: React.CSSProperties = {}): React.CSSProperties => ({
-    padding: '6px 11px', borderRadius: 7, border: '1px solid #e2e8f0',
-    background: 'white', color: '#475569', fontSize: 12, fontWeight: 600,
-    cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4,
-    ...extra,
-  })
-
   // ─────────────────────────────────────────────────────────────────────────
   return (
     <div style={{ display: 'flex', height: '100vh', background: '#f8fafc', fontFamily: "'DM Sans', system-ui, sans-serif" }}>
@@ -267,55 +365,16 @@ export default function FlowCanvas() {
 
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
         {/* Topbar */}
-        <div style={{ height: 56, background: 'white', borderBottom: '1px solid #e2e8f0',
-          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-          padding: '0 16px', flexShrink: 0 }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            <span style={{ fontWeight: 700, fontSize: 14, color: '#1e293b' }}>Spaghetti Aglio e Olio</span>
-            <span style={{ fontSize: 13, color: '#94a3b8', cursor: 'pointer' }}>✏️</span>
-            <span style={{ fontSize: 10, color: '#16a34a', background: '#f0fdf4',
-              border: '1px solid #bbf7d0', borderRadius: 20, padding: '2px 8px' }}>
-              ● All changes saved
-            </span>
-          </div>
-
-          <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
-            <button onClick={undo} disabled={!history.length} title="Undo (Ctrl+Z)"
-              style={{ width: 30, height: 30, borderRadius: 7, border: '1px solid #e2e8f0',
-                background: history.length ? 'white' : '#f8fafc',
-                color: history.length ? '#475569' : '#cbd5e1',
-                cursor: history.length ? 'pointer' : 'default', fontSize: 13 }}>↩</button>
-            <button onClick={redo} disabled={!future.length} title="Redo (Ctrl+Y)"
-              style={{ width: 30, height: 30, borderRadius: 7, border: '1px solid #e2e8f0',
-                background: future.length ? 'white' : '#f8fafc',
-                color: future.length ? '#475569' : '#cbd5e1',
-                cursor: future.length ? 'pointer' : 'default', fontSize: 13 }}>↪</button>
-
-            <div style={{ width: 1, height: 22, background: '#e2e8f0', margin: '0 2px' }} />
-
-            {/* ⭐ Add Section button */}
-            <button onClick={addSection}
-              style={tbBtn({ background: '#eff6ff', borderColor: '#bfdbfe', color: '#2563eb' })}>
-              📋 + Section
-            </button>
-
-            {/* ⭐ Export JSON button */}
-            <button onClick={exportFlow}
-              style={tbBtn({ background: '#f0fdf4', borderColor: '#86efac', color: '#16a34a' })}>
-              📤 Export JSON
-            </button>
-
-            <div style={{ width: 1, height: 22, background: '#e2e8f0', margin: '0 2px' }} />
-
-            <button style={tbBtn()}>👁 Preview</button>
-            <button style={tbBtn()}>💾 Save</button>
-            <button style={{ padding: '6px 14px', borderRadius: 7, border: 'none',
-              background: 'linear-gradient(135deg, #6366f1, #8b5cf6)', color: 'white',
-              fontSize: 12, fontWeight: 700, cursor: 'pointer', boxShadow: '0 2px 8px #6366f133' }}>
-              🚀 Publish
-            </button>
-          </div>
-        </div>
+        <FlowEditorTopBar
+          title={recipe.title}
+          onUndo={undo}
+          onRedo={redo}
+          canUndo={history.length > 0}
+          canRedo={future.length > 0}
+          onExport={exportFlow}
+          onSave={saveFlow}
+          onBack={onBack}
+        />
 
         {/* Canvas */}
         <div style={{ flex: 1, position: 'relative' }}>

@@ -26,6 +26,7 @@ interface SectionNodeProps {
 export default function SectionNode({ selected, id, data, style }: SectionNodeProps) {
   const [showAddMenu, setShowAddMenu] = useState(false)
   const theme = sectionThemes[id] ?? defaultTheme
+  const containerStyle = { width: '100%', height: '100%', ...style }
   const isCollapsed = data.collapsed ?? false
   const stepCount = data.stepCount ?? 0
 
@@ -41,7 +42,7 @@ export default function SectionNode({ selected, id, data, style }: SectionNodePr
 
   return (
     <div style={{
-      width: '100%', height: '100%', borderRadius: 16,
+      ...containerStyle, borderRadius: 16,
       border: `2px solid ${selected ? theme.accent : theme.border}`,
       background: isCollapsed ? theme.headerBg : theme.bg,
       boxShadow: selected
