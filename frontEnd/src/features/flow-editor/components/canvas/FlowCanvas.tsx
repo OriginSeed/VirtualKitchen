@@ -50,6 +50,8 @@ export default function FlowCanvas({ recipe, onBack }: FlowCanvasProps) {
   const [exportJson, setExportJson] = useState<string | null>(null)
   const [copied, setCopied] = useState(false)
   const [selectedSectionId, setSelectedSectionId] = useState<string | null>(null)
+  const [visualizationResult, setVisualizationResult] = useState<any>(null)
+  const [visualizing, setVisualizing] = useState(false)
   const dragSnapshotRef = useRef<{ nodes: Node[]; edges: Edge[] } | null>(null)
 
   const selectedNode = nodes.find(n => n.selected)
@@ -297,6 +299,50 @@ export default function FlowCanvas({ recipe, onBack }: FlowCanvasProps) {
     }
   }, [nodes, edges])
 
+  const visualizeFlow = useCallback(async () => {
+    setVisualizing(true)
+    setVisualizationResult(null)
+
+    try {
+      const payload = {
+        nodes: nodes.map(node => ({
+          id: node.id,
+          type: node.type,
+          position: node.position,
+          data: node.data,
+        })),
+        edges: edges.map(edge => ({
+          id: edge.id,
+          source: edge.source,
+          target: edge.target,
+          sourceHandle: edge.sourceHandle,
+          targetHandle: edge.targetHandle,
+          type: edge.type,
+          data: edge.data,
+          label: edge.label,
+        })),
+      }
+
+      const response = await fetch(`${API_BASE_URL}/api/v1/visualizations/${recipe.id}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      })
+
+      if (!response.ok) {
+        throw new Error('Failed to visualize flow')
+      }
+
+      const result = await response.json()
+      setVisualizationResult(result?.data ?? null)
+    } catch (error) {
+      console.error(error)
+      alert('Unable to visualize flow right now')
+    } finally {
+      setVisualizing(false)
+    }
+  }, [nodes, edges, recipe.id])
+
   // ── Display nodes ─────────────────────────────────────────────────────────
   const displayNodes = nodes.map(node => {
     if (node.type !== 'sectionNode') {
@@ -373,11 +419,23 @@ export default function FlowCanvas({ recipe, onBack }: FlowCanvasProps) {
           canRedo={future.length > 0}
           onExport={exportFlow}
           onSave={saveFlow}
+          onVisualize={visualizeFlow}
+          isVisualizing={visualizing}
           onBack={onBack}
         />
 
         {/* Canvas */}
         <div style={{ flex: 1, position: 'relative' }}>
+          {visualizationResult && (
+            <div style={{ position: 'absolute', top: 12, left: 12, right: 12, zIndex: 5, pointerEvents: 'none' }}>
+              <div style={{ display: 'inline-block', maxWidth: 480, padding: '10px 12px', borderRadius: 12, background: 'rgba(255,255,255,0.95)', border: '1px solid #bfdbfe', boxShadow: '0 10px 30px rgba(15,23,42,0.08)' }}>
+                <div style={{ fontSize: 12, fontWeight: 700, color: '#1d4ed8' }}>📝 Visualization plan prepared</div>
+                <div style={{ fontSize: 12, color: '#334155', marginTop: 4 }}>
+                  {visualizationResult.clips?.length ?? 0} clips planned · final clip: {visualizationResult.finalClip?.clipId ?? 'n/a'}
+                </div>
+              </div>
+            </div>
+          )}
           <ReactFlow
             nodes={displayNodes} edges={edges}
             onNodesChange={onNodesChange} onEdgesChange={onEdgesChange}
