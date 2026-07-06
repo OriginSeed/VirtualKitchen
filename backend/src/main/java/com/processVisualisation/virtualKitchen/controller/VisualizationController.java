@@ -1,6 +1,5 @@
 package com.processVisualisation.virtualKitchen.controller;
 
-import com.processVisualisation.virtualKitchen.dto.VisualizationRequestDTO;
 import com.processVisualisation.virtualKitchen.dto.VisualizationResponseDTO;
 import com.processVisualisation.virtualKitchen.service.VisualizationService;
 import com.processVisualisation.virtualKitchen.utils.ApiResponse;
@@ -18,14 +17,9 @@ public class VisualizationController {
         this.visualizationService = visualizationService;
     }
 
-    @PostMapping("/{processTemplateId}")
-    public ApiResponse<VisualizationResponseDTO> generate(@PathVariable Long processTemplateId,
-                                                          @RequestBody VisualizationRequestDTO request) {
-        request.setProcessTemplateId(processTemplateId);
-        return build(visualizationService.generateVisualization(
-                request.getProcessTemplateId(),
-                request.getNodes(),
-                request.getEdges()), "generated");
+    @PostMapping("/{flowId}")
+    public ApiResponse<VisualizationResponseDTO> generate(@PathVariable String flowId) {
+        return build(visualizationService.generateVisualization(flowId), "generated");
     }
 
     private <T> ApiResponse<T> build(T data, String msg) {

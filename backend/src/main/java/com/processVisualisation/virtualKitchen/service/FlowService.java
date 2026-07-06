@@ -28,6 +28,7 @@ public class FlowService {
 
         document.setFlowId(request.getFlowId());
         document.setUserId(request.getUserId());
+        document.setTemplateId(request.getTemplateId());
         document.setNodes(mapNodes(request.getNodes()));
         document.setEdges(mapEdges(request.getEdges()));
 

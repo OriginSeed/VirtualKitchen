@@ -254,6 +254,7 @@ export default function FlowCanvas({ recipe, onBack }: FlowCanvasProps) {
       const payload = {
         flowId: String(recipe.id),
         userId: 'demo-user',
+        templateId: recipe.id,
         nodes: nodes.map(node => ({
           id: node.id,
           type: node.type,
@@ -323,10 +324,9 @@ export default function FlowCanvas({ recipe, onBack }: FlowCanvasProps) {
         })),
       }
 
-      const response = await fetch(`${API_BASE_URL}/api/v1/visualizations/${recipe.id}`, {
+      const response = await fetch(`${API_BASE_URL}/api/v1/visualizations/${String(recipe.id)}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
       })
 
       if (!response.ok) {
