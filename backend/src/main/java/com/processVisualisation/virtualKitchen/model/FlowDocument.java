@@ -26,6 +26,9 @@ public class FlowDocument {
     @Indexed
     private String userId;
 
+    @Indexed
+    private Long templateId;
+
     private List<NodeDocument> nodes = new ArrayList<>();
 
     private List<EdgeDocument> edges = new ArrayList<>();

@@ -254,6 +254,7 @@ export default function FlowCanvas({ recipe, onBack }: FlowCanvasProps) {
       const payload = {
         flowId: String(recipe.id),
         userId: 'demo-user',
+        templateId: recipe.id,
         nodes: nodes.map(node => ({
           id: node.id,
           type: node.type,
@@ -323,10 +324,9 @@ export default function FlowCanvas({ recipe, onBack }: FlowCanvasProps) {
         })),
       }
 
-      const response = await fetch(`${API_BASE_URL}/api/v1/visualizations/${recipe.id}`, {
+      const response = await fetch(`${API_BASE_URL}/api/v1/visualizations/${String(recipe.id)}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
       })
 
       if (!response.ok) {
@@ -400,60 +400,76 @@ export default function FlowCanvas({ recipe, onBack }: FlowCanvasProps) {
 
   // ─────────────────────────────────────────────────────────────────────────
   return (
-    <div style={{ display: 'flex', height: '100vh', background: '#f8fafc', fontFamily: "'DM Sans', system-ui, sans-serif" }}>
-      <Sidebar 
-        onAddNode={addFreeNode} 
-        onAddSection={addSection}
-        sections={nodes.filter(n => n.type === 'sectionNode')}
-        selectedSectionId={selectedSectionId}
-        onSectionSelect={setSelectedSectionId}
-      />
-
-      <div style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
-        {/* Topbar */}
-        <FlowEditorTopBar
-          title={recipe.title}
-          onUndo={undo}
-          onRedo={redo}
-          canUndo={history.length > 0}
-          canRedo={future.length > 0}
-          onExport={exportFlow}
-          onSave={saveFlow}
-          onVisualize={visualizeFlow}
-          isVisualizing={visualizing}
-          onBack={onBack}
+    <div style={{ display: 'flex', height: '100vh', background: '#f8fafc', fontFamily: "'DM Sans', system-ui, sans-serif", flexDirection: 'column' }}>
+      <div style={{ display: 'flex', flex: 1, overflow: 'hidden' }}>
+        <Sidebar 
+          onAddNode={addFreeNode} 
+          onAddSection={addSection}
+          sections={nodes.filter(n => n.type === 'sectionNode')}
+          selectedSectionId={selectedSectionId}
+          onSectionSelect={setSelectedSectionId}
         />
 
-        {/* Canvas */}
-        <div style={{ flex: 1, position: 'relative' }}>
-          {visualizationResult && (
-            <div style={{ position: 'absolute', top: 12, left: 12, right: 12, zIndex: 5, pointerEvents: 'none' }}>
-              <div style={{ display: 'inline-block', maxWidth: 480, padding: '10px 12px', borderRadius: 12, background: 'rgba(255,255,255,0.95)', border: '1px solid #bfdbfe', boxShadow: '0 10px 30px rgba(15,23,42,0.08)' }}>
-                <div style={{ fontSize: 12, fontWeight: 700, color: '#1d4ed8' }}>📝 Visualization plan prepared</div>
-                <div style={{ fontSize: 12, color: '#334155', marginTop: 4 }}>
-                  {visualizationResult.clips?.length ?? 0} clips planned · final clip: {visualizationResult.finalClip?.clipId ?? 'n/a'}
+        <div style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
+          {/* Topbar */}
+          <FlowEditorTopBar
+            title={recipe.title}
+            onUndo={undo}
+            onRedo={redo}
+            canUndo={history.length > 0}
+            canRedo={future.length > 0}
+            onExport={exportFlow}
+            onSave={saveFlow}
+            onVisualize={visualizeFlow}
+            isVisualizing={visualizing}
+            onBack={onBack}
+          />
+
+          {/* Canvas */}
+          <div style={{ flex: 1, position: 'relative' }}>
+            {visualizationResult && (
+              <div style={{ position: 'absolute', top: 12, left: 12, right: 12, zIndex: 5, pointerEvents: 'none' }}>
+                <div style={{ display: 'inline-block', maxWidth: 480, padding: '10px 12px', borderRadius: 12, background: 'rgba(255,255,255,0.95)', border: '1px solid #bfdbfe', boxShadow: '0 10px 30px rgba(15,23,42,0.08)' }}>
+                  <div style={{ fontSize: 12, fontWeight: 700, color: '#1d4ed8' }}>📝 Visualization plan prepared</div>
+                  <div style={{ fontSize: 12, color: '#334155', marginTop: 4 }}>
+                    {visualizationResult.clips?.length ?? 0} clips planned · final clip: {visualizationResult.finalClip?.clipId ?? 'n/a'}
+                  </div>
                 </div>
               </div>
-            </div>
-          )}
-          <ReactFlow
-            nodes={displayNodes} edges={edges}
-            onNodesChange={onNodesChange} onEdgesChange={onEdgesChange}
-            nodeTypes={nodeTypes} onConnect={onConnect}
-            onNodeDragStart={handleDragStart} onNodeDragStop={handleDragStop}
-            fitView fitViewOptions={{ padding: 0.12 }}
-            connectionRadius={28}
-            defaultEdgeOptions={{ type: 'smoothstep',
-              style: { stroke: '#94a3b8', strokeWidth: 1.5 },
-              markerEnd: { type: MarkerType.ArrowClosed, color: '#94a3b8', width: 16, height: 16 } }}>
-            <Background variant={BackgroundVariant.Dots} color="#e2e8f0" gap={20} size={1} />
-            <Controls style={{ borderRadius: 10, border: '1px solid #e2e8f0', boxShadow: '0 2px 8px rgba(0,0,0,0.06)' }} />
+            )}
+            <ReactFlow
+              nodes={displayNodes} edges={edges}
+              onNodesChange={onNodesChange} onEdgesChange={onEdgesChange}
+              nodeTypes={nodeTypes} onConnect={onConnect}
+              onNodeDragStart={handleDragStart} onNodeDragStop={handleDragStop}
+              fitView fitViewOptions={{ padding: 0.12 }}
+              connectionRadius={28}
+              defaultEdgeOptions={{ type: 'smoothstep',
+                style: { stroke: '#94a3b8', strokeWidth: 1.5 },
+                markerEnd: { type: MarkerType.ArrowClosed, color: '#94a3b8', width: 16, height: 16 } }}>
+              <Background variant={BackgroundVariant.Dots} color="#e2e8f0" gap={20} size={1} />
+              <Controls style={{ borderRadius: 10, border: '1px solid #e2e8f0', boxShadow: '0 2px 8px rgba(0,0,0,0.06)' }} />
             <MiniMap style={{ borderRadius: 12, border: '1px solid #e2e8f0', boxShadow: '0 2px 8px rgba(0,0,0,0.06)' }}
               nodeColor={n => {
                 if (n.type === 'conditionNode') return '#fde68a'
                 return '#e2e8f0'
               }} />
           </ReactFlow>
+          </div>
+
+          {/* Footer */}
+          <footer style={{ background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)', color: 'white', padding: '16px 24px', textAlign: 'center', borderTop: '1px solid rgba(255, 255, 255, 0.1)', fontSize: '13px' }}>
+            <div style={{ maxWidth: '1200px', margin: '0 auto' }}>
+              <p style={{ margin: '0 0 8px 0' }}>&copy; 2024 Virtual Kitchen - Recipe Flow Editor. All rights reserved.</p>
+              <div style={{ display: 'flex', justifyContent: 'center', gap: '12px', flexWrap: 'wrap' }}>
+                <a href="#privacy" style={{ color: 'rgba(255, 255, 255, 0.9)', textDecoration: 'none', transition: 'color 0.3s ease' }} onMouseEnter={e => e.currentTarget.style.color = 'white'} onMouseLeave={e => e.currentTarget.style.color = 'rgba(255, 255, 255, 0.9)'}>Privacy Policy</a>
+                <span style={{ color: 'rgba(255, 255, 255, 0.6)' }}>•</span>
+                <a href="#terms" style={{ color: 'rgba(255, 255, 255, 0.9)', textDecoration: 'none', transition: 'color 0.3s ease' }} onMouseEnter={e => e.currentTarget.style.color = 'white'} onMouseLeave={e => e.currentTarget.style.color = 'rgba(255, 255, 255, 0.9)'}>Terms of Service</a>
+                <span style={{ color: 'rgba(255, 255, 255, 0.6)' }}>•</span>
+                <a href="#contact" style={{ color: 'rgba(255, 255, 255, 0.9)', textDecoration: 'none', transition: 'color 0.3s ease' }} onMouseEnter={e => e.currentTarget.style.color = 'white'} onMouseLeave={e => e.currentTarget.style.color = 'rgba(255, 255, 255, 0.9)'}>Contact Us</a>
+              </div>
+            </div>
+          </footer>
         </div>
       </div>
 

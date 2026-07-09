@@ -10,6 +10,8 @@ public interface IUserService {
 
     UserResponseDTO getUserById(Long id);
 
+    UserResponseDTO getUserByEmail(String email);
+
     UserResponseDTO updateUser(Long id, UserUpdateDTO request);
 
     void deleteUser(Long id);
