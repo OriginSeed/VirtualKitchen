@@ -40,6 +40,16 @@ public class UserController {
         );
     }
 
+    @GetMapping("/email/{email}")
+    public ResponseEntity<ApiResponse<UserResponseDTO>> getUserByEmail(@PathVariable String email) {
+
+        UserResponseDTO response = userService.getUserByEmail(email);
+
+        return ResponseEntity.ok(
+                buildResponse(true, "User fetched successfully", response)
+        );
+    }
+
     @PutMapping("/{id}")
     public ResponseEntity<ApiResponse<UserResponseDTO>> updateUser(
             @PathVariable Long id,

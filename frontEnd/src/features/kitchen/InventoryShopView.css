@@ -1,0 +1,138 @@
+.shop-view {
+  max-width: 1400px;
+  margin: 0 auto;
+}
+
+.shop-header {
+  margin-bottom: 32px;
+}
+
+.shop-header h2 {
+  margin: 0 0 8px 0;
+  font-size: 28px;
+  font-weight: 700;
+  color: #333;
+}
+
+.shop-subtitle {
+  margin: 0;
+  font-size: 14px;
+  color: #999;
+}
+
+.shop-filters {
+  display: flex;
+  gap: 12px;
+  margin-bottom: 32px;
+  flex-wrap: wrap;
+}
+
+.shop-filter-btn {
+  padding: 10px 20px;
+  border: 1px solid #ddd;
+  border-radius: 6px;
+  background: white;
+  color: #666;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.3s ease;
+}
+
+.shop-filter-btn:hover {
+  border-color: #667eea;
+  color: #667eea;
+}
+
+.shop-filter-btn.active {
+  background: #667eea;
+  border-color: #667eea;
+  color: white;
+}
+
+.shop-loading,
+.shop-error,
+.shop-empty {
+  text-align: center;
+  padding: 60px 20px;
+  color: #999;
+  font-size: 16px;
+}
+
+.shop-error {
+  color: #c33;
+  background: #fee;
+  border: 1px solid #fcc;
+  border-radius: 6px;
+  padding: 20px;
+}
+
+.shop-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 24px;
+}
+
+.shop-card {
+  background: white;
+  border: 1px solid #e0e0e0;
+  border-radius: 8px;
+  padding: 24px;
+  display: flex;
+  flex-direction: column;
+  transition: all 0.3s ease;
+  text-align: center;
+}
+
+.shop-card:hover {
+  border-color: #667eea;
+  box-shadow: 0 8px 16px rgba(102, 126, 234, 0.15);
+  transform: translateY(-4px);
+}
+
+.shop-card-icon {
+  font-size: 48px;
+  margin-bottom: 16px;
+}
+
+.shop-card-title {
+  margin: 0 0 8px 0;
+  font-size: 16px;
+  font-weight: 600;
+  color: #333;
+}
+
+.shop-card-description {
+  margin: 0 0 16px 0;
+  font-size: 13px;
+  color: #999;
+  flex: 1;
+}
+
+.shop-card-price {
+  font-size: 18px;
+  font-weight: 700;
+  color: #667eea;
+  margin-bottom: 16px;
+}
+
+.shop-add-button {
+  padding: 10px 16px;
+  border: none;
+  border-radius: 6px;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.3s ease;
+}
+
+.shop-add-button:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(102, 126, 234, 0.3);
+}
+
+.shop-add-button:active {
+  transform: translateY(0);
+}
