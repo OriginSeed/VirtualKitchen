@@ -1,14 +1,13 @@
 import { useState } from 'react'
 import type { User } from '../../types/User'
-import './LoginPage.css'
+import { AuthApi, KitchenApi } from '../../api'
+import './Auth.css'
 
 interface LoginPageProps {
   onLoginSuccess: (user: User, kitchen: any) => void
 }
 
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8080'
-
-export default function LoginPage({ onLoginSuccess }: LoginPageProps) {
+export default function Auth({ onLoginSuccess }: LoginPageProps) {
   const [mode, setMode] = useState<'login' | 'signup'>('signup')
   const [userName, setUserName] = useState('')
   const [userEmail, setUserEmail] = useState('')
@@ -26,39 +25,17 @@ export default function LoginPage({ onLoginSuccess }: LoginPageProps) {
 
     try {
       // Create user
-      const userResponse = await fetch(`${API_BASE_URL}/api/v1/users`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          name: userName.trim(),
-          email: userEmail.trim(),
-          passwordHash: 'demo-password', // Simple demo password
-        }),
+      const user = await AuthApi.createUser({
+        name: userName.trim(),
+        email: userEmail.trim(),
+        passwordHash: 'demo-password', // Simple demo password
       })
-
-      if (!userResponse.ok) {
-        throw new Error('Failed to create user')
-      }
-
-      const userData = await userResponse.json()
-      const user = userData.data
 
       // Create kitchen for this user
-      const kitchenResponse = await fetch(`${API_BASE_URL}/api/v1/kitchens`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          name: `${userName}'s Virtual Kitchen`,
-          ownerId: user.id,
-        }),
+      const kitchen = await KitchenApi.createKitchen({
+        name: `${userName}'s Virtual Kitchen`,
+        ownerId: user.id,
       })
-
-      if (!kitchenResponse.ok) {
-        throw new Error('Failed to create kitchen')
-      }
-
-      const kitchenData = await kitchenResponse.json()
-      const kitchen = kitchenData.data
 
       // Success - call parent callback
       onLoginSuccess(user, kitchen)
@@ -81,25 +58,12 @@ export default function LoginPage({ onLoginSuccess }: LoginPageProps) {
 
     try {
       // Fetch user by email
-      const userResponse = await fetch(`${API_BASE_URL}/api/v1/users/email/${userEmail.trim()}`)
-
-      if (!userResponse.ok) {
-        throw new Error('User not found. Please sign up first.')
-      }
-
-      const userData = await userResponse.json()
-      const user = userData.data
+      const user = await AuthApi.getUserByEmail(userEmail.trim())
 
       // Fetch kitchen for this user
-      const kitchenResponse = await fetch(`${API_BASE_URL}/api/v1/kitchens?ownerId=${user.id}`)
-
-      if (!kitchenResponse.ok) {
-        throw new Error('Failed to fetch kitchen')
-      }
-
-      const kitchenData = await kitchenResponse.json()
-      const kitchens = kitchenData.data
-      const kitchen = Array.isArray(kitchens) ? kitchens[0] : kitchens
+      const kitchensData = await KitchenApi.getKitchenByOwnerId(user.id)
+      const kitchens = Array.isArray(kitchensData) ? kitchensData : [kitchensData]
+      const kitchen = kitchens[0]
 
       if (!kitchen) {
         throw new Error('No kitchen found for this user')

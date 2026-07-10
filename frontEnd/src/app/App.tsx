@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import LoginPage from '../features/auth/LoginPage'
+import Auth from '../features/auth/Auth'
 import KitchenPage from '../features/kitchen/KitchenPage'
 import FlowEditor from '../features/flow-editor/FlowEditor'
 import type { User } from '../types/User'
@@ -41,7 +41,7 @@ function App() {
   return (
     <>
       {appView === 'login' ? (
-        <LoginPage onLoginSuccess={handleLoginSuccess} />
+        <Auth onLoginSuccess={handleLoginSuccess} />
       ) : appView === 'kitchen' && currentUser && currentKitchen ? (
         <KitchenPage user={currentUser} kitchen={currentKitchen} onLogout={handleLogout} onCreateRecipe={goToEditor} />
       ) : appView === 'editor' ? (

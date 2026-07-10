@@ -1,6 +1,5 @@
 import { useEffect, useState } from 'react'
-
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8080'
+import { RecipeApi } from '../../api'
 
 type Recipe = {
   id: number
@@ -24,13 +23,8 @@ export default function RecipeHomePage({ onCreateRecipe }: RecipeHomePageProps) 
   const loadRecipes = async () => {
     try {
       setRecipesLoading(true)
-      const response = await fetch(`${API_BASE_URL}/api/v1/process-templates/user/1`)
-      if (!response.ok) {
-        throw new Error('Unable to load recipes')
-      }
-      const result = await response.json()
-      const items = Array.isArray(result?.data) ? result.data : []
-      setRecipes(items)
+      const items = await RecipeApi.getRecipesByUserId(1)
+      setRecipes(items || [])
     } catch (err) {
       console.error(err)
     } finally {
@@ -44,14 +38,7 @@ export default function RecipeHomePage({ onCreateRecipe }: RecipeHomePageProps) 
 
   const handleDeleteRecipe = async (recipeId: number) => {
     try {
-      const response = await fetch(`${API_BASE_URL}/api/v1/process-templates/${recipeId}`, {
-        method: 'DELETE',
-      })
-
-      if (!response.ok) {
-        throw new Error('Unable to delete recipe')
-      }
-
+      await RecipeApi.deleteRecipe(recipeId)
       await loadRecipes()
     } catch (err) {
       console.error(err)
@@ -68,27 +55,17 @@ export default function RecipeHomePage({ onCreateRecipe }: RecipeHomePageProps) 
     try {
       setLoading(true)
       setError(null)
-      const response = await fetch(`${API_BASE_URL}/api/v1/process-templates`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          name: title.trim(),
-          description: description.trim(),
-          createdBy: 1,
-        }),
+      const result = await RecipeApi.createRecipe({
+        name: title.trim(),
+        description: description.trim(),
+        createdBy: 1,
       })
 
-      if (!response.ok) {
-        throw new Error('Unable to create recipe')
-      }
-
-      const result = await response.json()
-      const createdId = result?.data?.id
-      if (!createdId) {
+      if (!result.id) {
         throw new Error('Recipe created but no id returned')
       }
 
-      onCreateRecipe(createdId, title.trim())
+      onCreateRecipe(result.id, title.trim())
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Unable to create recipe')
     } finally {

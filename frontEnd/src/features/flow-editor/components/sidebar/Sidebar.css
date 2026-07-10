@@ -1,0 +1,165 @@
+/* Sidebar container */
+.flow-sidebar {
+  width: 210px;
+  background: white;
+  border-right: 1px solid #e2e8f0;
+  display: flex;
+  flex-direction: column;
+  font-family: 'DM Sans', system-ui, sans-serif;
+  flex-shrink: 0;
+  overflow-y: auto;
+}
+
+/* Sidebar header */
+.flow-sidebar-header {
+  padding: 16px 14px 12px;
+  border-bottom: 1px solid #f1f5f9;
+  flex-shrink: 0;
+}
+
+.flow-sidebar-header-content {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.flow-sidebar-header-icon {
+  width: 30px;
+  height: 30px;
+  background: linear-gradient(135deg, #6366f1, #8b5cf6);
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 15px;
+  flex-shrink: 0;
+}
+
+.flow-sidebar-header-text {
+  display: flex;
+  flex-direction: column;
+}
+
+.flow-sidebar-header-title {
+  font-weight: 700;
+  font-size: 12px;
+  color: #0f172a;
+  margin: 0;
+}
+
+.flow-sidebar-header-subtitle {
+  font-size: 10px;
+  color: #94a3b8;
+  margin: 0;
+}
+
+/* Sidebar section */
+.flow-sidebar-section {
+  padding: 10px 10px 0;
+  flex-shrink: 0;
+}
+
+.flow-sidebar-section-label {
+  font-size: 10px;
+  font-weight: 700;
+  color: #94a3b8;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  margin-bottom: 8px;
+  padding-left: 4px;
+}
+
+.flow-sidebar-quick-add {
+  display: flex;
+  gap: 6px;
+}
+
+.flow-sidebar-button {
+  flex: 1;
+  padding: 7px 0;
+  border-radius: 8px;
+  border: 1.5px solid;
+  background: white;
+  font-size: 11px;
+  font-weight: 700;
+  cursor: pointer;
+  font-family: inherit;
+  transition: all 0.2s ease;
+}
+
+.flow-sidebar-button:hover {
+  opacity: 0.8;
+  transform: translateY(-1px);
+}
+
+.flow-sidebar-button-step {
+  border-color: #bfdbfe;
+  background: #eff6ff;
+  color: #2563eb;
+}
+
+.flow-sidebar-button-section {
+  border-color: #86efac;
+  background: #f0fdf4;
+  color: #16a34a;
+}
+
+/* Sections list */
+.flow-sidebar-sections-list {
+  padding: 10px 10px 0;
+  flex: 1;
+  overflow-y: auto;
+}
+
+.flow-sidebar-sections-label {
+  font-size: 10px;
+  font-weight: 700;
+  color: #94a3b8;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  margin-bottom: 6px;
+  padding-left: 4px;
+}
+
+.flow-sidebar-sections-items {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.flow-sidebar-section-item {
+  padding: 6px 8px;
+  border-radius: 8px;
+  background: #f8fafc;
+  color: #334155;
+  font-size: 11px;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.flow-sidebar-section-item:hover {
+  background: #e2e8f0;
+  color: #1e293b;
+}
+
+.flow-sidebar-section-item.selected {
+  background: #e0e7ff;
+  color: #1e293b;
+  border: 1px solid #c7d2fe;
+}
+
+/* Allow horizontal resize of the sidebar; user can drag the corner. */
+.flow-sidebar {
+  resize: horizontal;
+  overflow: auto;
+  min-width: 160px;
+  max-width: 420px;
+}
+
+.flow-sidebar {
+  border-right: 1px solid rgba(15,23,42,0.06);
+}

@@ -1,4 +1,5 @@
 import { useEffect, useState, useCallback, useRef } from 'react'
+import { ShopApi } from '../../api'
 import './InventoryShopView.css'
 
 interface ShopItem {
@@ -9,70 +10,8 @@ interface ShopItem {
   basePrice?: number
 }
 
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8080'
-
-// Mock data - always available as fallback
-const MOCK_SHOP_ITEMS: ShopItem[] = [
-  {
-    id: 1,
-    name: 'Tomato',
-    itemType: 'INGREDIENT',
-    description: 'Fresh, organic tomatoes',
-    basePrice: 2.5,
-  },
-  {
-    id: 2,
-    name: 'Bell Pepper',
-    itemType: 'INGREDIENT',
-    description: 'Colorful bell peppers',
-    basePrice: 3.0,
-  },
-  {
-    id: 3,
-    name: 'Garlic',
-    itemType: 'INGREDIENT',
-    description: 'Fresh garlic cloves',
-    basePrice: 1.5,
-  },
-  {
-    id: 4,
-    name: 'Onion',
-    itemType: 'INGREDIENT',
-    description: 'Yellow onions',
-    basePrice: 2.0,
-  },
-  {
-    id: 5,
-    name: 'Chef Knife',
-    itemType: 'EQUIPMENT',
-    description: 'Professional chef knife 8 inch',
-    basePrice: 45.0,
-  },
-  {
-    id: 6,
-    name: 'Cutting Board',
-    itemType: 'EQUIPMENT',
-    description: 'Wooden cutting board',
-    basePrice: 25.0,
-  },
-  {
-    id: 7,
-    name: 'Pan',
-    itemType: 'EQUIPMENT',
-    description: 'Non-stick frying pan',
-    basePrice: 35.0,
-  },
-  {
-    id: 8,
-    name: 'Pot',
-    itemType: 'EQUIPMENT',
-    description: 'Stainless steel cooking pot',
-    basePrice: 40.0,
-  },
-]
-
 export default function InventoryShopView() {
-  const [allItems, setAllItems] = useState<ShopItem[]>(MOCK_SHOP_ITEMS)
+  const [allItems, setAllItems] = useState<ShopItem[]>([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [filter, setFilter] = useState<'all' | 'ingredients' | 'equipment'>('all')
@@ -91,73 +30,41 @@ export default function InventoryShopView() {
       setLoading(true)
       setError('')
 
-      // Try to fetch ingredients
-      const ingredientResponse = await fetch(
-        `${API_BASE_URL}/api/v1/ingredients`,
-        {
-          method: 'GET',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-        }
-      )
-      
-      const equipmentResponse = await fetch(
-        `${API_BASE_URL}/api/v1/equipment`,
-        {
-          method: 'GET',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-        }
-      )
+      // Fetch both ingredients and equipment in parallel
+      const [ingredients, equipments] = await Promise.all([
+        ShopApi.getIngredients(),
+        ShopApi.getEquipment(),
+      ])
 
       const items: ShopItem[] = []
 
       // Process ingredients
-      if (ingredientResponse.ok) {
-        try {
-          const ingredientData = await ingredientResponse.json()
-          const ingredients = (ingredientData.data || []).map((item: any) => ({
-            id: item.id,
-            name: item.name,
-            itemType: 'INGREDIENT',
-            description: item.description || 'High quality ingredient',
-            basePrice: item.basePrice || 5.0,
-          }))
-          items.push(...ingredients)
-        } catch (e) {
-          console.error('Error parsing ingredient response:', e)
-        }
+      if (ingredients && Array.isArray(ingredients)) {
+        const processedIngredients = ingredients.map((item: any) => ({
+          id: item.id,
+          name: item.name,
+          itemType: 'INGREDIENT',
+          description: item.description || 'High quality ingredient',
+          basePrice: item.basePrice || 5.0,
+        }))
+        items.push(...processedIngredients)
       }
 
       // Process equipment
-      if (equipmentResponse.ok) {
-        try {
-          const equipmentData = await equipmentResponse.json()
-          const equipments = (equipmentData.data || []).map((item: any) => ({
-            id: item.id,
-            name: item.name,
-            itemType: 'EQUIPMENT',
-            description: item.description || 'Professional equipment',
-            basePrice: item.basePrice || 50.0,
-          }))
-          items.push(...equipments)
-        } catch (e) {
-          console.error('Error parsing equipment response:', e)
-        }
+      if (equipments && Array.isArray(equipments)) {
+        const processedEquipments = equipments.map((item: any) => ({
+          id: item.id,
+          name: item.name,
+          itemType: 'EQUIPMENT',
+          description: item.description || 'Professional equipment',
+          basePrice: item.basePrice || 50.0,
+        }))
+        items.push(...processedEquipments)
       }
 
-      // Use mock data if no items fetched from API
-      if (items.length === 0) {
-        setAllItems(MOCK_SHOP_ITEMS)
-      } else {
-        setAllItems(items)
-      }
+      setAllItems(items)
     } catch (err) {
       console.error('Error fetching shop items:', err)
-      // Always fall back to mock data on any error
-      setAllItems(MOCK_SHOP_ITEMS)
     } finally {
       setLoading(false)
     }
