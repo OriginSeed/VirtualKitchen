@@ -1,4 +1,5 @@
 import { useEffect, useState, useCallback } from 'react'
+import { InventoryApi } from '../../api'
 import './InventoryView.css'
 
 interface InventoryItem {
@@ -18,58 +19,12 @@ interface InventoryViewProps {
   onFilterChange: (filter: 'ingredients' | 'equipment') => void
 }
 
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8080'
-
-// Mock data - always available as fallback
-const MOCK_ITEMS: InventoryItem[] = [
-  {
-    id: 1,
-    kitchenId: 1,
-    inventoryId: 1,
-    itemName: 'Tomato',
-    itemType: 'INGREDIENT',
-    quantity: 10,
-    unit: 'kg',
-    lastUpdated: new Date().toISOString(),
-  },
-  {
-    id: 2,
-    kitchenId: 1,
-    inventoryId: 2,
-    itemName: 'Onion',
-    itemType: 'INGREDIENT',
-    quantity: 5,
-    unit: 'kg',
-    lastUpdated: new Date().toISOString(),
-  },
-  {
-    id: 3,
-    kitchenId: 1,
-    inventoryId: 3,
-    itemName: 'Chef Knife',
-    itemType: 'EQUIPMENT',
-    quantity: 1,
-    unit: 'piece',
-    lastUpdated: new Date().toISOString(),
-  },
-  {
-    id: 4,
-    kitchenId: 1,
-    inventoryId: 4,
-    itemName: 'Cutting Board',
-    itemType: 'EQUIPMENT',
-    quantity: 2,
-    unit: 'pieces',
-    lastUpdated: new Date().toISOString(),
-  },
-]
-
 export default function InventoryView({
   kitchenId,
   filter,
   onFilterChange,
 }: InventoryViewProps) {
-  const [items, setItems] = useState<InventoryItem[]>(MOCK_ITEMS)
+  const [items, setItems] = useState<InventoryItem[]>([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
 
@@ -78,34 +33,13 @@ export default function InventoryView({
       setLoading(true)
       setError('')
       
-      const response = await fetch(
-        `${API_BASE_URL}/api/v1/kitchen-inventory/${kitchenId}`,
-        {
-          method: 'GET',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-        }
-      )
-
-      // If successful and has data, use it
-      if (response.ok) {
-        const data = await response.json()
-        const fetchedItems = data.data || []
-        
-        // Only set items if we have data from API
-        if (fetchedItems && fetchedItems.length > 0) {
-          setItems(fetchedItems)
-          return
-        }
-      }
+      const fetchedItems = await InventoryApi.getInventoryByKitchenId(kitchenId)
       
-      // If 401 or no data, use mock data
-      setItems(MOCK_ITEMS)
+      if (fetchedItems && fetchedItems.length > 0) {
+        setItems(fetchedItems)
+      }
     } catch (err) {
       console.error('Error fetching inventory:', err)
-      // Always fall back to mock data on any error
-      setItems(MOCK_ITEMS)
     } finally {
       setLoading(false)
     }

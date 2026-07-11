@@ -2,8 +2,10 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import Sidebar from '../sidebar/Sidebar'
 import PropertiesPanel from '../toolbar/PropertiesPanel'
 import FlowEditorTopBar from '../toolbar/FlowEditorTopBar'
-
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8080'
+import { FlowApi, VisualizationApi } from '../../../../api'
+import './FlowCanvas.css'
+import '../sidebar/Sidebar.css'
+import '../toolbar/PropertiesPanel.css'
 
 import {
   ReactFlow,
@@ -56,6 +58,33 @@ export default function FlowCanvas({ recipe, onBack }: FlowCanvasProps) {
 
   const selectedNode = nodes.find(n => n.selected)
   const selectedSectionTitle = getSelectedSectionTitle(nodes, selectedNode)
+
+  // When the user selects a section from the sidebar, mark that node as selected
+  useEffect(() => {
+    if (selectedSectionId == null) {
+      // deselect all
+      setNodes(ns => ns.map(n => ({ ...n, selected: false })))
+      return
+    }
+
+    setNodes(ns => ns.map(n => ({ ...n, selected: String(n.id) === String(selectedSectionId) })))
+  }, [selectedSectionId, setNodes])
+
+  // When a node selection changes on the canvas, update the sidebar selectedSectionId
+  useEffect(() => {
+    if (!selectedNode) {
+      if (selectedSectionId !== null) setSelectedSectionId(null)
+      return
+    }
+
+    if (selectedNode.type === 'sectionNode') {
+      if (selectedSectionId !== String(selectedNode.id)) setSelectedSectionId(String(selectedNode.id))
+      return
+    }
+
+    // if a non-section node is selected, clear sidebar section selection
+    if (selectedSectionId !== null) setSelectedSectionId(null)
+  }, [selectedNode, selectedSectionId, setSelectedSectionId])
 
   // ── Snapshot ──────────────────────────────────────────────────────────────
   const saveSnapshot = useCallback(() => {
@@ -204,10 +233,7 @@ export default function FlowCanvas({ recipe, onBack }: FlowCanvasProps) {
   useEffect(() => {
     const loadExistingFlow = async () => {
       try {
-        const response = await fetch(`${API_BASE_URL}/api/v1/flows/${recipe.id}`)
-        if (!response.ok) return
-        const result = await response.json()
-        const flowData = result?.data
+        const flowData = await FlowApi.getFlowByRecipeId(recipe.id)
         if (!flowData?.nodes && !flowData?.edges) return
 
         const loadedNodes = (flowData.nodes ?? []).map((node: any) => ({
@@ -251,10 +277,7 @@ export default function FlowCanvas({ recipe, onBack }: FlowCanvasProps) {
 
   const saveFlow = useCallback(async () => {
     try {
-      const payload = {
-        flowId: String(recipe.id),
-        userId: 'demo-user',
-        templateId: recipe.id,
+      const flowData = {
         nodes: nodes.map(node => ({
           id: node.id,
           type: node.type,
@@ -281,31 +304,21 @@ export default function FlowCanvas({ recipe, onBack }: FlowCanvasProps) {
         })),
       }
 
-      const response = await fetch(`${API_BASE_URL}/api/v1/flows/${payload.flowId}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-      })
-
-      if (!response.ok) {
-        throw new Error('Failed to save flow')
-      }
-
-      const result = await response.json()
-      console.log('Flow saved:', result)
+      await FlowApi.saveFlow(recipe.id, flowData)
+      console.log('Flow saved successfully')
       alert('Flow saved successfully')
     } catch (error) {
       console.error(error)
       alert('Unable to save flow right now')
     }
-  }, [nodes, edges])
+  }, [nodes, edges, recipe.id])
 
   const visualizeFlow = useCallback(async () => {
     setVisualizing(true)
     setVisualizationResult(null)
 
     try {
-      const payload = {
+      const visualizationData = {
         nodes: nodes.map(node => ({
           id: node.id,
           type: node.type,
@@ -324,17 +337,8 @@ export default function FlowCanvas({ recipe, onBack }: FlowCanvasProps) {
         })),
       }
 
-      const response = await fetch(`${API_BASE_URL}/api/v1/visualizations/${String(recipe.id)}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-      })
-
-      if (!response.ok) {
-        throw new Error('Failed to visualize flow')
-      }
-
-      const result = await response.json()
-      setVisualizationResult(result?.data ?? null)
+      const result = await VisualizationApi.generateVisualization(recipe.id, visualizationData)
+      setVisualizationResult(result ?? null)
     } catch (error) {
       console.error(error)
       alert('Unable to visualize flow right now')
@@ -399,9 +403,28 @@ export default function FlowCanvas({ recipe, onBack }: FlowCanvasProps) {
   }, [deleteSelected, undo, redo])
 
   // ─────────────────────────────────────────────────────────────────────────
+  // refs for resize observation and reactflow instance
+  const sidebarRef = useRef<HTMLDivElement | null>(null)
+  const propsRef = useRef<HTMLDivElement | null>(null)
+  const reactFlowInstance = useRef<any>(null)
+  const reactFlowWrapperRef = useRef<HTMLDivElement | null>(null)
+
+  // observe size changes of the sidebar and call fitView
+  useEffect(() => {
+    if (!reactFlowInstance.current) return
+    const ro = new ResizeObserver(() => {
+      try { reactFlowInstance.current.fitView({ padding: 0.12 }) } catch (e) { /* ignore */ }
+    })
+    if (sidebarRef.current) ro.observe(sidebarRef.current)
+    const onWin = () => { try { reactFlowInstance.current.fitView({ padding: 0.12 }) } catch (e) {} }
+    window.addEventListener('resize', onWin)
+    return () => { ro.disconnect(); window.removeEventListener('resize', onWin) }
+  }, [reactFlowInstance])
+
   return (
-    <div style={{ display: 'flex', height: '100vh', background: '#f8fafc', fontFamily: "'DM Sans', system-ui, sans-serif", flexDirection: 'column' }}>
-      <div style={{ display: 'flex', flex: 1, overflow: 'hidden' }}>
+    <div className="flow-canvas-container">
+      {/* Sidebar */}
+      <div ref={sidebarRef} className="flow-sidebar-wrapper">
         <Sidebar 
           onAddNode={addFreeNode} 
           onAddSection={addSection}
@@ -409,9 +432,12 @@ export default function FlowCanvas({ recipe, onBack }: FlowCanvasProps) {
           selectedSectionId={selectedSectionId}
           onSectionSelect={setSelectedSectionId}
         />
+      </div>
 
-        <div style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
-          {/* Topbar */}
+      {/* Main Content Area */}
+      <div className="flow-canvas-main">
+        {/* Topbar */}
+        <div className="flow-canvas-topbar">
           <FlowEditorTopBar
             title={recipe.title}
             onUndo={undo}
@@ -424,67 +450,105 @@ export default function FlowCanvas({ recipe, onBack }: FlowCanvasProps) {
             isVisualizing={visualizing}
             onBack={onBack}
           />
+        </div>
 
-          {/* Canvas */}
-          <div style={{ flex: 1, position: 'relative' }}>
-            {visualizationResult && (
-              <div style={{ position: 'absolute', top: 12, left: 12, right: 12, zIndex: 5, pointerEvents: 'none' }}>
-                <div style={{ display: 'inline-block', maxWidth: 480, padding: '10px 12px', borderRadius: 12, background: 'rgba(255,255,255,0.95)', border: '1px solid #bfdbfe', boxShadow: '0 10px 30px rgba(15,23,42,0.08)' }}>
-                  <div style={{ fontSize: 12, fontWeight: 700, color: '#1d4ed8' }}>📝 Visualization plan prepared</div>
-                  <div style={{ fontSize: 12, color: '#334155', marginTop: 4 }}>
-                    {visualizationResult.clips?.length ?? 0} clips planned · final clip: {visualizationResult.finalClip?.clipId ?? 'n/a'}
-                  </div>
+        {/* Canvas Area */}
+        <div ref={reactFlowWrapperRef} className="flow-canvas-area">
+          {visualizationResult && (
+            <div className="flow-canvas-visualization-result">
+              <div className="flow-canvas-visualization-box">
+                <div className="flow-canvas-visualization-title">📝 Visualization plan prepared</div>
+                <div className="flow-canvas-visualization-info">
+                  {visualizationResult.clips?.length ?? 0} clips planned · final clip: {visualizationResult.finalClip?.clipId ?? 'n/a'}
                 </div>
               </div>
-            )}
+            </div>
+          )}
+          
             <ReactFlow
-              nodes={displayNodes} edges={edges}
-              onNodesChange={onNodesChange} onEdgesChange={onEdgesChange}
-              nodeTypes={nodeTypes} onConnect={onConnect}
-              onNodeDragStart={handleDragStart} onNodeDragStop={handleDragStop}
-              fitView fitViewOptions={{ padding: 0.12 }}
+              onInit={inst => { reactFlowInstance.current = inst; try { inst.fitView({ padding: 0.12 }) } catch (e) {} }}
+              nodes={displayNodes} 
+              edges={edges}
+              onNodesChange={onNodesChange} 
+              onEdgesChange={onEdgesChange}
+              nodeTypes={nodeTypes} 
+              onConnect={onConnect}
+              onNodeDragStart={handleDragStart} 
+              onNodeDragStop={handleDragStop}
+              fitView 
+              fitViewOptions={{ padding: 0.12 }}
+              style={{ width: '100%', height: '100%' }}
               connectionRadius={28}
-              defaultEdgeOptions={{ type: 'smoothstep',
+              defaultEdgeOptions={{ 
+                type: 'smoothstep',
                 style: { stroke: '#94a3b8', strokeWidth: 1.5 },
-                markerEnd: { type: MarkerType.ArrowClosed, color: '#94a3b8', width: 16, height: 16 } }}>
-              <Background variant={BackgroundVariant.Dots} color="#e2e8f0" gap={20} size={1} />
-              <Controls style={{ borderRadius: 10, border: '1px solid #e2e8f0', boxShadow: '0 2px 8px rgba(0,0,0,0.06)' }} />
-            <MiniMap style={{ borderRadius: 12, border: '1px solid #e2e8f0', boxShadow: '0 2px 8px rgba(0,0,0,0.06)' }}
+                markerEnd: { type: MarkerType.ArrowClosed, color: '#94a3b8', width: 16, height: 16 } 
+              }}>
+            <Background variant={BackgroundVariant.Dots} color="#e2e8f0" gap={20} size={1} />
+            <Controls style={{ borderRadius: 10, border: '1px solid #e2e8f0', boxShadow: '0 2px 8px rgba(0,0,0,0.06)' }} />
+            <MiniMap 
+              style={{ borderRadius: 12, border: '1px solid #e2e8f0', boxShadow: '0 2px 8px rgba(0,0,0,0.06)' }}
               nodeColor={n => {
                 if (n.type === 'conditionNode') return '#fde68a'
                 return '#e2e8f0'
-              }} />
+              }} 
+            />
           </ReactFlow>
-          </div>
-
-          {/* Footer */}
-          <footer style={{ background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)', color: 'white', padding: '16px 24px', textAlign: 'center', borderTop: '1px solid rgba(255, 255, 255, 0.1)', fontSize: '13px' }}>
-            <div style={{ maxWidth: '1200px', margin: '0 auto' }}>
-              <p style={{ margin: '0 0 8px 0' }}>&copy; 2024 Virtual Kitchen - Recipe Flow Editor. All rights reserved.</p>
-              <div style={{ display: 'flex', justifyContent: 'center', gap: '12px', flexWrap: 'wrap' }}>
-                <a href="#privacy" style={{ color: 'rgba(255, 255, 255, 0.9)', textDecoration: 'none', transition: 'color 0.3s ease' }} onMouseEnter={e => e.currentTarget.style.color = 'white'} onMouseLeave={e => e.currentTarget.style.color = 'rgba(255, 255, 255, 0.9)'}>Privacy Policy</a>
-                <span style={{ color: 'rgba(255, 255, 255, 0.6)' }}>•</span>
-                <a href="#terms" style={{ color: 'rgba(255, 255, 255, 0.9)', textDecoration: 'none', transition: 'color 0.3s ease' }} onMouseEnter={e => e.currentTarget.style.color = 'white'} onMouseLeave={e => e.currentTarget.style.color = 'rgba(255, 255, 255, 0.9)'}>Terms of Service</a>
-                <span style={{ color: 'rgba(255, 255, 255, 0.6)' }}>•</span>
-                <a href="#contact" style={{ color: 'rgba(255, 255, 255, 0.9)', textDecoration: 'none', transition: 'color 0.3s ease' }} onMouseEnter={e => e.currentTarget.style.color = 'white'} onMouseLeave={e => e.currentTarget.style.color = 'rgba(255, 255, 255, 0.9)'}>Contact Us</a>
-              </div>
-            </div>
-          </footer>
         </div>
       </div>
 
-      <PropertiesPanel node={selectedNode as any} sectionTitle={selectedSectionTitle}
-        updateNodeField={updateNodeField} onDeleteNode={deleteNode} onDuplicateNode={duplicateNode} />
+        {/* Resizer between main and properties */}
+        <div
+          className="flow-resizer"
+          onMouseDown={(e) => {
+            const startX = e.clientX
+            const startWidth = propsRef.current?.offsetWidth ?? 260
+            const minW = 160
+            const maxW = 520
+            let rafId: number | null = null
 
-      {/* ── Export Modal ── */}
+            const onMove = (ev: MouseEvent) => {
+              const delta = startX - ev.clientX
+              let next = startWidth - delta
+              if (next < minW) next = minW
+              if (next > maxW) next = maxW
+              if (propsRef.current) propsRef.current.style.width = `${next}px`
+              // throttle fitView with rAF
+              if (rafId == null) {
+                rafId = window.requestAnimationFrame(() => {
+                  try { reactFlowInstance.current?.fitView({ padding: 0.12 }) } catch (e) {}
+                  rafId = null
+                })
+              }
+            }
+
+            const onUp = () => {
+              document.removeEventListener('mousemove', onMove)
+              document.removeEventListener('mouseup', onUp)
+              if (rafId != null) { window.cancelAnimationFrame(rafId); rafId = null }
+            }
+
+            document.addEventListener('mousemove', onMove)
+            document.addEventListener('mouseup', onUp)
+            e.preventDefault()
+          }}
+        />
+
+      {/* Properties Panel - Right Sidebar (wrapped so resizer can resize it) */}
+      <div ref={propsRef} className="flow-properties-wrapper">
+        <PropertiesPanel 
+          node={selectedNode as any} 
+          sectionTitle={selectedSectionTitle}
+          updateNodeField={updateNodeField} 
+          onDeleteNode={deleteNode} 
+          onDuplicateNode={duplicateNode} 
+        />
+      </div>
+
+      {/* Export Modal */}
       {exportJson && (
-        <div style={{ position: 'fixed', inset: 0, background: 'rgba(15,23,42,0.6)',
-          display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 9999 }}
-          onClick={() => setExportJson(null)}>
-          <div onClick={e => e.stopPropagation()}
-            style={{ background: 'white', borderRadius: 16, width: 740, maxWidth: '95vw',
-              maxHeight: '88vh', display: 'flex', flexDirection: 'column',
-              boxShadow: '0 24px 80px rgba(0,0,0,0.25)', overflow: 'hidden' }}>
+        <div className="flow-canvas-export-modal-overlay" onClick={() => setExportJson(null)}>
+          <div className="flow-canvas-export-modal" onClick={e => e.stopPropagation()}>
             {/* Modal header */}
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between',
               padding: '14px 18px', borderBottom: '1px solid #e2e8f0' }}>

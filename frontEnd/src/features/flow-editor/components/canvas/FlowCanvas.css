@@ -1,0 +1,168 @@
+/* FlowCanvas main container */
+.flow-canvas-container {
+  display: flex;
+  height: 100vh;
+  background: #f8fafc;
+  font-family: 'DM Sans', system-ui, sans-serif;
+}
+.flow-canvas-container {
+  overflow: hidden; /* prevent page-level horizontal scroll */
+}
+
+/* Layout wrapper for sidebar + main content */
+.flow-canvas-layout {
+  display: flex;
+  flex: 1;
+  overflow: hidden;
+  min-height: 0; /* allow inner flex children to shrink and scroll */
+  min-width: 0; /* allow main area to shrink to prevent horizontal overflow */
+}
+
+/* Main content area: topbar + canvas + footer */
+.flow-canvas-main {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  min-width: 0; /* important for flex children to not force horizontal scroll */
+  box-sizing: border-box;
+}
+
+/* Topbar area */
+.flow-canvas-topbar {
+  flex-shrink: 0;
+  border-bottom: 1px solid #e2e8f0;
+}
+
+/* Canvas area */
+.flow-canvas-area {
+  flex: 1;
+  position: relative;
+  overflow-y: auto; /* vertical scrolling when nodes exceed visible area */
+  overflow-x: hidden; /* prevent horizontal scrollbar; content should fit width */
+  min-height: 0; /* prevent flex overflow issues on nested scroll containers */
+}
+
+/* Ensure ReactFlow fills the canvas area */
+.flow-canvas-area .reactflow-wrapper,
+.flow-canvas-area .reactflow {
+  width: 100%;
+  height: 100%;
+}
+
+/* Wrapper classes used in FlowCanvas for observing size changes */
+.flow-sidebar-wrapper,
+.flow-properties-wrapper {
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0;
+  box-sizing: border-box; /* ensure padding/border do not increase width unexpectedly */
+}
+
+/* Resizer between main and properties panel */
+/* removed resizer - properties panel is static now */
+
+/* Visual separators for clarity */
+.flow-sidebar-wrapper {
+  border-right: 1px solid rgba(15,23,42,0.06);
+  box-shadow: inset -8px 0 12px -12px rgba(15,23,42,0.04);
+}
+
+.flow-properties-wrapper {
+  border-left: 1px solid rgba(15,23,42,0.06);
+  box-shadow: inset 8px 0 12px -12px rgba(15,23,42,0.04);
+}
+
+/* Footer */
+.flow-canvas-footer {
+  flex-shrink: 0;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+  padding: 16px 24px;
+  text-align: center;
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
+  font-size: 13px;
+}
+
+.flow-canvas-footer-content {
+  max-width: 1200px;
+  margin: 0 auto;
+}
+
+.flow-canvas-footer p {
+  margin: 0 0 8px 0;
+}
+
+.flow-canvas-footer-links {
+  display: flex;
+  justify-content: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.flow-canvas-footer a {
+  color: rgba(255, 255, 255, 0.9);
+  text-decoration: none;
+  transition: color 0.3s ease;
+}
+
+.flow-canvas-footer a:hover {
+  color: white;
+}
+
+.flow-canvas-footer-separator {
+  color: rgba(255, 255, 255, 0.6);
+}
+
+/* Visualization result notification */
+.flow-canvas-visualization-result {
+  position: absolute;
+  top: 12px;
+  left: 12px;
+  right: 12px;
+  z-index: 5;
+  pointer-events: none;
+}
+
+.flow-canvas-visualization-box {
+  display: inline-block;
+  max-width: 480px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.95);
+  border: 1px solid #bfdbfe;
+  box-shadow: 0 10px 30px rgba(15, 23, 42, 0.08);
+}
+
+.flow-canvas-visualization-title {
+  font-size: 12px;
+  font-weight: 700;
+  color: #1d4ed8;
+}
+
+.flow-canvas-visualization-info {
+  font-size: 12px;
+  color: #334155;
+  margin-top: 4px;
+}
+
+/* Export modal */
+.flow-canvas-export-modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(15, 23, 42, 0.6);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 9999;
+}
+
+.flow-canvas-export-modal {
+  background: white;
+  border-radius: 16px;
+  width: 740px;
+  max-width: 95vw;
+  max-height: 88vh;
+  display: flex;
+  flex-direction: column;
+}
