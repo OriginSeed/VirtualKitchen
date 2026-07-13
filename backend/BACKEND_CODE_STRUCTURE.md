@@ -1,17 +1,18 @@
 # Backend Code Structure
 
-This document explains the backend package structure of the Virtual Kitchen application and the responsibility of each folder.
+This document explains the backend package structure of the Virtual Kitchen application and the responsibility of each main folder.
 
 ## Overall architecture
 
-The backend follows a typical Spring Boot layered architecture:
+The backend is a Spring Boot application with a layered architecture:
 
-1. Controller layer receives HTTP requests.
-2. Service layer contains business logic.
+1. Controller layer handles HTTP requests and returns responses.
+2. Service layer implements business logic.
 3. Repository layer handles database access.
-4. Model layer defines the domain entities.
-5. DTO layer defines request/response payloads.
+4. Model layer defines domain entities.
+5. DTO layer defines API payloads.
 6. Mapper layer converts between entities and DTOs.
+7. Config and utils support cross-cutting concerns.
 
 ## Main package structure
 
@@ -26,133 +27,131 @@ backend/src/main/java/com/processVisualisation/virtualKitchen/
 ├── repository/
 ├── service/
 ├── utils/
+├── MongoVerifyRunner.java
 └── VirtualKitchenApplication.java
+```
+
+## Supporting resources
+
+```text
+backend/src/main/resources/
+└── application.properties
 ```
 
 ## Package responsibilities
 
-### 1. Root package
+### Root package
 
 - `VirtualKitchenApplication.java`
-- The main Spring Boot entry point.
-- Starts the application and configures the Spring context.
+  - Main Spring Boot entry point.
+  - Starts the application and initializes the Spring context.
+- `MongoVerifyRunner.java`
+  - Helper runner used for MongoDB verification, connectivity checks, or data initialization during application startup.
 
-### 2. `config`
+### `config`
 
 - Contains application configuration classes.
-- Example: `SecurityConfig` handles security rules, authentication, and authorization.
-- This package is used for cross-cutting concerns such as security and app setup.
+- Example: security setup, authentication/authorization rules, cross-cutting configuration.
+- Responsibilities:
+  - Configure beans and security filters.
+  - Manage environment-specific settings.
+  - Apply global application behavior.
 
-### 3. `controller`
+### `controller`
 
 - Contains REST controllers for the API.
-- Each controller exposes endpoints for a specific domain such as `Ingredient`, `Kitchen`, `ProcessTemplate`, `User`, and `Inventory`.
+- Each controller exposes endpoints for a specific domain.
 - Responsibilities:
-  - Accept incoming HTTP requests.
-  - Validate request input.
-  - Call the appropriate service.
-  - Return responses to the client.
+  - Accept and validate incoming HTTP requests.
+  - Invoke service layer operations.
+  - Return structured API responses.
 
-### 4. `service`
+### `service`
 
-- Contains the core business logic of the application.
-- Organized around interfaces and implementation classes.
-- Example:
-  - `IIngredientService` defines the contract.
-  - `IngredientServiceImpl` (inside `impl`) implements the logic.
+- Contains core business logic.
+- Often organized as interfaces and implementation classes.
 - Responsibilities:
-  - Apply business rules.
-  - Coordinate operations across multiple repositories.
-  - Prepare data before persistence or response.
+  - Apply business rules and workflows.
+  - Coordinate actions across multiple repositories.
+  - Prepare and validate data for persistence and response.
 
-### 5. `repository`
+### `repository`
 
 - Contains Spring Data repositories for database access.
-- Each repository is responsible for CRUD operations on a specific entity.
-- Example: `IngredientRepository` handles persistence for ingredients.
+- Each repository handles persistence for a specific entity.
 - Responsibilities:
-  - Read and write data from the database.
-  - Provide query methods for entities.
-  - Keep database access code separate from business logic.
+  - Perform CRUD operations.
+  - Define custom queries and data access methods.
+  - Keep persistence logic separate from business logic.
 
-### 6. `model`
+### `model`
 
-- Contains the domain entities and enums.
-- These classes represent the database model and business objects.
-- Examples:
-  - `Ingredient`, `Kitchen`, `ProcessExecution`, `User`
-  - Enums such as `ProcessStatus`, `StepStatus`, `UnitType`
+- Contains domain entities and enums.
+- Entities represent persisted data and business objects.
 - Responsibilities:
-  - Define the structure of the data.
-  - Map to database tables using JPA annotations.
-  - Represent the real-world concepts of the application.
+  - Define entity fields and relationships.
+  - Map objects to database collections or tables.
+  - Represent application state.
 
-### 7. `dto`
+### `dto`
 
-- Contains Data Transfer Objects used for API communication.
-- DTOs separate the API contract from the database model.
-- Examples:
-  - `IngredientRequestDTO`
-  - `IngredientResponseDTO`
-  - `IngredientUpdateDTO`
+- Contains Data Transfer Objects for API communication.
+- DTOs separate the external API contract from internal entities.
 - Responsibilities:
-  - Define what data clients send to the API.
-  - Define what data the API returns to clients.
-  - Keep APIs flexible and avoid exposing internal entities directly.
+  - Define request payloads and response shapes.
+  - Prevent direct exposure of internal entity structures.
+  - Simplify validation and API versioning.
 
-### 8. `mapper`
+### `mapper`
 
-- Contains mapping classes to convert between entities and DTOs.
-- Example: `IngredientMapper` converts `Ingredient` to `IngredientResponseDTO` and vice versa.
+- Contains mapping utilities that convert entities to DTOs and vice versa.
 - Responsibilities:
-  - Reduce repetitive manual mapping code.
-  - Keep controller and service layers cleaner.
+  - Centralize transformation logic.
+  - Reduce boilerplate mapping code in services and controllers.
+  - Keep data conversion consistent.
 
-### 9. `exception`
+### `exception`
 
-- Contains custom exception classes and global error handling.
-- Examples:
-  - `UserNotFoundException`
-  - `GlobalExceptionHandler`
+- Contains custom exception classes and global exception handlers.
 - Responsibilities:
-  - Handle invalid or unexpected situations consistently.
-  - Return meaningful error responses to clients.
+  - Capture error conditions consistently.
+  - Return meaningful error payloads to API clients.
+  - Handle exceptions such as not found, validation failures, and server errors.
 
-### 10. `utils`
+### `utils`
 
-- Contains helper or utility classes shared across the application.
-- Example: `ApiResponse` for consistent API response formatting.
+- Contains shared helper and utility classes.
 - Responsibilities:
   - Provide reusable support functionality.
-  - Avoid code duplication in multiple layers.
+  - Standardize response objects, parsing, and common utilities.
 
 ## Typical request flow
 
-A typical API request usually follows this path:
+A request typically flows as follows:
 
 ```text
 Client -> Controller -> Service -> Repository -> Database
 ```
 
-And the response returns back through the same layers in reverse order.
+The response travels back through the same layers.
 
-## Example: Ingredient flow
+## Example: Ingredient request flow
 
 - `IngredientController` receives the request.
-- `IIngredientService` handles the business logic.
-- `IngredientRepository` stores or retrieves the data.
-- `Ingredient` model represents the persisted entity.
-- `IngredientRequestDTO` and `IngredientResponseDTO` define the API payload.
-- `IngredientMapper` converts between the entity and DTO.
+- The controller validates input and forwards it to a service.
+- The service applies business rules and calls a repository.
+- `IngredientRepository` reads or writes data.
+- The service maps the entity to a DTO.
+- The controller returns the DTO response.
 
 ## Summary
 
-This backend is organized into clear layers:
+The backend is organized into clear responsibility layers:
 
-- Controllers handle API endpoints.
+- Controllers manage API endpoints.
 - Services implement business rules.
 - Repositories manage persistence.
-- Models represent entities.
-- DTOs define API input/output.
-- Mappers connect models and DTOs.
-- Exceptions and config provide safety and cross-cutting behavior.
+- Models define domain data.
+- DTOs define API payloads.
+- Mappers convert between models and DTOs.
+- Config and utils provide shared, cross-cutting behavior.

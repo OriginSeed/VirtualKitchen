@@ -4,133 +4,171 @@ This document explains the frontend folder structure of the Virtual Kitchen appl
 
 ## Overall architecture
 
-The frontend is built with React and Vite. The code is organized by feature and responsibility so the UI is easier to maintain and extend.
+The frontend is built with React, TypeScript, and Vite. The code is organized by feature and responsibility so the UI remains modular and easy to extend.
 
 ## Main folder structure
 
 ```text
-frontEnd/src/
+frontEnd/
+├── api/
 ├── app/
 ├── assets/
 ├── features/
+│   ├── auth/
+│   ├── flow-editor/
+│   └── kitchen/
 ├── shared/
 ├── styles/
+├── types/
 ├── App.css
 ├── index.css
-└── main.tsx
+├── main.tsx
+├── package.json
+├── tsconfig.json
+└── vite.config.ts
 ```
 
 ## Folder responsibilities
 
-### 1. `app`
+### `api`
+
+- Contains API client and integration code.
+- Example files:
+  - `client.ts`
+  - `endpoints.ts`
+  - `inventoryApi.ts`
+  - `recipeApi.ts`
+  - `authApi.ts`
+- Responsibilities:
+  - Configure HTTP client behavior.
+  - Define server endpoints and payload contracts.
+  - Provide reusable API methods for feature code.
+
+### `app`
 
 - Contains the main application shell.
 - Example: `App.tsx`
 - Responsibilities:
   - Renders the root application layout.
-  - Connects the main feature modules.
-  - Acts as the top-level entry point for the UI.
+  - Connects page routes and feature modules.
+  - Hosts global providers and layout structure.
 
-### 2. `features`
+### `features`
 
-- Contains feature-based modules of the application.
-- Each feature is grouped around a specific business capability.
-- In this project, the main feature is `flow-editor`.
+- Contains feature-based modules grouped by business capability.
+- Current features include:
+  - `auth` for authentication and login flows.
+  - `flow-editor` for the workflow editor.
+  - `kitchen` for inventory and kitchen management.
 - Responsibilities:
-  - Keep related UI components, logic, and state close together.
-  - Isolate feature-specific implementation from shared application code.
+  - Keep related UI, state, and business logic together.
+  - Isolate feature-specific code from shared infrastructure.
 
-### 3. `features/flow-editor`
+### `features/auth`
+
+- Handles user authentication UI.
+- Includes login and auth-related views.
+- Responsibilities:
+  - Render sign-in screens.
+  - Manage authentication forms and validation.
+  - Connect with the `api/authApi.ts` client.
+
+### `features/flow-editor`
 
 - Contains the visual flow editor feature.
-- This is the main interactive area of the app.
 - Responsibilities:
-  - Render the workflow editor UI.
-  - Manage nodes, edges, and canvas interactions.
-  - Provide the interface for editing process flow steps.
+  - Render the workflow canvas and editor controls.
+  - Manage nodes, edges, and editor interactions.
+  - Provide the interface for editing process steps.
 
 #### Subfolders inside `flow-editor`
 
 - `components/`
-  - Contains UI building blocks for the editor.
-  - Organized into `canvas`, `sidebar`, and `toolbar`.
-
+  - Reusable UI elements for the editor.
+  - Contains `canvas`, `sidebar`, and `toolbar` subfolders.
 - `nodes/`
-  - Defines the different node types used in the editor.
-  - Example: start node, recipe step node, condition node, section node.
-
+  - Defines node types such as start, recipe step, condition, and section.
 - `edges/`
-  - Contains edge-related logic and styling.
-
+  - Contains edge rendering and flow connection logic.
 - `store/`
-  - Holds the state management for the flow editor.
-  - Usually contains the Zustand or similar store logic used to manage editor state.
+  - Holds editor state management logic.
+  - Example: `flowStore.ts`.
 
-### 4. `components` inside `flow-editor/components`
+### `features/kitchen`
 
-- `canvas/`
-  - Contains the main drawing area and canvas-related helpers.
-  - Handles rendering and interaction with nodes and connections.
+- Contains inventory and kitchen page components.
+- Responsibilities:
+  - Render inventory views and shop interfaces.
+  - Display kitchen dashboard and navigation.
+  - Manage kitchen-related user interactions.
 
-- `sidebar/`
-  - Contains the side panel UI used to configure or inspect selected elements.
+### `shared`
 
-- `toolbar/`
-  - Contains top-level editor tools such as controls and property panels.
-
-### 5. `shared`
-
-- Contains reusable UI code that can be used across multiple features.
-- Example: shared button component.
+- Contains reusable UI components used across the app.
+- Example: `shared/components/Button.tsx`
 - Responsibilities:
   - Avoid duplication.
-  - Provide common UI building blocks.
+  - Provide consistent shared building blocks.
 
-### 6. `assets`
+### `assets`
 
-- Stores static files such as images, icons, and other resources.
+- Stores static assets such as images, icons, and other resources.
 - Responsibilities:
-  - Keep non-code assets organized.
-  - Make them easy to import into components.
+  - Keep non-code resources organized.
+  - Make assets easy to import into components.
 
-### 7. `styles`
+### `styles`
 
-- Contains global or shared styling files.
-- Examples: global CSS rules and theme-level styles.
+- Contains global and shared styling files.
+- Example: `global.css`
 - Responsibilities:
-  - Define application-wide visual styling.
-  - Keep style concerns separate from component logic.
+  - Define application-wide visual styles.
+  - Keep styling separate from component logic.
 
-### 8. Root files
+### `types`
+
+- Contains TypeScript type definitions.
+- Responsibilities:
+  - Define shared domain types and interfaces.
+  - Ensure type safety across the frontend.
+
+### Root files
 
 - `main.tsx`
-  - The entry point of the frontend application.
-  - Renders the React app into the DOM.
-
-- `App.css` and `index.css`
-  - Global stylesheet files.
+  - Application entry point.
+  - Mounts React into the DOM.
+- `App.css`, `index.css`
+  - Define global and app-level styles.
+- `package.json`
+  - Manages dependencies and scripts.
+- `vite.config.ts`
+  - Configures the Vite build and dev server.
+- `tsconfig.json`
+  - Configures TypeScript compiler options.
 
 ## Typical frontend flow
 
 A typical UI flow usually looks like this:
 
 ```text
-User interaction -> React component -> Feature state/store -> UI update
+User action -> React component -> feature/api logic -> state update -> UI render
 ```
 
-For the flow editor, the interaction is usually:
+For the editor feature, the flow is:
 
 ```text
-User edits node/edge -> component updates state -> store reflects change -> canvas re-renders
+User edits node/edge -> component updates store -> canvas rerenders -> state persists via API
 ```
 
 ## Summary
 
 The frontend is organized around:
 
+- `api` for backend integration and shared service calls
 - `app` for the root application shell
-- `features` for major business features such as the flow editor
-- `shared` for reusable UI components
-- `assets` and `styles` for static resources and styling
+- `features` for business-oriented UI modules
+- `shared` for reusable components
+- `styles` and `assets` for styling and static resources
+- `types` for TypeScript definitions
 
-This structure keeps the codebase modular and makes it easier to scale the application as new features are added.
+This layout keeps the application modular, maintainable, and ready to grow with new functionality.
