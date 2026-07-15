@@ -124,7 +124,7 @@ export default function InventoryShopView() {
       ) : (
         <div className="shop-grid">
           {filteredItems.map((item) => (
-            <div key={item.id} className="shop-card">
+            <div key={`${item.itemType}-${item.id}`} className="shop-card">
               <div className="shop-card-icon">
                 {item.itemType === 'INGREDIENT' ? '🥘' : '⚙️'}
               </div>
