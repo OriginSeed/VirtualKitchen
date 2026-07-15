@@ -33,13 +33,23 @@ export default function InventoryView({
       setLoading(true)
       setError('')
       
+      console.log('Fetching inventory for kitchenId:', kitchenId)
       const fetchedItems = await InventoryApi.getInventoryByKitchenId(kitchenId)
       
-      if (fetchedItems && fetchedItems.length > 0) {
+      console.log('Fetched items:', fetchedItems)
+      
+      if (fetchedItems && Array.isArray(fetchedItems)) {
         setItems(fetchedItems)
+        if (fetchedItems.length === 0) {
+          console.warn('No items returned from API')
+        }
+      } else {
+        console.warn('Unexpected response format:', fetchedItems)
+        setError('Unexpected response format from server')
       }
     } catch (err) {
       console.error('Error fetching inventory:', err)
+      setError(`Failed to load inventory: ${err instanceof Error ? err.message : 'Unknown error'}`)
     } finally {
       setLoading(false)
     }
@@ -89,7 +99,7 @@ export default function InventoryView({
       ) : (
         <div className="inventory-grid">
           {filteredItems.map((item) => (
-            <div key={item.id} className="inventory-card">
+            <div key={`${item.itemType}-${item.id}`} className="inventory-card">
               <div className="card-header">
                 <h3>{item.itemName || 'Item'}</h3>
                 <span className="item-type-badge">

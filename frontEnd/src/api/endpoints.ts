@@ -25,7 +25,7 @@ export const API = {
   // Shop Items
   shop: {
     ingredients: '/api/v1/ingredients',
-    equipment: '/api/v1/equipment',
+    equipment: '/api/v1/equipments',
   },
 
   // Recipes / Process Templates
