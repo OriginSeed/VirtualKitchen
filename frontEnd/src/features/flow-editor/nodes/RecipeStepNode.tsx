@@ -1,5 +1,6 @@
 import React from 'react'
 import { Handle, Position, NodeResizer } from '@xyflow/react'
+import '../styles/flow-editor.css'
 
 const defaultStyle = {
   border: '#e5e7eb',
@@ -42,6 +43,7 @@ export default function RecipeStepNode({ selected, style: nodeStyle, data }: Rec
         transition: 'all 0.18s ease',
         position: 'relative',
       }}
+      className="flow-editor-surface"
     >
       <NodeResizer
         minWidth={220}
@@ -62,7 +64,7 @@ export default function RecipeStepNode({ selected, style: nodeStyle, data }: Rec
         }}
       />
 
-      <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10 }}>
+      <div className="flex items-start gap-2.5">
         {/* Icon */}
         <div
           style={{

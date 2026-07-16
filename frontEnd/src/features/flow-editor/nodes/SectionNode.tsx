@@ -1,5 +1,6 @@
 import React, { useState } from 'react'
 import { Handle, Position, NodeResizer } from '@xyflow/react'
+import '../styles/flow-editor.css'
 
 const sectionThemes: Record<string, { border: string; bg: string; headerBg: string; accent: string; light: string; emoji: string }> = {
   'section-prep':  { border: '#86efac', bg: '#f0fdf4', headerBg: '#dcfce7', accent: '#16a34a', light: '#bbf7d0', emoji: '🥗' },
@@ -41,16 +42,20 @@ export default function SectionNode({ selected, id, data, style }: SectionNodePr
   }
 
   return (
-    <div style={{
-      ...containerStyle, borderRadius: 16,
-      border: `2px solid ${selected ? theme.accent : theme.border}`,
-      background: isCollapsed ? theme.headerBg : theme.bg,
-      boxShadow: selected
-        ? `0 0 0 3px ${theme.accent}22, 0 4px 24px ${theme.border}66`
-        : `0 2px 12px ${theme.border}44`,
-      overflow: 'hidden', transition: 'box-shadow 0.2s, border-color 0.2s',
-      display: 'flex', flexDirection: 'column',
-    }}>
+    <div
+      style={{
+        ...containerStyle,
+        borderRadius: 16,
+        border: `2px solid ${selected ? theme.accent : theme.border}`,
+        background: isCollapsed ? theme.headerBg : theme.bg,
+        boxShadow: selected
+          ? `0 0 0 3px ${theme.accent}22, 0 4px 24px ${theme.border}66`
+          : `0 2px 12px ${theme.border}44`,
+        overflow: 'hidden',
+        transition: 'box-shadow 0.2s, border-color 0.2s',
+      }}
+      className="flow-editor-panel flex h-full w-full flex-col overflow-hidden rounded-2xl"
+    >
       <NodeResizer
         minWidth={420} minHeight={isCollapsed ? 72 : 220} isVisible={selected}
         lineStyle={{ borderColor: theme.accent }}
@@ -58,18 +63,21 @@ export default function SectionNode({ selected, id, data, style }: SectionNodePr
       />
 
       {/* Header */}
-      <div style={{
-        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-        padding: '10px 14px', background: theme.headerBg,
-        borderBottom: isCollapsed ? 'none' : `1px solid ${theme.light}`, flexShrink: 0,
-      }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+      <div
+        style={{
+          background: theme.headerBg,
+          borderBottom: isCollapsed ? 'none' : `1px solid ${theme.light}`,
+          flexShrink: 0,
+        }}
+        className="flex items-center justify-between px-3.5 py-2.5"
+      >
+        <div className="flex items-center gap-2">
           <div>
-            <div style={{ fontWeight: 700, fontSize: 13, color: '#1e293b' }}>{data.title}</div>
+            <div className="text-[0.8rem] font-semibold text-slate-800">{data.title}</div>
           </div>
         </div>
 
-        <div style={{ display: 'flex', alignItems: 'center', gap: 5, position: 'relative' }}>
+        <div className="relative flex items-center gap-1.5">
           <span style={{
             background: theme.light, color: theme.accent, borderRadius: 20,
             padding: '2px 8px', fontSize: 10, fontWeight: 600,
@@ -85,7 +93,7 @@ export default function SectionNode({ selected, id, data, style }: SectionNodePr
           </button>
 
           {/* Add Node with Dropdown */}
-          <div style={{ position: 'relative' }}>
+          <div className="relative">
             <button className="nodrag" onClick={e => { e.stopPropagation(); setShowAddMenu(!showAddMenu) }}
               style={{ background: theme.accent, color: 'white', border: 'none', borderRadius: 6,
                 padding: '4px 10px', fontSize: 11, fontWeight: 600, cursor: 'pointer',

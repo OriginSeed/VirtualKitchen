@@ -1,5 +1,6 @@
 import React from 'react'
 import { Handle, Position, NodeResizer } from '@xyflow/react'
+import '../styles/flow-editor.css'
 
 interface ConditionNodeProps {
   selected: boolean
@@ -27,10 +28,8 @@ export default function ConditionNode({ selected, style: nodeStyle, data }: Cond
         width,
         height,
         position: 'relative',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
       }}
+      className="flex items-center justify-center"
     >
       <NodeResizer
         minWidth={120}
