@@ -1,0 +1,88 @@
+:root {
+  --flow-bg: #f8fafc;
+  --flow-surface: #ffffff;
+  --flow-surface-muted: #f8fafc;
+  --flow-border: #e2e8f0;
+  --flow-border-strong: #cbd5e1;
+  --flow-text: #0f172a;
+  --flow-text-muted: #64748b;
+  --flow-accent: #6366f1;
+  --flow-accent-soft: #eef2ff;
+  --flow-accent-strong: #4f46e5;
+  --flow-success: #16a34a;
+  --flow-success-soft: #f0fdf4;
+  --flow-warning: #d97706;
+  --flow-warning-soft: #fffbeb;
+  --flow-danger: #dc2626;
+  --flow-danger-soft: #fef2f2;
+  --flow-shadow-panel: 0 20px 60px rgba(15, 23, 42, 0.08);
+  --flow-shadow-card: 0 2px 8px rgba(15, 23, 42, 0.06);
+  --flow-radius-sm: 0.5rem;
+  --flow-radius-md: 0.75rem;
+  --flow-radius-lg: 1rem;
+  --flow-radius-xl: 1.5rem;
+  --flow-font: 'DM Sans', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+}
+
+.flow-editor-shell {
+  min-height: 100vh;
+  background: var(--flow-bg);
+  color: var(--flow-text);
+  font-family: var(--flow-font);
+}
+
+.flow-editor-panel {
+  border: 1px solid var(--flow-border);
+  background: var(--flow-surface);
+  border-radius: var(--flow-radius-xl);
+  box-shadow: var(--flow-shadow-card);
+}
+
+.flow-editor-surface {
+  border: 1px solid var(--flow-border);
+  background: var(--flow-surface);
+  border-radius: var(--flow-radius-lg);
+  box-shadow: var(--flow-shadow-card);
+}
+
+.flow-editor-input {
+  width: 100%;
+  border: 1px solid var(--flow-border-strong);
+  border-radius: var(--flow-radius-md);
+  background: var(--flow-surface);
+  color: var(--flow-text);
+  padding: 0.625rem 0.75rem;
+  font-size: 0.9rem;
+  outline: none;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.flow-editor-input:focus {
+  border-color: var(--flow-accent);
+  box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.15);
+}
+
+.flow-editor-section-heading {
+  margin: 1rem 0 0.625rem;
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--flow-text-muted);
+}
+
+.flow-editor-action-button {
+  border: 1px solid var(--flow-border);
+  border-radius: var(--flow-radius-md);
+  background: var(--flow-surface);
+  color: var(--flow-text);
+  font-size: 0.8rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: transform 0.2s ease, box-shadow 0.2s ease, background 0.2s ease;
+}
+
+.flow-editor-action-button:hover {
+  transform: translateY(-1px);
+  box-shadow: var(--flow-shadow-card);
+}

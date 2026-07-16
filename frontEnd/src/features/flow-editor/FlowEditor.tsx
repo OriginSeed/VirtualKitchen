@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import FlowCanvas from './components/canvas/FlowCanvas'
 import RecipeHomePage from './RecipeHomePage'
+import './styles/flow-editor.css'
 
 export default function FlowEditor() {
   const [activeRecipe, setActiveRecipe] = useState<{ id: number; title: string } | null>(null)

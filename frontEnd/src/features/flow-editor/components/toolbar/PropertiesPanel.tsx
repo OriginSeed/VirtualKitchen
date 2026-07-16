@@ -1,4 +1,5 @@
 import './PropertiesPanel.css'
+import '../../styles/flow-editor.css'
 
 type NodeData = {
   id: string
@@ -16,13 +17,12 @@ type NodeData = {
 
 type Props = {
   node?: NodeData
-  sectionTitle?: string
   updateNodeField: (nodeId: string, field: string, value: string) => void
   onDeleteNode?: (nodeId: string) => void
   onDuplicateNode?: (nodeId: string) => void
 }
 
-export default function PropertiesPanel({ node, sectionTitle, updateNodeField, onDeleteNode, onDuplicateNode }: Props) {
+export default function PropertiesPanel({ node, updateNodeField, onDeleteNode, onDuplicateNode }: Props) {
   if (!node) return (
     <div className="flow-properties-empty">
       <h2 className="flow-properties-title">Properties</h2>
@@ -35,13 +35,12 @@ export default function PropertiesPanel({ node, sectionTitle, updateNodeField, o
 
   const d = node.data
   const isCondition = node.type === 'conditionNode'
-  const isSection   = node.type === 'sectionNode'
 
-  const typeIcon  = isCondition ? '🔀' : isSection ? '📋' : d.icon || '🍳'
-  const typeLabel = isCondition ? 'Condition' : isSection ? 'Section' : 'Step'
-  const typeBg    = isCondition ? '#fffbeb' : isSection ? '#eff6ff' : '#f0fdf4'
-  const typeBorder= isCondition ? '#fcd34d' : isSection ? '#bfdbfe' : '#86efac'
-  const typeColor = isCondition ? '#d97706' : isSection ? '#2563eb' : '#16a34a'
+  const typeIcon  = isCondition ? '🔀' : d.icon || '🍳'
+  const typeLabel = isCondition ? 'Condition' : 'Step'
+  const typeBg    = isCondition ? '#fffbeb' : '#f0fdf4'
+  const typeBorder= isCondition ? '#fcd34d' : '#86efac'
+  const typeColor = isCondition ? '#d97706' : '#16a34a'
 
   return (
     <div className="flow-properties-panel">
@@ -51,7 +50,7 @@ export default function PropertiesPanel({ node, sectionTitle, updateNodeField, o
           <span className="flow-properties-icon">{typeIcon}</span>
           <div className="flow-properties-header-info">
             <div className="flow-properties-header-title">{d.title || 'Untitled'}</div>
-            <span 
+            <span
               className="flow-properties-type-badge"
               style={{ background: typeBg, border: `1px solid ${typeBorder}`, color: typeColor }}
             >
@@ -63,7 +62,7 @@ export default function PropertiesPanel({ node, sectionTitle, updateNodeField, o
 
       {/* Content */}
       <div className="flow-properties-content">
-        <div className="flow-properties-section-header">General</div>
+        <div className="flow-editor-section-heading">General</div>
 
         {/* Title field */}
         <div className="flow-properties-field">
@@ -75,15 +74,12 @@ export default function PropertiesPanel({ node, sectionTitle, updateNodeField, o
           />
         </div>
 
-        {/* Section field (if nested) */}
-        {sectionTitle && !isSection && (
-          <div className="flow-properties-field">
-            <label className="flow-properties-label">Section</label>
-            <div className="flow-properties-readonly">
-              {sectionTitle}
-            </div>
+        <div className="flow-properties-field">
+          <label className="flow-properties-label">Section ID</label>
+          <div className="flow-properties-readonly">
+            {d.sectionId ?? 'none'}
           </div>
-        )}
+        </div>
 
         {/* Description field */}
         <div className="flow-properties-field">
@@ -97,12 +93,12 @@ export default function PropertiesPanel({ node, sectionTitle, updateNodeField, o
         </div>
 
         {/* Step-only fields */}
-        {!isCondition && !isSection && (
+        {!isCondition && (
           <>
             <div className="flow-properties-field">
               <label className="flow-properties-label">Duration</label>
-              <input 
-                className="flow-properties-input" 
+              <input
+                className="flow-properties-input"
                 value={d.duration ?? ''}
                 onChange={e => updateNodeField(node.id, 'duration', e.target.value)}
                 placeholder="e.g. 5 mins" 
@@ -110,8 +106,8 @@ export default function PropertiesPanel({ node, sectionTitle, updateNodeField, o
             </div>
             <div className="flow-properties-field">
               <label className="flow-properties-label">Icon (emoji)</label>
-              <input 
-                className="flow-properties-input" 
+              <input
+                className="flow-properties-input"
                 value={d.icon ?? ''}
                 onChange={e => updateNodeField(node.id, 'icon', e.target.value)}
                 placeholder="🍅" 
@@ -123,7 +119,7 @@ export default function PropertiesPanel({ node, sectionTitle, updateNodeField, o
         {/* Condition-only fields */}
         {isCondition && (
           <>
-            <div className="flow-properties-section-header">Branch Labels</div>
+            <div className="flow-editor-section-heading">Branch Labels</div>
             <div className="flow-properties-field">
               <label className="flow-properties-label">Yes Label</label>
               <input 
@@ -140,29 +136,26 @@ export default function PropertiesPanel({ node, sectionTitle, updateNodeField, o
                 onChange={e => updateNodeField(node.id, 'noLabel', e.target.value)}
               />
             </div>
-            <div style={{ fontSize: 11, color: '#94a3b8', background: '#fffbeb',
-              border: '1px solid #fde68a', borderRadius: 8, padding: '8px 10px', marginBottom: 12 }}>
-              <strong style={{ color: '#d97706' }}>Tip:</strong> Drag from the 🟢 green handle for <em>Yes</em>,
+            <div className="mb-3 rounded-lg border border-amber-200 bg-amber-50 px-2.5 py-2 text-[0.7rem] text-slate-500">
+              <strong className="text-amber-700">Tip:</strong> Drag from the 🟢 green handle for <em>Yes</em>,
               🔴 red handle for <em>No</em>. Connect to any step or section.
             </div>
           </>
         )}
 
         {/* Actions */}
-        <div style={{ height: 1, background: '#f1f5f9', margin: '4px 0 14px' }} />
-        <div className="flow-properties-section-header">Actions</div>
+        <div className="my-2 h-px bg-slate-100" />
+        <div className="flow-editor-section-heading">Actions</div>
 
         <div className="flow-properties-actions">
-          {!isSection && (
-            <button 
-              className="flow-properties-action-btn flow-properties-duplicate-btn"
-              onClick={() => onDuplicateNode?.(node.id)}
-            >
-              📋 Duplicate
-            </button>
-          )}
+          <button
+            className="flow-properties-action-btn flow-properties-duplicate-btn"
+            onClick={() => onDuplicateNode?.(node.id)}
+          >
+            📋 Duplicate
+          </button>
 
-          <button 
+          <button
             className="flow-properties-action-btn flow-properties-delete-btn"
             onClick={() => onDeleteNode?.(node.id)}
           >

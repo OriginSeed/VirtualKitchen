@@ -24,11 +24,7 @@ import {
 import '@xyflow/react/dist/style.css'
 import { nodeTypes } from '../../nodes/nodeTypes.ts'
 import {
-  SECTION_WIDTH,
-  createSectionNode,
-  createNodeForSection,
-  createFreeNode,
-  getSelectedSectionTitle,
+  createNodeForType,
   serializeFlowData,
   type EdgeKind,
 } from './FlowCanvas.helpers.ts'
@@ -46,45 +42,44 @@ type FlowCanvasProps = {
 export default function FlowCanvas({ recipe, onBack }: FlowCanvasProps) {
   const [nodes, setNodes, onNodesChange] = useNodesState(initialNodes)
   const [edges, setEdges, onEdgesChange] = useEdgesState(initialEdges)
-  const [collapsedSections, setCollapsedSections] = useState<Set<string>>(new Set())
+  const [flowMeta, setFlowMeta] = useState({ stepCount: 0, conditionCount: 0 })
   const [history, setHistory] = useState<{ nodes: Node[]; edges: Edge[] }[]>([])
   const [future,  setFuture]  = useState<{ nodes: Node[]; edges: Edge[] }[]>([])
   const [exportJson, setExportJson] = useState<string | null>(null)
   const [copied, setCopied] = useState(false)
-  const [selectedSectionId, setSelectedSectionId] = useState<string | null>(null)
+  const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null)
   const [visualizationResult, setVisualizationResult] = useState<any>(null)
   const [visualizing, setVisualizing] = useState(false)
   const dragSnapshotRef = useRef<{ nodes: Node[]; edges: Edge[] } | null>(null)
 
   const selectedNode = nodes.find(n => n.selected)
-  const selectedSectionTitle = getSelectedSectionTitle(nodes, selectedNode)
 
-  // When the user selects a section from the sidebar, mark that node as selected
   useEffect(() => {
-    if (selectedSectionId == null) {
-      // deselect all
+    setFlowMeta({
+      stepCount: nodes.filter(node => node.type === 'recipeStepNode').length,
+      conditionCount: nodes.filter(node => node.type === 'conditionNode').length,
+    })
+  }, [nodes])
+
+  useEffect(() => {
+    if (selectedNodeId == null) {
       setNodes(ns => ns.map(n => ({ ...n, selected: false })))
       return
     }
 
-    setNodes(ns => ns.map(n => ({ ...n, selected: String(n.id) === String(selectedSectionId) })))
-  }, [selectedSectionId, setNodes])
+    setNodes(ns => ns.map(n => ({ ...n, selected: String(n.id) === String(selectedNodeId) })))
+  }, [selectedNodeId, setNodes])
 
-  // When a node selection changes on the canvas, update the sidebar selectedSectionId
   useEffect(() => {
     if (!selectedNode) {
-      if (selectedSectionId !== null) setSelectedSectionId(null)
+      if (selectedNodeId !== null) setSelectedNodeId(null)
       return
     }
 
-    if (selectedNode.type === 'sectionNode') {
-      if (selectedSectionId !== String(selectedNode.id)) setSelectedSectionId(String(selectedNode.id))
-      return
+    if (selectedNodeId !== String(selectedNode.id)) {
+      setSelectedNodeId(String(selectedNode.id))
     }
-
-    // if a non-section node is selected, clear sidebar section selection
-    if (selectedSectionId !== null) setSelectedSectionId(null)
-  }, [selectedNode, selectedSectionId, setSelectedSectionId])
+  }, [selectedNode, selectedNodeId, setSelectedNodeId])
 
   // ── Snapshot ──────────────────────────────────────────────────────────────
   const saveSnapshot = useCallback(() => {
@@ -128,7 +123,7 @@ export default function FlowCanvas({ recipe, onBack }: FlowCanvasProps) {
 
   const deleteNode = useCallback((id: string) => {
     saveSnapshot()
-    setNodes(n => n.filter(nd => nd.id !== id && nd.parentId !== id))
+    setNodes(n => n.filter(nd => nd.id !== id))
     setEdges(e => e.filter(ed => ed.source !== id && ed.target !== id))
   }, [saveSnapshot, setNodes, setEdges])
 
@@ -142,65 +137,12 @@ export default function FlowCanvas({ recipe, onBack }: FlowCanvasProps) {
     }])
   }, [nodes, saveSnapshot, setNodes])
 
-  // ── Add nodes ─────────────────────────────────────────────────────────────
-  const addStepToSection = useCallback((sectionId: string) => {
+  const addFreeNode = useCallback((nodeType: string) => {
     saveSnapshot()
-    const children = nodes.filter(n => n.parentId === sectionId)
-    setNodes(n => [...n, {
-      id: crypto.randomUUID(), type: 'recipeStepNode',
-      parentId: sectionId, extent: 'parent' as const,
-      position: { x: (SECTION_WIDTH - 260) / 2, y: children.length === 0 ? 80 : 80 + children.length * 130 },
-      data: { title: 'New Step', description: '', duration: '', icon: '🍳' },
-    }])
-  }, [nodes, saveSnapshot, setNodes])
-
-  const addConditionToSection = useCallback((sectionId: string) => {
-    saveSnapshot()
-    const children = nodes.filter(n => n.parentId === sectionId)
-    setNodes(n => [...n, {
-      id: crypto.randomUUID(), type: 'conditionNode',
-      parentId: sectionId, extent: 'parent' as const,
-      position: { x: (SECTION_WIDTH - 130) / 2, y: children.length === 0 ? 80 : 80 + children.length * 130 },
-      data: { title: 'Condition?', description: '', yesLabel: 'Yes', noLabel: 'No' },
-    }])
-  }, [nodes, saveSnapshot, setNodes])
-
-  const addFreeNode = useCallback((nodeType: string, sectionId?: string) => {
-    saveSnapshot()
-
-    if (sectionId) {
-      const children = nodes.filter(n => n.parentId === sectionId)
-      const position = {
-        x: nodeType === 'conditionNode' ? (SECTION_WIDTH - 130) / 2 : (SECTION_WIDTH - 260) / 2,
-        y: children.length === 0 ? 80 : 80 + children.length * 130,
-      }
-      const newNode = createNodeForSection(crypto.randomUUID(), nodeType, sectionId, position)
-      setNodes(n => [...n, newNode])
-      setCollapsedSections(s => {
-        const next = new Set(s)
-        next.delete(sectionId)
-        return next
-      })
-      return
-    }
-
-    setNodes(n => [...n, createFreeNode(crypto.randomUUID(), nodeType, { x: 750, y: 300 })])
-  }, [saveSnapshot, setNodes, nodes])
-
-  const addSection = useCallback(() => {
-    saveSnapshot()
-    const centerY = 100
-    setNodes(n => [...n, createSectionNode(`section-${crypto.randomUUID().slice(0, 8)}`, '📋 New Section', centerY, 180)])
-  }, [saveSnapshot, setNodes])
-
-  // ── Collapse ──────────────────────────────────────────────────────────────
-  const toggleCollapse = useCallback((sectionId: string) => {
-    setCollapsedSections(prev => {
-      const next = new Set(prev)
-      next.has(sectionId) ? next.delete(sectionId) : next.add(sectionId)
-      return next
-    })
-  }, [])
+    const baseY = 140 + nodes.length * 70
+    const newNode = createNodeForType(crypto.randomUUID(), nodeType, { x: 720, y: Math.min(baseY, 420) })
+    setNodes(n => [...n, newNode])
+  }, [saveSnapshot, setNodes, nodes.length])
 
   // ── Update field ──────────────────────────────────────────────────────────
   const updateNodeField = useCallback((nodeId: string, field: string, value: string) => {
@@ -347,44 +289,24 @@ export default function FlowCanvas({ recipe, onBack }: FlowCanvasProps) {
     }
   }, [nodes, edges, recipe.id])
 
-  // ── Display nodes ─────────────────────────────────────────────────────────
-  const displayNodes = nodes.map(node => {
-    if (node.type !== 'sectionNode') {
-      if (node.parentId && collapsedSections.has(node.parentId)) return { ...node, hidden: true }
-      return node
-    }
-    const isCollapsed = collapsedSections.has(node.id)
-    const children    = nodes.filter(n => n.parentId === node.id)
-    const stepCount   = children.length
-    const dynamicH    = isCollapsed ? 72 : Math.max(280, 80 + stepCount * 130 + 60)
-    return {
-      ...node,
-      style: { ...node.style, width: SECTION_WIDTH, height: dynamicH },
-      data: {
-        ...node.data, stepCount, collapsed: isCollapsed,
-        onAddStep:        addStepToSection,
-        onAddCondition:   addConditionToSection,
-        onToggleCollapse: toggleCollapse,
-      },
-    }
-  })
+  const displayNodes = nodes.map(node => ({ ...node, data: { ...node.data, sectionId: node.data?.sectionId ?? null } }))
 
   // ── onConnect ─────────────────────────────────────────────────────────────
   const onConnect = useCallback((connection: any) => {
     saveSnapshot()
-    const isSection = connection.source?.startsWith('section-') || connection.target?.startsWith('section-')
     const isYes = connection.sourceHandle === 'condition-yes'
     const isNo  = connection.sourceHandle === 'condition-no'
-    const kind: EdgeKind = isSection ? 'section' : isYes ? 'yes' : isNo ? 'no' : 'step'
-    const colors: Record<EdgeKind, string> = { step: '#94a3b8', section: '#6366f1', yes: '#16a34a', no: '#dc2626' }
+    const kind: EdgeKind = isYes ? 'yes' : isNo ? 'no' : 'step'
+    const colors: Record<EdgeKind, string> = { step: '#94a3b8', yes: '#16a34a', no: '#dc2626' }
     const color = colors[kind]
     setEdges(eds => addEdge({
       ...connection,
-      type: 'smoothstep', animated: isSection,
+      type: 'smoothstep',
+      animated: false,
       label: isYes ? 'Yes ✓' : isNo ? 'No ✗' : undefined,
       labelStyle: { fill: color, fontWeight: 700, fontSize: 11 },
       labelBgStyle: { fill: isYes ? '#f0fdf4' : isNo ? '#fff5f5' : 'transparent' },
-      style: { stroke: color, strokeWidth: isSection ? 2.5 : 1.5, strokeDasharray: isSection ? '6 3' : undefined },
+      style: { stroke: color, strokeWidth: 1.5 },
       markerEnd: { type: MarkerType.ArrowClosed, color, width: 16, height: 16 },
     }, eds))
   }, [saveSnapshot, setEdges])
@@ -425,12 +347,13 @@ export default function FlowCanvas({ recipe, onBack }: FlowCanvasProps) {
     <div className="flow-canvas-container">
       {/* Sidebar */}
       <div ref={sidebarRef} className="flow-sidebar-wrapper">
-        <Sidebar 
-          onAddNode={addFreeNode} 
-          onAddSection={addSection}
-          sections={nodes.filter(n => n.type === 'sectionNode')}
-          selectedSectionId={selectedSectionId}
-          onSectionSelect={setSelectedSectionId}
+        <Sidebar
+          onAddNode={addFreeNode}
+          nodes={nodes}
+          edges={edges}
+          selectedNodeId={selectedNodeId}
+          onSelectNode={setSelectedNodeId}
+          flowMeta={flowMeta}
         />
       </div>
 
@@ -536,12 +459,11 @@ export default function FlowCanvas({ recipe, onBack }: FlowCanvasProps) {
 
       {/* Properties Panel - Right Sidebar (wrapped so resizer can resize it) */}
       <div ref={propsRef} className="flow-properties-wrapper">
-        <PropertiesPanel 
-          node={selectedNode as any} 
-          sectionTitle={selectedSectionTitle}
-          updateNodeField={updateNodeField} 
-          onDeleteNode={deleteNode} 
-          onDuplicateNode={duplicateNode} 
+        <PropertiesPanel
+          node={selectedNode as any}
+          updateNodeField={updateNodeField}
+          onDeleteNode={deleteNode}
+          onDuplicateNode={duplicateNode}
         />
       </div>
 
