@@ -1,5 +1,5 @@
 import React from 'react'
-import { Handle, Position, NodeResizer } from '@xyflow/react'
+import { Handle, Position, NodeResizeControl, useNodeId } from '@xyflow/react'
 import '../styles/flow-editor.css'
 
 const defaultStyle = {
@@ -23,6 +23,7 @@ interface RecipeStepNodeProps {
 
 export default function RecipeStepNode({ selected, style: nodeStyle, data }: RecipeStepNodeProps) {
   const style = defaultStyle
+  const nodeId = useNodeId()
   const width = nodeStyle?.width ?? 300
   const height = nodeStyle?.height ?? 140
 
@@ -42,15 +43,26 @@ export default function RecipeStepNode({ selected, style: nodeStyle, data }: Rec
         padding: '12px 14px',
         transition: 'all 0.18s ease',
         position: 'relative',
+        boxSizing: 'border-box',
+        overflow: 'visible',
       }}
       className="flow-editor-surface"
     >
-      <NodeResizer
+      <NodeResizeControl
+        nodeId={nodeId ?? undefined}
         minWidth={220}
-        minHeight={120}
-        isVisible={selected}
-        lineStyle={{ borderColor: style.accent }}
-        handleStyle={{ borderColor: style.accent, background: '#fff' }}
+        minHeight={140}
+        maxWidth={520}
+        maxHeight={640}
+        position="bottom-right"
+        style={{
+          background: style.accent,
+          border: '2px solid #fff',
+          borderRadius: '999px',
+          width: 12,
+          height: 12,
+          zIndex: 20,
+        }}
       />
       <Handle
         type="target"

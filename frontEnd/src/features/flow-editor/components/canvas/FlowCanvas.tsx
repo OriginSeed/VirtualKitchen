@@ -289,7 +289,7 @@ export default function FlowCanvas({ recipe, onBack }: FlowCanvasProps) {
     }
   }, [nodes, edges, recipe.id])
 
-  const displayNodes = nodes.map(node => ({ ...node, data: { ...node.data, sectionId: node.data?.sectionId ?? null } }))
+  const displayNodes = nodes.map(node => ({ ...node, data: { ...node.data } }))
 
   // ── onConnect ─────────────────────────────────────────────────────────────
   const onConnect = useCallback((connection: any) => {

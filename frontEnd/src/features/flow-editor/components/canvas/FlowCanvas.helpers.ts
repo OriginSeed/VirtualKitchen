@@ -56,7 +56,6 @@ export const serializeFlowData = (nodes: Node[], edges: Edge[]) => {
         description: n.data?.description ?? '',
         duration: n.data?.duration ?? null,
         icon: n.data?.icon ?? null,
-        sectionId: n.data?.sectionId ?? null,
         yesLabel: n.data?.yesLabel ?? null,
         noLabel: n.data?.noLabel ?? null,
       },
