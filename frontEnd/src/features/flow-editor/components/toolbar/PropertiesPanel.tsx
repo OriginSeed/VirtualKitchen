@@ -9,7 +9,6 @@ type NodeData = {
     description?: string
     duration?: string
     icon?: string
-    sectionId?: string
     yesLabel?: string
     noLabel?: string
   }
@@ -72,13 +71,6 @@ export default function PropertiesPanel({ node, updateNodeField, onDeleteNode, o
             value={d.title ?? ''}
             onChange={e => updateNodeField(node.id, 'title', e.target.value)}
           />
-        </div>
-
-        <div className="flow-properties-field">
-          <label className="flow-properties-label">Section ID</label>
-          <div className="flow-properties-readonly">
-            {d.sectionId ?? 'none'}
-          </div>
         </div>
 
         {/* Description field */}
