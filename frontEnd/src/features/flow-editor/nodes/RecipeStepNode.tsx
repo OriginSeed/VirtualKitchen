@@ -1,4 +1,5 @@
-import React from 'react'
+import { useMemo, useState } from 'react'
+import type { CSSProperties, ReactNode } from 'react'
 import { Handle, Position, NodeResizeControl, useNodeId } from '@xyflow/react'
 import '../styles/flow-editor.css'
 
@@ -9,31 +10,52 @@ const defaultStyle = {
   badge: '#eff6ff',
 }
 
-interface RecipeStepNodeProps {
-  selected: boolean
-  style?: React.CSSProperties
-  data: {
-    icon: React.ReactNode
-    title: string
-    description: string
-    duration: string
-    stepNumber?: number
-  }
+type RecipeStepNodeData = {
+  icon: ReactNode
+  title: string
+  description: string
+  duration: string
+  stepNumber?: number
 }
 
-export default function RecipeStepNode({ selected, style: nodeStyle, data }: RecipeStepNodeProps) {
+type RecipeStepNodeProps = {
+  selected: boolean
+  style?: CSSProperties
+  width?: number
+  height?: number
+  data: RecipeStepNodeData
+}
+
+const toNumber = (value: unknown, fallback: number) => {
+  if (typeof value === 'number' && Number.isFinite(value)) return value
+  if (typeof value === 'string') {
+    const parsed = Number.parseFloat(value)
+    if (Number.isFinite(parsed)) return parsed
+  }
+  return fallback
+}
+
+export default function RecipeStepNode({ selected, style: nodeStyle, data, width: nodeWidth, height: nodeHeight }: RecipeStepNodeProps) {
   const style = defaultStyle
   const nodeId = useNodeId()
-  const width = nodeStyle?.width ?? 300
-  const height = nodeStyle?.height ?? 140
+  const [isDescriptionExpanded, setIsDescriptionExpanded] = useState(false)
+  const width = toNumber(nodeWidth, toNumber(nodeStyle?.width, 320))
+  const height = toNumber(nodeHeight, toNumber(nodeStyle?.height, 190))
+  const description = data.description?.trim() || 'Add step details here.'
+  const descriptionLineCount = useMemo(() => description.split(/\r?\n/).length, [description])
+  const shouldShowReadMore = description.length > 120 || descriptionLineCount > 4
+  const minimumWidth = 260
+  const minimumHeight = 190
+  const computedWidth = Math.max(width, minimumWidth)
+  const computedHeight = Math.max(height, minimumHeight)
 
   return (
     <div
       style={{
-        width,
-        minWidth: 220,
+        width: computedWidth,
+        minWidth: minimumWidth,
         maxWidth: 520,
-        height,
+        height: computedHeight,
         background: 'white',
         borderRadius: 12,
         border: `1.5px solid ${selected ? style.accent : '#e5e7eb'}`,
@@ -45,25 +67,31 @@ export default function RecipeStepNode({ selected, style: nodeStyle, data }: Rec
         position: 'relative',
         boxSizing: 'border-box',
         overflow: 'visible',
+        display: 'flex',
+        flexDirection: 'column',
+        gap: 10,
       }}
       className="flow-editor-surface"
     >
-      <NodeResizeControl
-        nodeId={nodeId ?? undefined}
-        minWidth={220}
-        minHeight={140}
-        maxWidth={520}
-        maxHeight={640}
-        position="bottom-right"
-        style={{
-          background: style.accent,
-          border: '2px solid #fff',
-          borderRadius: '999px',
-          width: 12,
-          height: 12,
-          zIndex: 20,
-        }}
-      />
+      {selected && (
+        <NodeResizeControl
+          nodeId={nodeId ?? undefined}
+          minWidth={minimumWidth}
+          minHeight={minimumHeight}
+          maxWidth={520}
+          maxHeight={640}
+          position="bottom-right"
+          style={{
+            background: style.accent,
+            border: '2px solid #fff',
+            borderRadius: '999px',
+            width: 14,
+            height: 14,
+            boxShadow: '0 0 0 2px rgba(99, 102, 241, 0.25)',
+            zIndex: 30,
+          }}
+        />
+      )}
       <Handle
         type="target"
         position={Position.Top}
@@ -73,92 +101,84 @@ export default function RecipeStepNode({ selected, style: nodeStyle, data }: Rec
           background: style.accent,
           border: '2px solid white',
           boxShadow: `0 0 0 1.5px ${style.accent}`,
+          left: '50%',
+          transform: 'translate(-50%, -50%)',
         }}
       />
 
-      <div className="flex items-start gap-2.5">
-        {/* Icon */}
+      <div
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          gap: 10,
+          minHeight: 36,
+          padding: '8px 10px',
+          borderRadius: 10,
+          background: '#f8fafc',
+          border: `1px solid ${style.border}`,
+        }}
+      >
         <div
           style={{
-            width: 36,
-            height: 36,
-            borderRadius: 8,
-            background: style.iconBg,
             display: 'flex',
             alignItems: 'center',
-            justifyContent: 'center',
-            fontSize: 18,
-            flexShrink: 0,
-            border: `1px solid ${style.border}`,
+            gap: 8,
+            minWidth: 0,
           }}
         >
-          {data.icon}
-        </div>
-
-        <div style={{ flex: 1, minWidth: 0 }}>
           <div
             style={{
-              fontWeight: 600,
-              fontSize: 13,
-              color: '#1e293b',
-              letterSpacing: '-0.01em',
-              lineHeight: 1.3,
-              marginBottom: 2,
+              width: 28,
+              height: 28,
+              borderRadius: 8,
+              background: style.iconBg,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              fontSize: 15,
+              flexShrink: 0,
+              border: `1px solid ${style.border}`,
             }}
           >
-            {data.stepNumber !== undefined && (
-              <span
-                style={{
-                  color: style.accent,
-                  marginRight: 4,
-                  fontSize: 11,
-                  fontWeight: 700,
-                }}
-              >
-                {data.stepNumber}.
-              </span>
-            )}
-            {data.title}
+            {data.icon}
           </div>
-
-          {data.description && (
+          <div
+            style={{
+              minWidth: 0,
+            }}
+          >
             <div
               style={{
-                fontSize: 11,
-                color: '#64748b',
-                lineHeight: 1.4,
-                marginBottom: 6,
+                fontWeight: 700,
+                fontSize: 13,
+                color: '#1e293b',
+                letterSpacing: '-0.01em',
+                lineHeight: 1.2,
                 overflow: 'hidden',
                 textOverflow: 'ellipsis',
-                whiteSpace: 'nowrap',
+                whiteSpace: 'normal',
+                display: '-webkit-box',
+                WebkitBoxOrient: 'vertical',
+                WebkitLineClamp: 2,
+                wordBreak: 'break-word',
               }}
             >
-              {data.description}
+              {data.title || 'New Step'}
             </div>
-          )}
-
-          {data.duration && (
             <div
               style={{
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: 4,
-                background: style.badge,
-                border: `1px solid ${style.border}`,
-                borderRadius: 20,
-                padding: '2px 8px',
                 fontSize: 10,
-                color: style.accent,
+                color: '#64748b',
                 fontWeight: 600,
+                marginTop: 2,
               }}
             >
-              <span>⏱</span>
-              {data.duration}
+              {data.stepNumber !== undefined ? `Step ${data.stepNumber}` : 'Recipe Step'}
             </div>
-          )}
+          </div>
         </div>
 
-        {/* Drag handle dots */}
         <div
           style={{
             display: 'flex',
@@ -166,6 +186,7 @@ export default function RecipeStepNode({ selected, style: nodeStyle, data }: Rec
             gap: 2,
             paddingTop: 2,
             opacity: 0.3,
+            flexShrink: 0,
           }}
         >
           {[0, 1, 2].map((i) => (
@@ -182,6 +203,111 @@ export default function RecipeStepNode({ selected, style: nodeStyle, data }: Rec
         </div>
       </div>
 
+      <div
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          gap: 8,
+          minHeight: 28,
+          padding: '0 2px',
+        }}
+      >
+        <div
+          style={{
+            fontSize: 10,
+            fontWeight: 700,
+            color: '#64748b',
+            letterSpacing: '0.04em',
+            textTransform: 'uppercase',
+          }}
+        >
+          Time
+        </div>
+        <div
+          style={{
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: 4,
+            background: style.badge,
+            border: `1px solid ${style.border}`,
+            borderRadius: 20,
+            padding: '4px 10px',
+            fontSize: 10,
+            color: style.accent,
+            fontWeight: 700,
+            flexShrink: 0,
+          }}
+        >
+          <span>⏱</span>
+          {data.duration?.trim() || 'Not set'}
+        </div>
+      </div>
+
+      <div
+        style={{
+          flex: 1,
+          minHeight: 78,
+          borderRadius: 10,
+          border: `1px solid ${style.border}`,
+          background: '#ffffff',
+          padding: '10px 12px',
+          display: 'flex',
+          flexDirection: 'column',
+          justifyContent: 'flex-start',
+          overflow: 'hidden',
+        }}
+      >
+        <div
+          style={{
+            fontSize: 10,
+            fontWeight: 700,
+            color: '#64748b',
+            letterSpacing: '0.04em',
+            textTransform: 'uppercase',
+            marginBottom: 6,
+          }}
+        >
+          Description
+        </div>
+        <div
+          style={{
+            fontSize: 11,
+            color: '#475569',
+            lineHeight: 1.45,
+            overflow: isDescriptionExpanded ? 'auto' : 'hidden',
+            whiteSpace: 'pre-wrap',
+            display: isDescriptionExpanded ? 'block' : '-webkit-box',
+            WebkitBoxOrient: isDescriptionExpanded ? undefined : 'vertical',
+            WebkitLineClamp: isDescriptionExpanded ? undefined : 4,
+            wordBreak: 'break-word',
+            paddingRight: isDescriptionExpanded ? 2 : 0,
+          }}
+        >
+          {description}
+        </div>
+        {shouldShowReadMore && (
+          <button
+            type="button"
+            onClick={() => setIsDescriptionExpanded((value) => !value)}
+            className="nodrag"
+            style={{
+              marginTop: 8,
+              alignSelf: 'flex-start',
+              border: 'none',
+              background: 'transparent',
+              color: style.accent,
+              fontSize: 10,
+              fontWeight: 700,
+              cursor: 'pointer',
+              padding: 0,
+            }}
+          >
+            {isDescriptionExpanded ? 'Read less' : 'Read more'}
+          </button>
+        )}
+      </div>
+
       <Handle
         type="source"
         position={Position.Bottom}
@@ -191,6 +317,8 @@ export default function RecipeStepNode({ selected, style: nodeStyle, data }: Rec
           background: style.accent,
           border: '2px solid white',
           boxShadow: `0 0 0 1.5px ${style.accent}`,
+          left: '50%',
+          transform: 'translate(-50%, 50%)',
         }}
       />
     </div>

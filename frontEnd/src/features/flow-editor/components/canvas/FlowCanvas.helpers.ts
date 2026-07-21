@@ -9,7 +9,7 @@ export const createRecipeStepNode = (id: string, position: { x: number; y: numbe
   draggable: true,
   selectable: true,
   connectable: true,
-  style: { width: 320, height: 140 },
+  style: { width: 320, height: 190 },
   data: {
     title: 'New Step',
     description: '',
