@@ -1,26 +1,35 @@
-import React from 'react'
+import type { CSSProperties } from 'react'
 import { Handle, Position, NodeResizeControl, useNodeId } from '@xyflow/react'
 import '../styles/flow-editor.css'
 
-interface ConditionNodeProps {
-  selected: boolean
-  style?: React.CSSProperties
-  data: {
-    title: string
-    description?: string
-    yesLabel?: string
-    noLabel?: string
-  }
+type ConditionNodeData = {
+  title: string
+  description?: string
+  yesLabel?: string
+  noLabel?: string
 }
 
-export default function ConditionNode({ selected, style: nodeStyle, data }: ConditionNodeProps) {
+type ConditionNodeProps = {
+  selected: boolean
+  style?: CSSProperties
+  width?: number
+  height?: number
+  data: ConditionNodeData
+}
+
+const toNumber = (value: unknown, fallback: number) => {
+  if (typeof value === 'number' && Number.isFinite(value)) return value
+  if (typeof value === 'string') {
+    const parsed = Number.parseFloat(value)
+    if (Number.isFinite(parsed)) return parsed
+  }
+  return fallback
+}
+
+export default function ConditionNode({ selected, style: nodeStyle, data, width: nodeWidth, height: nodeHeight }: ConditionNodeProps) {
   const nodeId = useNodeId()
-  const width = typeof nodeStyle?.width === 'number'
-    ? nodeStyle.width
-    : parseFloat(String(nodeStyle?.width)) || 150
-  const height = typeof nodeStyle?.height === 'number'
-    ? nodeStyle.height
-    : parseFloat(String(nodeStyle?.height)) || 150
+  const width = toNumber(nodeWidth, toNumber(nodeStyle?.width, 160))
+  const height = toNumber(nodeHeight, toNumber(nodeStyle?.height, 160))
   const size = Math.min(width, height)
 
   return (
@@ -32,20 +41,23 @@ export default function ConditionNode({ selected, style: nodeStyle, data }: Cond
       }}
       className="flex items-center justify-center"
     >
-      <NodeResizeControl
-        nodeId={nodeId ?? undefined}
-        minWidth={120}
-        minHeight={120}
-        position="bottom-right"
-        style={{
-          background: '#d97706',
-          border: '2px solid #fff',
-          borderRadius: '999px',
-          width: 12,
-          height: 12,
-          zIndex: 20,
-        }}
-      />
+      {selected && (
+        <NodeResizeControl
+          nodeId={nodeId ?? undefined}
+          minWidth={120}
+          minHeight={120}
+          position="bottom-right"
+          style={{
+            background: '#d97706',
+            border: '2px solid #fff',
+            borderRadius: '999px',
+            width: 14,
+            height: 14,
+            boxShadow: '0 0 0 2px rgba(217, 119, 6, 0.25)',
+            zIndex: 30,
+          }}
+        />
+      )}
       {/* Diamond shape via rotated square */}
       <div
         style={{
@@ -105,6 +117,8 @@ export default function ConditionNode({ selected, style: nodeStyle, data }: Cond
           border: '2px solid white',
           boxShadow: '0 0 0 1.5px #d97706',
           top: 0,
+          left: '50%',
+          transform: 'translate(-50%, -50%)',
         }}
       />
 

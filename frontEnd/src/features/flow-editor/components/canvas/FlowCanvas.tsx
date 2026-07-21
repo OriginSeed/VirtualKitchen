@@ -14,9 +14,11 @@ import {
   MiniMap,
   useNodesState,
   useEdgesState,
+  applyNodeChanges,
   addEdge,
   type Node,
   type Edge,
+  type NodeChange,
   MarkerType,
   BackgroundVariant,
 } from '@xyflow/react'
@@ -47,12 +49,24 @@ export default function FlowCanvas({ recipe, onBack }: FlowCanvasProps) {
   const [future,  setFuture]  = useState<{ nodes: Node[]; edges: Edge[] }[]>([])
   const [exportJson, setExportJson] = useState<string | null>(null)
   const [copied, setCopied] = useState(false)
-  const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null)
   const [visualizationResult, setVisualizationResult] = useState<any>(null)
   const [visualizing, setVisualizing] = useState(false)
   const dragSnapshotRef = useRef<{ nodes: Node[]; edges: Edge[] } | null>(null)
 
+  const hasDraggedNodesChanged = useCallback((before: Node[], after: Node[]) => {
+    if (before.length !== after.length) return true
+
+    const beforeMap = new Map(before.map((node) => [String(node.id), node]))
+
+    return after.some((node) => {
+      const previous = beforeMap.get(String(node.id))
+      if (!previous) return true
+      return previous.position.x !== node.position.x || previous.position.y !== node.position.y
+    })
+  }, [])
+
   const selectedNode = nodes.find(n => n.selected)
+  const selectedNodeId = selectedNode ? String(selectedNode.id) : null
 
   useEffect(() => {
     setFlowMeta({
@@ -61,25 +75,28 @@ export default function FlowCanvas({ recipe, onBack }: FlowCanvasProps) {
     })
   }, [nodes])
 
-  useEffect(() => {
-    if (selectedNodeId == null) {
-      setNodes(ns => ns.map(n => ({ ...n, selected: false })))
-      return
-    }
+  const selectNodeFromSidebar = useCallback((nodeId: string | null) => {
+    setNodes((ns) => {
+      if (nodeId == null) {
+        const hasSelected = ns.some((n) => !!n.selected)
+        if (!hasSelected) return ns
+        return ns.map((n) => (n.selected ? { ...n, selected: false } : n))
+      }
 
-    setNodes(ns => ns.map(n => ({ ...n, selected: String(n.id) === String(selectedNodeId) })))
-  }, [selectedNodeId, setNodes])
+      const targetId = String(nodeId)
+      const needsUpdate = ns.some((n) => {
+        const shouldBeSelected = String(n.id) === targetId
+        return !!n.selected !== shouldBeSelected
+      })
 
-  useEffect(() => {
-    if (!selectedNode) {
-      if (selectedNodeId !== null) setSelectedNodeId(null)
-      return
-    }
+      if (!needsUpdate) return ns
 
-    if (selectedNodeId !== String(selectedNode.id)) {
-      setSelectedNodeId(String(selectedNode.id))
-    }
-  }, [selectedNode, selectedNodeId, setSelectedNodeId])
+      return ns.map((n) => {
+        const shouldBeSelected = String(n.id) === targetId
+        return !!n.selected === shouldBeSelected ? n : { ...n, selected: shouldBeSelected }
+      })
+    })
+  }, [setNodes])
 
   // ── Snapshot ──────────────────────────────────────────────────────────────
   const saveSnapshot = useCallback(() => {
@@ -103,16 +120,30 @@ export default function FlowCanvas({ recipe, onBack }: FlowCanvasProps) {
     setFuture(f => f.slice(0, -1))
   }, [future, nodes, edges, setNodes, setEdges])
 
-  // ── Drag ──────────────────────────────────────────────────────────────────
-  const handleDragStart = useCallback(() => {
-    dragSnapshotRef.current = { nodes: structuredClone(nodes), edges: structuredClone(edges) }
-  }, [nodes, edges])
+  // ── Drag history via node changes ─────────────────────────────────────────
+  const handleNodesChange = useCallback((changes: NodeChange<Node>[]) => {
+    const hasPositionChange = changes.some((change) => change.type === 'position')
+    const hasDraggingStop = changes.some(
+      (change) => change.type === 'position' && change.dragging === false,
+    )
 
-  const handleDragStop = useCallback(() => {
-    if (!dragSnapshotRef.current) return
-    setHistory(h => [...h, structuredClone(dragSnapshotRef.current!)])
-    setFuture([]); dragSnapshotRef.current = null
-  }, [])
+    if (hasPositionChange && !dragSnapshotRef.current) {
+      dragSnapshotRef.current = { nodes: structuredClone(nodes), edges: structuredClone(edges) }
+    }
+
+    const nextNodes = hasPositionChange ? applyNodeChanges(changes, nodes) : nodes
+    onNodesChange(changes)
+
+    if (hasDraggingStop && dragSnapshotRef.current) {
+      const snapshot = dragSnapshotRef.current
+      dragSnapshotRef.current = null
+
+      if (hasDraggedNodesChanged(snapshot.nodes, nextNodes)) {
+        setHistory((historyState) => [...historyState, snapshot])
+        setFuture([])
+      }
+    }
+  }, [nodes, edges, onNodesChange, hasDraggedNodesChanged, setFuture])
 
   // ── Delete / duplicate ────────────────────────────────────────────────────
   const deleteSelected = useCallback(() => {
@@ -289,8 +320,6 @@ export default function FlowCanvas({ recipe, onBack }: FlowCanvasProps) {
     }
   }, [nodes, edges, recipe.id])
 
-  const displayNodes = nodes.map(node => ({ ...node, data: { ...node.data } }))
-
   // ── onConnect ─────────────────────────────────────────────────────────────
   const onConnect = useCallback((connection: any) => {
     saveSnapshot()
@@ -352,7 +381,7 @@ export default function FlowCanvas({ recipe, onBack }: FlowCanvasProps) {
           nodes={nodes}
           edges={edges}
           selectedNodeId={selectedNodeId}
-          onSelectNode={setSelectedNodeId}
+          onSelectNode={selectNodeFromSidebar}
           flowMeta={flowMeta}
         />
       </div>
@@ -390,14 +419,12 @@ export default function FlowCanvas({ recipe, onBack }: FlowCanvasProps) {
           
             <ReactFlow
               onInit={inst => { reactFlowInstance.current = inst; try { inst.fitView({ padding: 0.12 }) } catch (e) {} }}
-              nodes={displayNodes} 
+              nodes={nodes} 
               edges={edges}
-              onNodesChange={onNodesChange} 
+              onNodesChange={handleNodesChange} 
               onEdgesChange={onEdgesChange}
               nodeTypes={nodeTypes} 
               onConnect={onConnect}
-              onNodeDragStart={handleDragStart} 
-              onNodeDragStop={handleDragStop}
               fitView 
               fitViewOptions={{ padding: 0.12 }}
               style={{ width: '100%', height: '100%' }}
