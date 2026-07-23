@@ -1,3 +1,9 @@
+# Cross-Cutting Workflow Rule
+
+- If the user explicitly asks for architecture review before implementation, do not modify code first.
+- First produce: (1) high-level architecture review, (2) prioritized improvements, (3) design feedback for planned node/component types, and (4) phased implementation plan with minimal breaking changes.
+- Assess readiness for roadmap features when relevant (MCP integration, visualization engine, AI-assisted generation, execution engine, collaboration).
+
 # GitHub Copilot Instructions - Frontend
 
 ## Tech Stack
