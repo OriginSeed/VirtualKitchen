@@ -1,19 +1,11 @@
-export const STEP_ACTION_OPTIONS = [
-  'Prep',
-  'Chop',
-  'Slice',
-  'Mix',
-  'Marinate',
-  'Boil',
-  'Saute',
-  'Fry',
-  'Bake',
-  'Steam',
-  'Season',
-  'Serve',
-] as const
+import {
+  getActionDisplayName,
+  getActionIcon,
+  resolveStepActionId,
+  type StepActionId,
+} from '../features/flow-editor/catalog/actionCatalog'
 
-export type StepAction = (typeof STEP_ACTION_OPTIONS)[number]
+export type StepAction = StepActionId
 
 export type StepNodeStructuredFields = {
   action: StepAction | ''
@@ -87,21 +79,6 @@ export interface FlowDraftStorage {
   data: FlowData
 }
 
-export const STEP_ACTION_ICONS: Record<StepAction, string> = {
-  Prep: 'PR',
-  Chop: 'CH',
-  Slice: 'SL',
-  Mix: 'MX',
-  Marinate: 'MR',
-  Boil: 'BL',
-  Saute: 'ST',
-  Fry: 'FR',
-  Bake: 'BK',
-  Steam: 'SM',
-  Season: 'SN',
-  Serve: 'SV',
-}
-
 const toStringValue = (value: unknown): string => {
   if (value == null) return ''
   if (typeof value === 'string') return value
@@ -114,20 +91,11 @@ const asRecord = (value: unknown): Record<string, unknown> => {
   return {}
 }
 
-const normalizeAction = (value: unknown): StepAction | '' => {
-  const text = toStringValue(value).trim()
-  if (!text) return ''
-  const directMatch = STEP_ACTION_OPTIONS.find((option) => option === text)
-  if (directMatch) return directMatch
+const normalizeAction = (value: unknown): StepAction | '' => resolveStepActionId(value)
 
-  const lower = text.toLowerCase()
-  const caseInsensitiveMatch = STEP_ACTION_OPTIONS.find((option) => option.toLowerCase() === lower)
-  return caseInsensitiveMatch ?? ''
-}
+export const getStepNodeTitle = (action: StepAction | '') => getActionDisplayName(action)
 
-export const getStepNodeTitle = (action: StepAction | '') => action || 'Select Action'
-
-export const getStepNodeIcon = (action: StepAction | '') => (action ? STEP_ACTION_ICONS[action] : 'ST')
+export const getStepNodeIcon = (action: StepAction | '') => getActionIcon(action)
 
 export const createDefaultStepFields = (): StepNodeStructuredFields => ({
   action: '',

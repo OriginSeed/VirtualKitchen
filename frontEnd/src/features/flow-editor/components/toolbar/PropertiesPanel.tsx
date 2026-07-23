@@ -1,7 +1,10 @@
 import './PropertiesPanel.css'
 import '../../styles/flow-editor.css'
 import {
-  STEP_ACTION_OPTIONS,
+  ACTIONS_BY_CATEGORY,
+  ACTION_CATEGORY_ORDER,
+} from '../../catalog/actionCatalog'
+import {
   normalizeStepNodeData,
   type StepNodeStructuredFields,
 } from '../../../../types/recipeFlow'
@@ -79,10 +82,14 @@ export default function PropertiesPanel({ node, updateNodeField, onDeleteNode, o
                 onChange={e => updateNodeField(node.id, 'step.action', e.target.value)}
               >
                 <option value="">Select Action</option>
-                {STEP_ACTION_OPTIONS.map((action) => (
-                  <option key={action} value={action}>
-                    {action}
-                  </option>
+                {ACTION_CATEGORY_ORDER.map((category) => (
+                  <optgroup key={category} label={category}>
+                    {ACTIONS_BY_CATEGORY[category].map((action) => (
+                      <option key={action.id} value={action.id}>
+                        {action.icon} {action.displayName}
+                      </option>
+                    ))}
+                  </optgroup>
                 ))}
               </select>
             </div>
