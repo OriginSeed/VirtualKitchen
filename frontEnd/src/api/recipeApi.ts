@@ -5,6 +5,7 @@
 
 import { apiGet, apiPost, apiDelete, apiPut } from './client'
 import { API } from './endpoints'
+import type { FlowData } from '../types/recipeFlow'
 
 export interface Recipe {
   id: number
@@ -19,14 +20,9 @@ export interface RecipeCreateRequest {
   createdBy: number
 }
 
-export interface FlowData {
-  nodes: any[]
-  edges: any[]
-}
-
 export interface VisualizationRequest {
-  nodes: any[]
-  edges: any[]
+  nodes: FlowData['nodes']
+  edges: FlowData['edges']
 }
 
 export interface VisualizationResponse {

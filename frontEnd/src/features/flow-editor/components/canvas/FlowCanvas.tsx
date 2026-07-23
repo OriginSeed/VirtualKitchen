@@ -26,10 +26,21 @@ import {
 import '@xyflow/react/dist/style.css'
 import { nodeTypes } from '../../nodes/nodeTypes.ts'
 import {
+  createFlowDataPayload,
   createNodeForType,
+  normalizeFlowNode,
   serializeFlowData,
   type EdgeKind,
 } from './FlowCanvas.helpers.ts'
+import {
+  createDefaultStepFields,
+  getStepNodeIcon,
+  getStepNodeTitle,
+  normalizeStepNodeData,
+  type FlowData,
+  type FlowDraftStorage,
+  type FlowNodePayload,
+} from '../../../../types/recipeFlow'
 
 // ─── Constants / helpers are moved to FlowCanvas.helpers.ts ────────────────
 const initialNodes: Node[] = []
@@ -39,6 +50,23 @@ type FlowCanvasProps = {
   recipe: { id: number; title: string }
   onBack: () => void
 }
+
+const getDraftKey = (recipeId: number | string) => `recipe-flow-draft:${recipeId}`
+
+const readDraftFlowData = (recipeId: number | string): FlowData | null => {
+  try {
+    const raw = localStorage.getItem(getDraftKey(recipeId))
+    if (!raw) return null
+
+    const parsed = JSON.parse(raw) as FlowDraftStorage
+    if (!parsed || parsed.version !== '2.0' || !parsed.data) return null
+    return parsed.data
+  } catch {
+    return null
+  }
+}
+
+const toFlowNodes = (rawNodes: FlowNodePayload[]): Node[] => rawNodes.map((node) => normalizeFlowNode(node))
 
 // ─── Component ────────────────────────────────────────────────────────────────
 export default function FlowCanvas({ recipe, onBack }: FlowCanvasProps) {
@@ -177,7 +205,45 @@ export default function FlowCanvas({ recipe, onBack }: FlowCanvasProps) {
 
   // ── Update field ──────────────────────────────────────────────────────────
   const updateNodeField = useCallback((nodeId: string, field: string, value: string) => {
-    setNodes(nds => nds.map(n => n.id === nodeId ? { ...n, data: { ...n.data, [field]: value } } : n))
+    setNodes((nds) => nds.map((node) => {
+      if (node.id !== nodeId) return node
+
+      if (field.startsWith('step.')) {
+        const stepField = field.slice(5)
+        const normalized = normalizeStepNodeData(node.data)
+        const mergedStep = {
+          ...createDefaultStepFields(),
+          ...normalized.step,
+          [stepField]: value,
+        }
+        const finalized = normalizeStepNodeData({ ...normalized, step: mergedStep })
+        return {
+          ...node,
+          data: finalized,
+        }
+      }
+
+      if (field === 'title' && node.type === 'recipeStepNode') {
+        const normalized = normalizeStepNodeData(node.data)
+        const finalized = {
+          ...normalized,
+          title: getStepNodeTitle(normalized.step.action),
+          icon: getStepNodeIcon(normalized.step.action),
+        }
+        return {
+          ...node,
+          data: finalized,
+        }
+      }
+
+      return {
+        ...node,
+        data: {
+          ...node.data,
+          [field]: value,
+        },
+      }
+    }))
   }, [setNodes])
 
   // ── Export ────────────────────────────────────────────────────────────────
@@ -205,25 +271,17 @@ export default function FlowCanvas({ recipe, onBack }: FlowCanvasProps) {
 
   useEffect(() => {
     const loadExistingFlow = async () => {
+      const draftData = readDraftFlowData(recipe.id)
+
       try {
         const flowData = await FlowApi.getFlowByRecipeId(recipe.id)
-        if (!flowData?.nodes && !flowData?.edges) return
+        const hasRemoteData = (flowData?.nodes?.length ?? 0) > 0 || (flowData?.edges?.length ?? 0) > 0
+        const sourceData = hasRemoteData ? flowData : draftData
+        if (!sourceData) return
 
-        const loadedNodes = (flowData.nodes ?? []).map((node: any) => ({
-          id: node.id,
-          type: node.type ?? 'recipeStepNode',
-          position: node.position ?? { x: 0, y: 0 },
-          data: node.data ?? {},
-          measured: node.measured,
-          parentId: node.parentId,
-          extent: node.extent,
-          draggable: node.draggable,
-          selectable: node.selectable,
-          deletable: node.deletable,
-          style: node.style,
-        }))
+        const loadedNodes = toFlowNodes((sourceData.nodes ?? []) as FlowNodePayload[])
 
-        const loadedEdges = (flowData.edges ?? []).map((edge: any) => ({
+        const loadedEdges = (sourceData.edges ?? []).map((edge) => ({
           id: edge.id,
           source: edge.source,
           target: edge.target,
@@ -241,6 +299,28 @@ export default function FlowCanvas({ recipe, onBack }: FlowCanvasProps) {
         setHistory([])
         setFuture([])
       } catch (error) {
+        if (draftData) {
+          const loadedNodes = toFlowNodes((draftData.nodes ?? []) as FlowNodePayload[])
+          const loadedEdges = (draftData.edges ?? []).map((edge) => ({
+            id: edge.id,
+            source: edge.source,
+            target: edge.target,
+            sourceHandle: edge.sourceHandle,
+            targetHandle: edge.targetHandle,
+            type: edge.type,
+            animated: edge.animated,
+            style: edge.style,
+            data: edge.data,
+            label: edge.label,
+          }))
+
+          setNodes(loadedNodes)
+          setEdges(loadedEdges)
+          setHistory([])
+          setFuture([])
+          return
+        }
+
         console.error('Unable to load existing flow', error)
       }
     }
@@ -250,34 +330,16 @@ export default function FlowCanvas({ recipe, onBack }: FlowCanvasProps) {
 
   const saveFlow = useCallback(async () => {
     try {
-      const flowData = {
-        nodes: nodes.map(node => ({
-          id: node.id,
-          type: node.type,
-          position: node.position,
-          measured: node.measured,
-          parentId: node.parentId,
-          extent: node.extent,
-          draggable: node.draggable,
-          selectable: node.selectable,
-          deletable: node.deletable,
-          data: node.data,
-        })),
-        edges: edges.map(edge => ({
-          id: edge.id,
-          source: edge.source,
-          target: edge.target,
-          sourceHandle: edge.sourceHandle,
-          targetHandle: edge.targetHandle,
-          type: edge.type,
-          animated: edge.animated,
-          style: edge.style,
-          data: edge.data,
-          label: edge.label,
-        })),
-      }
+      const flowData = createFlowDataPayload(nodes, edges)
 
       await FlowApi.saveFlow(recipe.id, flowData)
+      const draftRecord: FlowDraftStorage = {
+        version: '2.0',
+        recipeId: recipe.id,
+        updatedAt: new Date().toISOString(),
+        data: flowData,
+      }
+      localStorage.setItem(getDraftKey(recipe.id), JSON.stringify(draftRecord))
       console.log('Flow saved successfully')
       alert('Flow saved successfully')
     } catch (error) {
@@ -286,29 +348,23 @@ export default function FlowCanvas({ recipe, onBack }: FlowCanvasProps) {
     }
   }, [nodes, edges, recipe.id])
 
+  useEffect(() => {
+    const draftRecord: FlowDraftStorage = {
+      version: '2.0',
+      recipeId: recipe.id,
+      updatedAt: new Date().toISOString(),
+      data: createFlowDataPayload(nodes, edges),
+    }
+
+    localStorage.setItem(getDraftKey(recipe.id), JSON.stringify(draftRecord))
+  }, [nodes, edges, recipe.id])
+
   const visualizeFlow = useCallback(async () => {
     setVisualizing(true)
     setVisualizationResult(null)
 
     try {
-      const visualizationData = {
-        nodes: nodes.map(node => ({
-          id: node.id,
-          type: node.type,
-          position: node.position,
-          data: node.data,
-        })),
-        edges: edges.map(edge => ({
-          id: edge.id,
-          source: edge.source,
-          target: edge.target,
-          sourceHandle: edge.sourceHandle,
-          targetHandle: edge.targetHandle,
-          type: edge.type,
-          data: edge.data,
-          label: edge.label,
-        })),
-      }
+      const visualizationData = createFlowDataPayload(nodes, edges)
 
       const result = await VisualizationApi.generateVisualization(recipe.id, visualizationData)
       setVisualizationResult(result ?? null)

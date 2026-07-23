@@ -2,20 +2,13 @@ import { useMemo, useState } from 'react'
 import type { CSSProperties, ReactNode } from 'react'
 import { Handle, Position, NodeResizeControl, useNodeId } from '@xyflow/react'
 import '../styles/flow-editor.css'
+import { normalizeStepNodeData, type RecipeStepNodeData } from '../../../types/recipeFlow'
 
 const defaultStyle = {
   border: '#e5e7eb',
   iconBg: '#f9fafb',
   accent: '#6366f1',
   badge: '#eff6ff',
-}
-
-type RecipeStepNodeData = {
-  icon: ReactNode
-  title: string
-  description: string
-  duration: string
-  stepNumber?: number
 }
 
 type RecipeStepNodeProps = {
@@ -38,12 +31,21 @@ const toNumber = (value: unknown, fallback: number) => {
 export default function RecipeStepNode({ selected, style: nodeStyle, data, width: nodeWidth, height: nodeHeight }: RecipeStepNodeProps) {
   const style = defaultStyle
   const nodeId = useNodeId()
-  const [isDescriptionExpanded, setIsDescriptionExpanded] = useState(false)
+  const [isNotesExpanded, setIsNotesExpanded] = useState(false)
+  const normalized = normalizeStepNodeData(data)
+  const step = normalized.step
   const width = toNumber(nodeWidth, toNumber(nodeStyle?.width, 320))
   const height = toNumber(nodeHeight, toNumber(nodeStyle?.height, 190))
-  const description = data.description?.trim() || 'Add step details here.'
-  const descriptionLineCount = useMemo(() => description.split(/\r?\n/).length, [description])
-  const shouldShowReadMore = description.length > 120 || descriptionLineCount > 4
+  const notes = step.notes.trim() || 'Add notes for this step.'
+  const notesLineCount = useMemo(() => notes.split(/\r?\n/).length, [notes])
+  const shouldShowReadMore = notes.length > 120 || notesLineCount > 4
+  const ingredientSummary = [step.quantity.trim(), step.unit.trim(), step.ingredient.trim(), step.specification.trim()]
+    .filter(Boolean)
+    .join(' ')
+  const heatSummary = [step.flame.trim(), step.temperature.trim()].filter(Boolean).join(' | ')
+  const timingSummary = [step.duration.trim(), step.repeatInterval.trim() ? `Repeat ${step.repeatInterval.trim()}` : '']
+    .filter(Boolean)
+    .join(' | ')
   const minimumWidth = 260
   const minimumHeight = 190
   const computedWidth = Math.max(width, minimumWidth)
@@ -141,7 +143,7 @@ export default function RecipeStepNode({ selected, style: nodeStyle, data, width
               border: `1px solid ${style.border}`,
             }}
           >
-            {data.icon}
+            {(normalized.icon as ReactNode) || 'S'}
           </div>
           <div
             style={{
@@ -164,7 +166,7 @@ export default function RecipeStepNode({ selected, style: nodeStyle, data, width
                 wordBreak: 'break-word',
               }}
             >
-              {data.title || 'New Step'}
+              {normalized.title || 'Select Action'}
             </div>
             <div
               style={{
@@ -240,7 +242,7 @@ export default function RecipeStepNode({ selected, style: nodeStyle, data, width
           }}
         >
           <span>⏱</span>
-          {data.duration?.trim() || 'Not set'}
+          {step.duration?.trim() || 'Not set'}
         </div>
       </div>
 
@@ -268,28 +270,76 @@ export default function RecipeStepNode({ selected, style: nodeStyle, data, width
             marginBottom: 6,
           }}
         >
-          Description
+          Details
+        </div>
+        {ingredientSummary && (
+          <div
+            style={{
+              fontSize: 11,
+              color: '#334155',
+              lineHeight: 1.35,
+              marginBottom: 6,
+            }}
+          >
+            {ingredientSummary}
+          </div>
+        )}
+        {heatSummary && (
+          <div
+            style={{
+              fontSize: 10,
+              color: '#64748b',
+              lineHeight: 1.35,
+              marginBottom: 4,
+            }}
+          >
+            Heat: {heatSummary}
+          </div>
+        )}
+        {timingSummary && (
+          <div
+            style={{
+              fontSize: 10,
+              color: '#64748b',
+              lineHeight: 1.35,
+              marginBottom: 6,
+            }}
+          >
+            Timing: {timingSummary}
+          </div>
+        )}
+        <div
+          style={{
+            fontSize: 10,
+            fontWeight: 700,
+            color: '#64748b',
+            letterSpacing: '0.04em',
+            textTransform: 'uppercase',
+            marginBottom: 4,
+          }}
+        >
+          Notes
         </div>
         <div
           style={{
-            fontSize: 11,
+            fontSize: 10,
             color: '#475569',
             lineHeight: 1.45,
-            overflow: isDescriptionExpanded ? 'auto' : 'hidden',
+            overflow: isNotesExpanded ? 'auto' : 'hidden',
             whiteSpace: 'pre-wrap',
-            display: isDescriptionExpanded ? 'block' : '-webkit-box',
-            WebkitBoxOrient: isDescriptionExpanded ? undefined : 'vertical',
-            WebkitLineClamp: isDescriptionExpanded ? undefined : 4,
+            display: isNotesExpanded ? 'block' : '-webkit-box',
+            WebkitBoxOrient: isNotesExpanded ? undefined : 'vertical',
+            WebkitLineClamp: isNotesExpanded ? undefined : 4,
             wordBreak: 'break-word',
-            paddingRight: isDescriptionExpanded ? 2 : 0,
+            paddingRight: isNotesExpanded ? 2 : 0,
           }}
         >
-          {description}
+          {notes}
         </div>
         {shouldShowReadMore && (
           <button
             type="button"
-            onClick={() => setIsDescriptionExpanded((value) => !value)}
+            onClick={() => setIsNotesExpanded((value) => !value)}
             className="nodrag"
             style={{
               marginTop: 8,
@@ -303,7 +353,7 @@ export default function RecipeStepNode({ selected, style: nodeStyle, data, width
               padding: 0,
             }}
           >
-            {isDescriptionExpanded ? 'Read less' : 'Read more'}
+            {isNotesExpanded ? 'Read less' : 'Read more'}
           </button>
         )}
       </div>
