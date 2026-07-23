@@ -48,7 +48,7 @@ export default function RecipeStepNode({ selected, style: nodeStyle, data, width
     .filter(Boolean)
     .join(' ')
   const heatSummary = [step.flame.trim(), step.temperature.trim()].filter(Boolean).join(' | ')
-  const timingSummary = [step.duration.trim(), step.repeatInterval.trim() ? `Repeat ${step.repeatInterval.trim()}` : '']
+  const timingSummary = [step.duration.trim(), step.repeatInterval.trim()]
     .filter(Boolean)
     .join(' | ')
   const minimumWidth = 260

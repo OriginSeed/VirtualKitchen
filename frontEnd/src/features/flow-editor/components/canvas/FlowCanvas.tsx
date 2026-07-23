@@ -45,6 +45,11 @@ import {
   CUSTOM_INGREDIENT_ID,
   getIngredientDefaultUnit,
 } from '../../catalog/ingredientCatalog'
+import {
+  buildDurationLabel,
+  buildRepeatIntervalLabel,
+} from '../../catalog/stepFieldCatalog'
+import { getActionDisplayName, resolveStepActionId } from '../../catalog/actionCatalog'
 
 // ─── Constants / helpers are moved to FlowCanvas.helpers.ts ────────────────
 const initialNodes: Node[] = []
@@ -233,6 +238,48 @@ export default function FlowCanvas({ recipe, onBack }: FlowCanvasProps) {
             }
           }
         }
+
+        if (stepField === 'unitOption') {
+          if (value === 'Custom') {
+            mergedStep.unit = mergedStep.customUnit.trim()
+          } else {
+            mergedStep.customUnit = ''
+            mergedStep.unit = value
+          }
+        }
+
+        if (stepField === 'customUnit') {
+          if (mergedStep.unitOption === 'Custom') {
+            mergedStep.unit = value
+          }
+        }
+
+        if (stepField === 'specificationOption') {
+          if (value === 'Custom') {
+            mergedStep.specification = mergedStep.customSpecification.trim()
+          } else {
+            mergedStep.customSpecification = ''
+            mergedStep.specification = value
+          }
+        }
+
+        if (stepField === 'customSpecification') {
+          if (mergedStep.specificationOption === 'Custom') {
+            mergedStep.specification = value
+          }
+        }
+
+        if (stepField === 'action' && !mergedStep.repeatAction) {
+          mergedStep.repeatAction = resolveStepActionId(value)
+        }
+
+        mergedStep.duration = buildDurationLabel(mergedStep.durationValue, mergedStep.durationUnit)
+        const repeatActionLabel = mergedStep.repeatAction ? getActionDisplayName(mergedStep.repeatAction) : ''
+        mergedStep.repeatInterval = buildRepeatIntervalLabel(
+          repeatActionLabel,
+          mergedStep.repeatEveryValue,
+          mergedStep.repeatEveryUnit,
+        )
 
         const finalized = normalizeStepNodeData({ ...normalized, step: mergedStep })
         return {

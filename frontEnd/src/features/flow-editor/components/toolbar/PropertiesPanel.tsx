@@ -3,6 +3,7 @@ import '../../styles/flow-editor.css'
 import {
   ACTIONS_BY_CATEGORY,
   ACTION_CATEGORY_ORDER,
+  getActionDisplayName,
 } from '../../catalog/actionCatalog'
 import {
   CUSTOM_INGREDIENT_ID,
@@ -12,6 +13,14 @@ import {
   getIngredientSearchValue,
   resolveIngredientInput,
 } from '../../catalog/ingredientCatalog'
+import {
+  DURATION_UNIT_OPTIONS,
+  FLAME_OPTIONS,
+  REPEAT_INTERVAL_UNIT_OPTIONS,
+  SPECIFICATION_OPTIONS,
+  UNIT_OPTIONS,
+  buildRepeatIntervalLabel,
+} from '../../catalog/stepFieldCatalog'
 import {
   normalizeStepNodeData,
   type StepNodeStructuredFields,
@@ -57,6 +66,10 @@ export default function PropertiesPanel({ node, updateNodeField, onDeleteNode, o
     if (!stepData?.ingredientId || stepData.ingredientId === CUSTOM_INGREDIENT_ID) return null
     return getIngredientById(stepData.ingredientId)
   })()
+  const repeatActionLabel = stepData?.repeatAction ? getActionDisplayName(stepData.repeatAction) : ''
+  const repeatExpression = stepData
+    ? buildRepeatIntervalLabel(repeatActionLabel, stepData.repeatEveryValue, stepData.repeatEveryUnit)
+    : ''
 
   const typeIcon  = isCondition ? '🔀' : d.icon || '🍳'
   const typeLabel = isCondition ? 'Condition' : 'Step'
@@ -172,32 +185,67 @@ export default function PropertiesPanel({ node, updateNodeField, onDeleteNode, o
 
             <div className="flow-properties-field">
               <label className="flow-properties-label">Unit</label>
-              <input
+              <select
                 className="flow-properties-input"
-                value={stepData?.unit ?? ''}
-                onChange={e => updateNodeField(node.id, 'step.unit', e.target.value)}
-                placeholder="cups"
-              />
+                value={stepData?.unitOption ?? ''}
+                onChange={e => updateNodeField(node.id, 'step.unitOption', e.target.value)}
+              >
+                <option value="">Select Unit</option>
+                {UNIT_OPTIONS.map((option) => (
+                  <option key={option} value={option}>{option}</option>
+                ))}
+              </select>
             </div>
+
+            {stepData?.unitOption === 'Custom' && (
+              <div className="flow-properties-field">
+                <label className="flow-properties-label">Custom Unit</label>
+                <input
+                  className="flow-properties-input"
+                  value={stepData.customUnit}
+                  onChange={e => updateNodeField(node.id, 'step.customUnit', e.target.value)}
+                  placeholder="Enter custom unit"
+                />
+              </div>
+            )}
 
             <div className="flow-properties-field">
               <label className="flow-properties-label">Specification</label>
-              <input
+              <select
                 className="flow-properties-input"
-                value={stepData?.specification ?? ''}
-                onChange={e => updateNodeField(node.id, 'step.specification', e.target.value)}
-                placeholder="finely chopped"
-              />
+                value={stepData?.specificationOption ?? ''}
+                onChange={e => updateNodeField(node.id, 'step.specificationOption', e.target.value)}
+              >
+                <option value="">Select Specification</option>
+                {SPECIFICATION_OPTIONS.map((option) => (
+                  <option key={option} value={option}>{option}</option>
+                ))}
+              </select>
             </div>
+
+            {stepData?.specificationOption === 'Custom' && (
+              <div className="flow-properties-field">
+                <label className="flow-properties-label">Custom Specification</label>
+                <input
+                  className="flow-properties-input"
+                  value={stepData.customSpecification}
+                  onChange={e => updateNodeField(node.id, 'step.customSpecification', e.target.value)}
+                  placeholder="Enter custom specification"
+                />
+              </div>
+            )}
 
             <div className="flow-properties-field">
               <label className="flow-properties-label">Flame</label>
-              <input
+              <select
                 className="flow-properties-input"
-                value={stepData?.flame ?? ''}
+                value={stepData?.flame ?? 'None'}
                 onChange={e => updateNodeField(node.id, 'step.flame', e.target.value)}
-                placeholder="medium"
-              />
+              >
+                {FLAME_OPTIONS.map((option) => (
+                  <option key={option} value={option}>{option}</option>
+                ))}
+              </select>
             </div>
 
             <div className="flow-properties-field">
@@ -212,21 +260,64 @@ export default function PropertiesPanel({ node, updateNodeField, onDeleteNode, o
 
             <div className="flow-properties-field">
               <label className="flow-properties-label">Duration</label>
-              <input
-                className="flow-properties-input"
-                value={stepData?.duration ?? ''}
-                onChange={e => updateNodeField(node.id, 'step.duration', e.target.value)}
-                placeholder="5 min"
-              />
+              <div className="flow-properties-actions" style={{ marginTop: 0, paddingTop: 0, borderTop: 'none' }}>
+                <input
+                  className="flow-properties-input"
+                  value={stepData?.durationValue ?? ''}
+                  onChange={e => updateNodeField(node.id, 'step.durationValue', e.target.value)}
+                  placeholder="5"
+                />
+                <select
+                  className="flow-properties-input"
+                  value={stepData?.durationUnit ?? ''}
+                  onChange={e => updateNodeField(node.id, 'step.durationUnit', e.target.value)}
+                >
+                  <option value="">Unit</option>
+                  {DURATION_UNIT_OPTIONS.map((option) => (
+                    <option key={option} value={option}>{option}</option>
+                  ))}
+                </select>
+              </div>
             </div>
 
             <div className="flow-properties-field">
               <label className="flow-properties-label">Repeat Interval</label>
+              <div className="flow-properties-actions" style={{ marginTop: 0, paddingTop: 0, borderTop: 'none', marginBottom: 8 }}>
+                <select
+                  className="flow-properties-input"
+                  value={stepData?.repeatAction ?? ''}
+                  onChange={e => updateNodeField(node.id, 'step.repeatAction', e.target.value)}
+                >
+                  <option value="">Action</option>
+                  {ACTION_CATEGORY_ORDER.map((category) => (
+                    <optgroup key={category} label={category}>
+                      {ACTIONS_BY_CATEGORY[category].map((action) => (
+                        <option key={action.id} value={action.id}>{action.displayName}</option>
+                      ))}
+                    </optgroup>
+                  ))}
+                </select>
+                <input
+                  className="flow-properties-input"
+                  value={stepData?.repeatEveryValue ?? ''}
+                  onChange={e => updateNodeField(node.id, 'step.repeatEveryValue', e.target.value)}
+                  placeholder="2"
+                />
+                <select
+                  className="flow-properties-input"
+                  value={stepData?.repeatEveryUnit ?? ''}
+                  onChange={e => updateNodeField(node.id, 'step.repeatEveryUnit', e.target.value)}
+                >
+                  <option value="">Unit</option>
+                  {REPEAT_INTERVAL_UNIT_OPTIONS.map((option) => (
+                    <option key={option} value={option}>{option}</option>
+                  ))}
+                </select>
+              </div>
               <input
-                className="flow-properties-input"
-                value={stepData?.repeatInterval ?? ''}
-                onChange={e => updateNodeField(node.id, 'step.repeatInterval', e.target.value)}
-                placeholder="Every 30 sec"
+                className="flow-properties-readonly"
+                value={repeatExpression || 'Example: Mix every 2 minutes'}
+                readOnly
               />
             </div>
 

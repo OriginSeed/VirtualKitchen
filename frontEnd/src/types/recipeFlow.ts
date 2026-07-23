@@ -1,6 +1,7 @@
 import {
   getActionDisplayName,
   getActionIcon,
+  getStepActionById,
   resolveStepActionId,
   type StepActionId,
 } from '../features/flow-editor/catalog/actionCatalog'
@@ -10,6 +11,21 @@ import {
   resolveIngredientId,
   type IngredientId,
 } from '../features/flow-editor/catalog/ingredientCatalog'
+import {
+  FLAME_OPTIONS,
+  SPECIFICATION_OPTIONS,
+  UNIT_OPTIONS,
+  buildDurationLabel,
+  buildRepeatIntervalLabel,
+  parseDurationLabel,
+  parseRepeatIntervalLabel,
+  toCatalogOption,
+  type DurationUnitOption,
+  type FlameOption,
+  type RepeatIntervalUnitOption,
+  type SpecificationOption,
+  type UnitOption,
+} from '../features/flow-editor/catalog/stepFieldCatalog'
 
 export type StepAction = StepActionId
 
@@ -18,11 +34,20 @@ export type StepNodeStructuredFields = {
   ingredientId: IngredientId | ''
   customIngredientName: string
   quantity: string
+  specificationOption: SpecificationOption | ''
+  customSpecification: string
   unit: string
+  unitOption: UnitOption | ''
+  customUnit: string
   specification: string
-  flame: string
+  flame: FlameOption | ''
   temperature: string
+  durationValue: string
+  durationUnit: DurationUnitOption | ''
   duration: string
+  repeatAction: StepAction | ''
+  repeatEveryValue: string
+  repeatEveryUnit: RepeatIntervalUnitOption | ''
   repeatInterval: string
   notes: string
 }
@@ -109,11 +134,20 @@ export const createDefaultStepFields = (): StepNodeStructuredFields => ({
   ingredientId: '',
   customIngredientName: '',
   quantity: '',
+  specificationOption: '',
+  customSpecification: '',
   unit: '',
+  unitOption: '',
+  customUnit: '',
   specification: '',
-  flame: '',
+  flame: 'None',
   temperature: '',
+  durationValue: '',
+  durationUnit: '',
   duration: '',
+  repeatAction: '',
+  repeatEveryValue: '',
+  repeatEveryUnit: '',
   repeatInterval: '',
   notes: '',
 })
@@ -147,17 +181,62 @@ export const normalizeStepNodeData = (value: unknown): RecipeStepNodeData => {
     customIngredientName = rawIngredientName
   }
 
+  const rawSpecification = toStringValue(rawStep.specification)
+  const specificationOption = toCatalogOption(rawStep.specificationOption, SPECIFICATION_OPTIONS)
+  const customSpecification = toStringValue(rawStep.customSpecification)
+  const resolvedSpecificationOption = specificationOption || toCatalogOption(rawSpecification, SPECIFICATION_OPTIONS)
+  const resolvedCustomSpecification = customSpecification || (resolvedSpecificationOption === 'Custom' ? rawSpecification : '')
+  const resolvedSpecification = resolvedSpecificationOption === 'Custom'
+    ? resolvedCustomSpecification
+    : (resolvedSpecificationOption || rawSpecification)
+
+  const rawUnit = toStringValue(rawStep.unit)
+  const unitOption = toCatalogOption(rawStep.unitOption, UNIT_OPTIONS)
+  const customUnit = toStringValue(rawStep.customUnit)
+  const resolvedUnitOption = unitOption || toCatalogOption(rawUnit, UNIT_OPTIONS)
+  const resolvedCustomUnit = customUnit || (resolvedUnitOption === 'Custom' ? rawUnit : '')
+  const resolvedUnit = resolvedUnitOption === 'Custom' ? resolvedCustomUnit : (resolvedUnitOption || rawUnit)
+
+  const flame = toCatalogOption(rawStep.flame, FLAME_OPTIONS, 'None')
+
+  const durationValue = toStringValue(rawStep.durationValue)
+  const durationUnit = toCatalogOption(rawStep.durationUnit, ['seconds', 'minutes', 'hours'] as const)
+  const rawDurationLabel = toStringValue(rawStep.duration ?? legacyDuration)
+  const parsedLegacyDuration = parseDurationLabel(rawDurationLabel)
+  const resolvedDurationValue = durationValue || parsedLegacyDuration.durationValue
+  const resolvedDurationUnit = durationUnit || parsedLegacyDuration.durationUnit
+  const resolvedDuration = buildDurationLabel(resolvedDurationValue, resolvedDurationUnit)
+
+  const repeatAction = normalizeAction(rawStep.repeatAction)
+  const repeatEveryValue = toStringValue(rawStep.repeatEveryValue)
+  const repeatEveryUnit = toCatalogOption(rawStep.repeatEveryUnit, ['seconds', 'minutes', 'hours'] as const)
+  const parsedLegacyRepeat = parseRepeatIntervalLabel(toStringValue(rawStep.repeatInterval))
+  const resolvedRepeatAction = repeatAction || (normalizeAction(parsedLegacyRepeat.repeatPrefix) || action)
+  const resolvedRepeatEveryValue = repeatEveryValue || parsedLegacyRepeat.repeatEveryValue
+  const resolvedRepeatEveryUnit = repeatEveryUnit || parsedLegacyRepeat.repeatEveryUnit
+  const repeatActionLabel = resolvedRepeatAction ? getStepActionById(resolvedRepeatAction).displayName : ''
+  const resolvedRepeatInterval = buildRepeatIntervalLabel(repeatActionLabel, resolvedRepeatEveryValue, resolvedRepeatEveryUnit)
+
   const step: StepNodeStructuredFields = {
     action,
     ingredientId,
     customIngredientName,
     quantity: toStringValue(rawStep.quantity),
-    unit: toStringValue(rawStep.unit),
-    specification: toStringValue(rawStep.specification),
-    flame: toStringValue(rawStep.flame),
+    specificationOption: resolvedSpecificationOption,
+    customSpecification: resolvedCustomSpecification,
+    unit: resolvedUnit,
+    unitOption: resolvedUnitOption,
+    customUnit: resolvedCustomUnit,
+    specification: resolvedSpecification,
+    flame,
     temperature: toStringValue(rawStep.temperature),
-    duration: toStringValue(rawStep.duration ?? legacyDuration),
-    repeatInterval: toStringValue(rawStep.repeatInterval),
+    durationValue: resolvedDurationValue,
+    durationUnit: resolvedDurationUnit,
+    duration: resolvedDuration,
+    repeatAction: resolvedRepeatAction,
+    repeatEveryValue: resolvedRepeatEveryValue,
+    repeatEveryUnit: resolvedRepeatEveryUnit,
+    repeatInterval: resolvedRepeatInterval,
     notes: toStringValue(rawStep.notes ?? legacyDescription),
   }
 
