@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import Sidebar from '../sidebar/Sidebar'
 import PropertiesPanel from '../toolbar/PropertiesPanel'
 import FlowEditorTopBar from '../toolbar/FlowEditorTopBar'
@@ -12,6 +12,7 @@ import {
   Background,
   Controls,
   MiniMap,
+  type ReactFlowInstance,
   useNodesState,
   useEdgesState,
   applyNodeChanges,
@@ -30,10 +31,21 @@ import { nodeTypes } from '../../nodes/nodeTypes.ts'
 import {
   createFlowDataPayload,
   createNodeForType,
+  normalizeFlowEdges,
   normalizeFlowNode,
   serializeFlowData,
   type EdgeKind,
 } from './FlowCanvas.helpers.ts'
+import type { VisualizationResponse } from '../../../../api'
+import {
+  type FlowNodeType,
+  getFlowMetaCounts,
+  isConditionNode,
+  isParallelEndNode,
+  isParallelNode,
+  isParallelStartNode,
+  isRecipeStepNode,
+} from '../../model/flowNodeModel'
 import {
   getParallelNodeTitle,
   normalizeParallelNodeData,
@@ -87,12 +99,12 @@ const toFlowNodes = (rawNodes: FlowNodePayload[]): Node[] => rawNodes.map((node)
 export default function FlowCanvas({ recipe, onBack }: FlowCanvasProps) {
   const [nodes, setNodes, onNodesChange] = useNodesState(initialNodes)
   const [edges, setEdges, onEdgesChange] = useEdgesState(initialEdges)
-  const [flowMeta, setFlowMeta] = useState({ stepCount: 0, conditionCount: 0, parallelCount: 0 })
+  const flowMeta = useMemo(() => getFlowMetaCounts(nodes), [nodes])
   const [history, setHistory] = useState<{ nodes: Node[]; edges: Edge[] }[]>([])
   const [future,  setFuture]  = useState<{ nodes: Node[]; edges: Edge[] }[]>([])
   const [exportJson, setExportJson] = useState<string | null>(null)
   const [copied, setCopied] = useState(false)
-  const [visualizationResult, setVisualizationResult] = useState<any>(null)
+  const [visualizationResult, setVisualizationResult] = useState<VisualizationResponse | null>(null)
   const [visualizing, setVisualizing] = useState(false)
   const dragSnapshotRef = useRef<{ nodes: Node[]; edges: Edge[] } | null>(null)
 
@@ -110,14 +122,6 @@ export default function FlowCanvas({ recipe, onBack }: FlowCanvasProps) {
 
   const selectedNode = nodes.find(n => n.selected)
   const selectedNodeId = selectedNode ? String(selectedNode.id) : null
-
-  useEffect(() => {
-    setFlowMeta({
-      stepCount: nodes.filter(node => node.type === 'recipeStepNode').length,
-      conditionCount: nodes.filter(node => node.type === 'conditionNode').length,
-      parallelCount: nodes.filter(node => node.type === 'parallelStartNode' || node.type === 'parallelEndNode').length,
-    })
-  }, [nodes])
 
   const selectNodeFromSidebar = useCallback((nodeId: string | null) => {
     setNodes((ns) => {
@@ -212,7 +216,7 @@ export default function FlowCanvas({ recipe, onBack }: FlowCanvasProps) {
     }])
   }, [nodes, saveSnapshot, setNodes])
 
-  const addFreeNode = useCallback((nodeType: string) => {
+  const addFreeNode = useCallback((nodeType: FlowNodeType) => {
     saveSnapshot()
     const baseY = 140 + nodes.length * 70
     const newNode = createNodeForType(crypto.randomUUID(), nodeType, { x: 720, y: Math.min(baseY, 420) })
@@ -322,7 +326,7 @@ export default function FlowCanvas({ recipe, onBack }: FlowCanvasProps) {
 
       if (field.startsWith('parallel.')) {
         const parallelField = field.slice(9)
-        const fallbackKind = node.type === 'parallelEndNode' ? 'end' : 'start'
+        const fallbackKind = isParallelEndNode(node) ? 'end' : 'start'
         const normalized = normalizeParallelNodeData(node.data, fallbackKind)
         const mergedParallel = {
           ...normalized.parallel,
@@ -344,7 +348,7 @@ export default function FlowCanvas({ recipe, onBack }: FlowCanvasProps) {
         }
       }
 
-      if (field === 'title' && node.type === 'recipeStepNode') {
+      if (field === 'title' && isRecipeStepNode(node)) {
         const normalized = normalizeStepNodeData(node.data)
         const finalized = {
           ...normalized,
@@ -393,14 +397,14 @@ export default function FlowCanvas({ recipe, onBack }: FlowCanvasProps) {
     const sourceOutgoing = edges.filter((edge) => edge.source === connection.source).length
     const targetIncoming = edges.filter((edge) => edge.target === connection.target).length
 
-    if (sourceNode.type === 'parallelEndNode' && sourceOutgoing >= 1) return false
-    if (targetNode.type === 'parallelStartNode' && targetIncoming >= 1) return false
+    if (isParallelEndNode(sourceNode) && sourceOutgoing >= 1) return false
+    if (isParallelStartNode(targetNode) && targetIncoming >= 1) return false
 
-    if (sourceNode.type === 'parallelStartNode' && !String(connection.sourceHandle ?? '').startsWith('parallel-start-out')) {
+    if (isParallelStartNode(sourceNode) && !String(connection.sourceHandle ?? '').startsWith('parallel-start-out')) {
       return false
     }
 
-    if (targetNode.type === 'parallelEndNode' && !String(connection.targetHandle ?? '').startsWith('parallel-end-in')) {
+    if (isParallelEndNode(targetNode) && !String(connection.targetHandle ?? '').startsWith('parallel-end-in')) {
       return false
     }
 
@@ -442,18 +446,7 @@ export default function FlowCanvas({ recipe, onBack }: FlowCanvasProps) {
 
         const loadedNodes = toFlowNodes((sourceData.nodes ?? []) as FlowNodePayload[])
 
-        const loadedEdges = (sourceData.edges ?? []).map((edge) => ({
-          id: edge.id,
-          source: edge.source,
-          target: edge.target,
-          sourceHandle: edge.sourceHandle,
-          targetHandle: edge.targetHandle,
-          type: edge.type,
-          animated: edge.animated,
-          style: edge.style,
-          data: edge.data,
-          label: edge.label,
-        }))
+        const loadedEdges = normalizeFlowEdges(sourceData.edges ?? [])
 
         setNodes(loadedNodes)
         setEdges(loadedEdges)
@@ -462,18 +455,7 @@ export default function FlowCanvas({ recipe, onBack }: FlowCanvasProps) {
       } catch (error) {
         if (draftData) {
           const loadedNodes = toFlowNodes((draftData.nodes ?? []) as FlowNodePayload[])
-          const loadedEdges = (draftData.edges ?? []).map((edge) => ({
-            id: edge.id,
-            source: edge.source,
-            target: edge.target,
-            sourceHandle: edge.sourceHandle,
-            targetHandle: edge.targetHandle,
-            type: edge.type,
-            animated: edge.animated,
-            style: edge.style,
-            data: edge.data,
-            label: edge.label,
-          }))
+          const loadedEdges = normalizeFlowEdges(draftData.edges ?? [])
 
           setNodes(loadedNodes)
           setEdges(loadedEdges)
@@ -576,17 +558,17 @@ export default function FlowCanvas({ recipe, onBack }: FlowCanvasProps) {
   // refs for resize observation and reactflow instance
   const sidebarRef = useRef<HTMLDivElement | null>(null)
   const propsRef = useRef<HTMLDivElement | null>(null)
-  const reactFlowInstance = useRef<any>(null)
+  const reactFlowInstance = useRef<ReactFlowInstance<Node, Edge> | null>(null)
   const reactFlowWrapperRef = useRef<HTMLDivElement | null>(null)
 
   // observe size changes of the sidebar and call fitView
   useEffect(() => {
     if (!reactFlowInstance.current) return
     const ro = new ResizeObserver(() => {
-      try { reactFlowInstance.current.fitView({ padding: 0.12 }) } catch (e) { /* ignore */ }
+      try { reactFlowInstance.current?.fitView({ padding: 0.12 }) } catch (e) { /* ignore */ }
     })
     if (sidebarRef.current) ro.observe(sidebarRef.current)
-    const onWin = () => { try { reactFlowInstance.current.fitView({ padding: 0.12 }) } catch (e) {} }
+    const onWin = () => { try { reactFlowInstance.current?.fitView({ padding: 0.12 }) } catch (e) {} }
     window.addEventListener('resize', onWin)
     return () => { ro.disconnect(); window.removeEventListener('resize', onWin) }
   }, [reactFlowInstance])
@@ -659,8 +641,8 @@ export default function FlowCanvas({ recipe, onBack }: FlowCanvasProps) {
             <MiniMap 
               style={{ borderRadius: 12, border: '1px solid #e2e8f0', boxShadow: '0 2px 8px rgba(0,0,0,0.06)' }}
               nodeColor={n => {
-                if (n.type === 'conditionNode') return '#fde68a'
-                if (n.type === 'parallelStartNode' || n.type === 'parallelEndNode') return '#ddd6fe'
+                if (isConditionNode(n)) return '#fde68a'
+                if (isParallelNode(n)) return '#ddd6fe'
                 return '#e2e8f0'
               }} 
             />

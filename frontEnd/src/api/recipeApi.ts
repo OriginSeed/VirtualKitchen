@@ -25,9 +25,19 @@ export interface VisualizationRequest {
   edges: FlowData['edges']
 }
 
+export interface VisualizationClip {
+  clipId?: string
+  [key: string]: unknown
+}
+
+export interface VisualizationFinalClip {
+  clipId?: string
+  [key: string]: unknown
+}
+
 export interface VisualizationResponse {
-  clips?: any[]
-  finalClip?: any
+  clips?: VisualizationClip[]
+  finalClip?: VisualizationFinalClip
 }
 
 export const RecipeApi = {
