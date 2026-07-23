@@ -1,8 +1,11 @@
 import type { Edge, Node } from '@xyflow/react'
 import {
+  createDefaultConditionFields,
   createDefaultStepFields,
+  getConditionNodeTitle,
   getStepNodeIcon,
   getStepNodeTitle,
+  normalizeConditionNodeData,
   normalizeStepNodeData,
   type FlowData,
   type FlowEdgePayload,
@@ -36,10 +39,8 @@ export const createConditionNode = (id: string, position: { x: number; y: number
   connectable: true,
   style: { width: 160, height: 160 },
   data: {
-    title: 'Condition?',
-    description: '',
-    yesLabel: 'Yes',
-    noLabel: 'No',
+    title: getConditionNodeTitle(''),
+    condition: createDefaultConditionFields(),
     sectionId: null,
   },
 })
@@ -55,6 +56,10 @@ export const createFreeNode = (id: string, nodeType: string, position: { x: numb
 const normalizeNodeDataForSerialize = (node: Node) => {
   if (node.type === 'recipeStepNode') {
     return normalizeStepNodeData(node.data)
+  }
+
+  if (node.type === 'conditionNode') {
+    return normalizeConditionNodeData(node.data)
   }
 
   return {
@@ -94,7 +99,11 @@ export const serializeFlowData = (nodes: Node[], edges: Edge[]) => {
 
 export const normalizeFlowNode = (node: FlowNodePayload): Node => {
   const baseData = node.data ?? {}
-  const normalizedData = node.type === 'recipeStepNode' ? normalizeStepNodeData(baseData) : baseData
+  const normalizedData = node.type === 'recipeStepNode'
+    ? normalizeStepNodeData(baseData)
+    : node.type === 'conditionNode'
+      ? normalizeConditionNodeData(baseData)
+      : baseData
 
   return {
     id: node.id,
@@ -123,7 +132,11 @@ export const createFlowDataPayload = (nodes: Node[], edges: Edge[]): FlowData =>
     selectable: node.selectable,
     deletable: node.deletable,
     style: node.style as Record<string, unknown>,
-    data: node.type === 'recipeStepNode' ? normalizeStepNodeData(node.data) : (node.data as Record<string, unknown>),
+    data: node.type === 'recipeStepNode'
+      ? normalizeStepNodeData(node.data)
+      : node.type === 'conditionNode'
+        ? normalizeConditionNodeData(node.data)
+        : (node.data as Record<string, unknown>),
   }))
 
   const normalizedEdges: FlowEdgePayload[] = edges.map((edge) => ({

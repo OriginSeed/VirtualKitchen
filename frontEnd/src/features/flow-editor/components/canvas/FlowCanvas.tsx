@@ -33,6 +33,8 @@ import {
   type EdgeKind,
 } from './FlowCanvas.helpers.ts'
 import {
+  getConditionNodeTitle,
+  normalizeConditionNodeData,
   createDefaultStepFields,
   getStepNodeIcon,
   getStepNodeTitle,
@@ -285,6 +287,31 @@ export default function FlowCanvas({ recipe, onBack }: FlowCanvasProps) {
         return {
           ...node,
           data: finalized,
+        }
+      }
+
+      if (field.startsWith('condition.')) {
+        const conditionField = field.slice(10)
+        const normalized = normalizeConditionNodeData(node.data)
+        const mergedCondition = {
+          ...normalized.condition,
+          [conditionField]: value,
+        }
+
+        const finalized = normalizeConditionNodeData({
+          ...normalized,
+          condition: mergedCondition,
+        })
+
+        return {
+          ...node,
+          data: {
+            ...finalized,
+            title: getConditionNodeTitle(finalized.condition.question),
+            description: finalized.condition.notes,
+            yesLabel: finalized.condition.successLabel,
+            noLabel: finalized.condition.failureLabel,
+          },
         }
       }
 

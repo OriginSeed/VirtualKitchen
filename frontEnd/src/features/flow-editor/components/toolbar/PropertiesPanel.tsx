@@ -22,7 +22,9 @@ import {
   buildRepeatIntervalLabel,
 } from '../../catalog/stepFieldCatalog'
 import {
+  normalizeConditionNodeData,
   normalizeStepNodeData,
+  type ConditionNodeStructuredFields,
   type StepNodeStructuredFields,
 } from '../../../../types/recipeFlow'
 
@@ -36,6 +38,7 @@ type NodeData = {
     yesLabel?: string
     noLabel?: string
     step?: StepNodeStructuredFields
+    condition?: ConditionNodeStructuredFields
   }
 }
 
@@ -60,6 +63,7 @@ export default function PropertiesPanel({ node, updateNodeField, onDeleteNode, o
   const d = node.data
   const isCondition = node.type === 'conditionNode'
   const stepData = !isCondition ? normalizeStepNodeData(d).step : undefined
+  const conditionData = isCondition ? normalizeConditionNodeData(d).condition : undefined
   const ingredientInputValue = stepData ? getIngredientSearchValue(stepData.ingredientId, stepData.customIngredientName) : ''
   const ingredientListId = `ingredient-catalog-${node.id}`
   const selectedIngredientMeta = (() => {
@@ -338,39 +342,52 @@ export default function PropertiesPanel({ node, updateNodeField, onDeleteNode, o
         {isCondition && (
           <>
             <div className="flow-properties-field">
-              <label className="flow-properties-label">Title</label>
+              <label className="flow-properties-label">Question</label>
               <input
                 className="flow-properties-input"
-                value={d.title ?? ''}
-                onChange={e => updateNodeField(node.id, 'title', e.target.value)}
+                value={conditionData?.question ?? ''}
+                onChange={e => updateNodeField(node.id, 'condition.question', e.target.value)}
+                placeholder="Is Water Boiling?"
               />
             </div>
 
             <div className="flow-properties-field">
-              <label className="flow-properties-label">Description</label>
-              <textarea
-                className="flow-properties-textarea"
-                rows={3}
-                value={d.description ?? ''}
-                onChange={e => updateNodeField(node.id, 'description', e.target.value)}
-              />
+              <label className="flow-properties-label">Expected Result</label>
+              <select
+                className="flow-properties-input"
+                value={conditionData?.expectedResult ?? 'success'}
+                onChange={e => updateNodeField(node.id, 'condition.expectedResult', e.target.value)}
+              >
+                <option value="success">Success</option>
+                <option value="failure">Failure</option>
+              </select>
             </div>
 
             <div className="flow-editor-section-heading">Branch Labels</div>
             <div className="flow-properties-field">
-              <label className="flow-properties-label">Yes Label</label>
+              <label className="flow-properties-label">Success Label</label>
               <input 
                 className="flow-properties-input flow-properties-yes-input" 
-                value={d.yesLabel ?? 'Yes'}
-                onChange={e => updateNodeField(node.id, 'yesLabel', e.target.value)}
+                value={conditionData?.successLabel ?? 'Yes'}
+                onChange={e => updateNodeField(node.id, 'condition.successLabel', e.target.value)}
               />
             </div>
             <div className="flow-properties-field">
-              <label className="flow-properties-label">No Label</label>
+              <label className="flow-properties-label">Failure Label</label>
               <input 
                 className="flow-properties-input flow-properties-no-input" 
-                value={d.noLabel ?? 'No'}
-                onChange={e => updateNodeField(node.id, 'noLabel', e.target.value)}
+                value={conditionData?.failureLabel ?? 'No'}
+                onChange={e => updateNodeField(node.id, 'condition.failureLabel', e.target.value)}
+              />
+            </div>
+            <div className="flow-properties-field">
+              <label className="flow-properties-label">Notes</label>
+              <textarea
+                className="flow-properties-textarea"
+                rows={3}
+                value={conditionData?.notes ?? ''}
+                onChange={e => updateNodeField(node.id, 'condition.notes', e.target.value)}
+                placeholder="Optional details"
               />
             </div>
             <div className="mb-3 rounded-lg border border-amber-200 bg-amber-50 px-2.5 py-2 text-[0.7rem] text-slate-500">

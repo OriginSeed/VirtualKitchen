@@ -62,8 +62,19 @@ export type RecipeStepNodeData = {
   duration?: string
 }
 
+export type ConditionExpectedResult = 'success' | 'failure'
+
+export type ConditionNodeStructuredFields = {
+  question: string
+  expectedResult: ConditionExpectedResult
+  successLabel: string
+  failureLabel: string
+  notes: string
+}
+
 export type ConditionNodeData = {
   title: string
+  condition: ConditionNodeStructuredFields
   description?: string
   yesLabel?: string
   noLabel?: string
@@ -151,6 +162,16 @@ export const createDefaultStepFields = (): StepNodeStructuredFields => ({
   repeatInterval: '',
   notes: '',
 })
+
+export const createDefaultConditionFields = (): ConditionNodeStructuredFields => ({
+  question: '',
+  expectedResult: 'success',
+  successLabel: 'Yes',
+  failureLabel: 'No',
+  notes: '',
+})
+
+export const getConditionNodeTitle = (question: string) => question.trim() || 'Condition?'
 
 export const normalizeStepNodeData = (value: unknown): RecipeStepNodeData => {
   const raw = asRecord(value)
@@ -253,3 +274,31 @@ export const normalizeStepNodeData = (value: unknown): RecipeStepNodeData => {
 
 export const getStepIngredientName = (step: StepNodeStructuredFields) =>
   getIngredientDisplayName(step.ingredientId, step.customIngredientName)
+
+export const normalizeConditionNodeData = (value: unknown): ConditionNodeData => {
+  const raw = asRecord(value)
+  const rawCondition = asRecord(raw.condition)
+
+  const question = toStringValue(rawCondition.question || raw.title)
+  const expectedRaw = toStringValue(rawCondition.expectedResult).toLowerCase()
+  const expectedResult: ConditionExpectedResult = expectedRaw === 'failure' ? 'failure' : 'success'
+
+  const successLabel = toStringValue(rawCondition.successLabel || raw.yesLabel || 'Yes')
+  const failureLabel = toStringValue(rawCondition.failureLabel || raw.noLabel || 'No')
+  const notes = toStringValue(rawCondition.notes || raw.description)
+
+  return {
+    title: getConditionNodeTitle(question),
+    condition: {
+      question,
+      expectedResult,
+      successLabel,
+      failureLabel,
+      notes,
+    },
+    description: notes,
+    yesLabel: successLabel,
+    noLabel: failureLabel,
+    sectionId: typeof raw.sectionId === 'string' || raw.sectionId === null ? raw.sectionId : null,
+  }
+}
