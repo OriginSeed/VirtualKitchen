@@ -2,7 +2,11 @@ import { useMemo, useState } from 'react'
 import type { CSSProperties, ReactNode } from 'react'
 import { Handle, Position, NodeResizeControl, useNodeId } from '@xyflow/react'
 import '../styles/flow-editor.css'
-import { normalizeStepNodeData, type RecipeStepNodeData } from '../../../types/recipeFlow'
+import {
+  getStepIngredientName,
+  normalizeStepNodeData,
+  type RecipeStepNodeData,
+} from '../../../types/recipeFlow'
 
 const defaultStyle = {
   border: '#e5e7eb',
@@ -39,7 +43,8 @@ export default function RecipeStepNode({ selected, style: nodeStyle, data, width
   const notes = step.notes.trim() || 'Add notes for this step.'
   const notesLineCount = useMemo(() => notes.split(/\r?\n/).length, [notes])
   const shouldShowReadMore = notes.length > 120 || notesLineCount > 4
-  const ingredientSummary = [step.quantity.trim(), step.unit.trim(), step.ingredient.trim(), step.specification.trim()]
+  const ingredientName = getStepIngredientName(step).trim()
+  const ingredientSummary = [step.quantity.trim(), step.unit.trim(), ingredientName, step.specification.trim()]
     .filter(Boolean)
     .join(' ')
   const heatSummary = [step.flame.trim(), step.temperature.trim()].filter(Boolean).join(' | ')

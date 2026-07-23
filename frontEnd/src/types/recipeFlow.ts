@@ -4,12 +4,19 @@ import {
   resolveStepActionId,
   type StepActionId,
 } from '../features/flow-editor/catalog/actionCatalog'
+import {
+  CUSTOM_INGREDIENT_ID,
+  getIngredientDisplayName,
+  resolveIngredientId,
+  type IngredientId,
+} from '../features/flow-editor/catalog/ingredientCatalog'
 
 export type StepAction = StepActionId
 
 export type StepNodeStructuredFields = {
   action: StepAction | ''
-  ingredient: string
+  ingredientId: IngredientId | ''
+  customIngredientName: string
   quantity: string
   unit: string
   specification: string
@@ -99,7 +106,8 @@ export const getStepNodeIcon = (action: StepAction | '') => getActionIcon(action
 
 export const createDefaultStepFields = (): StepNodeStructuredFields => ({
   action: '',
-  ingredient: '',
+  ingredientId: '',
+  customIngredientName: '',
   quantity: '',
   unit: '',
   specification: '',
@@ -118,10 +126,31 @@ export const normalizeStepNodeData = (value: unknown): RecipeStepNodeData => {
 
   const rawStep = asRecord(raw.step)
   const action = normalizeAction(rawStep.action ?? legacyTitle)
+  const rawIngredientId = resolveIngredientId(rawStep.ingredientId)
+  const rawIngredientName = toStringValue(rawStep.ingredient)
+  const rawCustomIngredientName = toStringValue(rawStep.customIngredientName)
+
+  let ingredientId: IngredientId | '' = rawIngredientId
+  let customIngredientName = rawCustomIngredientName
+
+  if (!ingredientId && rawIngredientName) {
+    const resolvedFromName = resolveIngredientId(rawIngredientName)
+    if (resolvedFromName) {
+      ingredientId = resolvedFromName
+    } else {
+      ingredientId = CUSTOM_INGREDIENT_ID
+      customIngredientName = rawIngredientName
+    }
+  }
+
+  if (ingredientId === CUSTOM_INGREDIENT_ID && !customIngredientName && rawIngredientName) {
+    customIngredientName = rawIngredientName
+  }
 
   const step: StepNodeStructuredFields = {
     action,
-    ingredient: toStringValue(rawStep.ingredient),
+    ingredientId,
+    customIngredientName,
     quantity: toStringValue(rawStep.quantity),
     unit: toStringValue(rawStep.unit),
     specification: toStringValue(rawStep.specification),
@@ -142,3 +171,6 @@ export const normalizeStepNodeData = (value: unknown): RecipeStepNodeData => {
     duration: step.duration,
   }
 }
+
+export const getStepIngredientName = (step: StepNodeStructuredFields) =>
+  getIngredientDisplayName(step.ingredientId, step.customIngredientName)

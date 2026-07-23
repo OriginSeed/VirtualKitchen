@@ -5,6 +5,14 @@ import {
   ACTION_CATEGORY_ORDER,
 } from '../../catalog/actionCatalog'
 import {
+  CUSTOM_INGREDIENT_ID,
+  INGREDIENTS_BY_CATEGORY,
+  INGREDIENT_CATEGORY_ORDER,
+  getIngredientById,
+  getIngredientSearchValue,
+  resolveIngredientInput,
+} from '../../catalog/ingredientCatalog'
+import {
   normalizeStepNodeData,
   type StepNodeStructuredFields,
 } from '../../../../types/recipeFlow'
@@ -43,6 +51,12 @@ export default function PropertiesPanel({ node, updateNodeField, onDeleteNode, o
   const d = node.data
   const isCondition = node.type === 'conditionNode'
   const stepData = !isCondition ? normalizeStepNodeData(d).step : undefined
+  const ingredientInputValue = stepData ? getIngredientSearchValue(stepData.ingredientId, stepData.customIngredientName) : ''
+  const ingredientListId = `ingredient-catalog-${node.id}`
+  const selectedIngredientMeta = (() => {
+    if (!stepData?.ingredientId || stepData.ingredientId === CUSTOM_INGREDIENT_ID) return null
+    return getIngredientById(stepData.ingredientId)
+  })()
 
   const typeIcon  = isCondition ? '🔀' : d.icon || '🍳'
   const typeLabel = isCondition ? 'Condition' : 'Step'
@@ -99,9 +113,50 @@ export default function PropertiesPanel({ node, updateNodeField, onDeleteNode, o
               <label className="flow-properties-label">Ingredient</label>
               <input
                 className="flow-properties-input"
-                value={stepData?.ingredient ?? ''}
-                onChange={e => updateNodeField(node.id, 'step.ingredient', e.target.value)}
-                placeholder="Tomato"
+                list={ingredientListId}
+                value={ingredientInputValue}
+                onChange={e => {
+                  const resolved = resolveIngredientInput(e.target.value)
+                  updateNodeField(node.id, 'step.ingredientId', resolved.ingredientId)
+                  updateNodeField(node.id, 'step.customIngredientName', resolved.customIngredientName)
+                }}
+                placeholder="Search ingredient"
+              />
+              <datalist id={ingredientListId}>
+                {INGREDIENT_CATEGORY_ORDER.map((category) =>
+                  INGREDIENTS_BY_CATEGORY[category].map((ingredient) => (
+                    <option
+                      key={ingredient.id}
+                      value={ingredient.name}
+                      label={`${ingredient.icon} ${ingredient.name} (${category})`}
+                    />
+                  ))
+                )}
+              </datalist>
+            </div>
+
+            {stepData?.ingredientId === CUSTOM_INGREDIENT_ID && (
+              <div className="flow-properties-field">
+                <label className="flow-properties-label">Custom Ingredient</label>
+                <input
+                  className="flow-properties-input"
+                  value={stepData.customIngredientName}
+                  onChange={e => updateNodeField(node.id, 'step.customIngredientName', e.target.value)}
+                  placeholder="Enter ingredient name"
+                />
+              </div>
+            )}
+
+            <div className="flow-properties-field">
+              <label className="flow-properties-label">Catalog Details</label>
+              <input
+                className="flow-properties-readonly"
+                value={
+                  selectedIngredientMeta
+                    ? `${selectedIngredientMeta.category} | Default unit: ${selectedIngredientMeta.defaultUnit}`
+                    : (stepData?.ingredientId === CUSTOM_INGREDIENT_ID ? 'Custom ingredient' : 'Not selected')
+                }
+                readOnly
               />
             </div>
 

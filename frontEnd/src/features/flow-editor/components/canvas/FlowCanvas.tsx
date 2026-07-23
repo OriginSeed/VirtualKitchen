@@ -41,6 +41,10 @@ import {
   type FlowDraftStorage,
   type FlowNodePayload,
 } from '../../../../types/recipeFlow'
+import {
+  CUSTOM_INGREDIENT_ID,
+  getIngredientDefaultUnit,
+} from '../../catalog/ingredientCatalog'
 
 // ─── Constants / helpers are moved to FlowCanvas.helpers.ts ────────────────
 const initialNodes: Node[] = []
@@ -216,6 +220,20 @@ export default function FlowCanvas({ recipe, onBack }: FlowCanvasProps) {
           ...normalized.step,
           [stepField]: value,
         }
+
+        if (stepField === 'ingredientId') {
+          if (!value) {
+            mergedStep.customIngredientName = ''
+          } else if (value === CUSTOM_INGREDIENT_ID) {
+            mergedStep.customIngredientName = mergedStep.customIngredientName
+          } else {
+            mergedStep.customIngredientName = ''
+            if (!mergedStep.unit.trim()) {
+              mergedStep.unit = getIngredientDefaultUnit(mergedStep.ingredientId)
+            }
+          }
+        }
+
         const finalized = normalizeStepNodeData({ ...normalized, step: mergedStep })
         return {
           ...node,
