@@ -1,13 +1,7 @@
 import type { CSSProperties } from 'react'
 import { Handle, Position, NodeResizeControl, useNodeId } from '@xyflow/react'
 import '../styles/flow-editor.css'
-
-type ConditionNodeData = {
-  title: string
-  description?: string
-  yesLabel?: string
-  noLabel?: string
-}
+import { normalizeConditionNodeData, type ConditionNodeData } from '../../../types/recipeFlow'
 
 type ConditionNodeProps = {
   selected: boolean
@@ -28,6 +22,8 @@ const toNumber = (value: unknown, fallback: number) => {
 
 export default function ConditionNode({ selected, style: nodeStyle, data, width: nodeWidth, height: nodeHeight }: ConditionNodeProps) {
   const nodeId = useNodeId()
+  const normalized = normalizeConditionNodeData(data)
+  const condition = normalized.condition
   const width = toNumber(nodeWidth, toNumber(nodeStyle?.width, 160))
   const height = toNumber(nodeHeight, toNumber(nodeStyle?.height, 160))
   const size = Math.min(width, height)
@@ -97,11 +93,11 @@ export default function ConditionNode({ selected, style: nodeStyle, data, width:
             letterSpacing: '-0.01em',
           }}
         >
-          {data.title || 'Condition?'}
+          {normalized.title || 'Condition?'}
         </div>
-        {data.description && (
+        {condition.notes && (
           <div style={{ fontSize: 9, color: '#b45309', marginTop: 2, lineHeight: 1.2 }}>
-            {data.description}
+            {condition.notes}
           </div>
         )}
       </div>
@@ -166,7 +162,7 @@ export default function ConditionNode({ selected, style: nodeStyle, data, width:
           padding: '1px 4px',
         }}
       >
-        {data.yesLabel || 'Yes'}
+        {condition.successLabel || 'Yes'}
       </div>
       <div
         style={{
@@ -183,7 +179,26 @@ export default function ConditionNode({ selected, style: nodeStyle, data, width:
           padding: '1px 4px',
         }}
       >
-        {data.noLabel || 'No'}
+        {condition.failureLabel || 'No'}
+      </div>
+
+      <div
+        style={{
+          position: 'absolute',
+          bottom: -20,
+          left: '50%',
+          transform: 'translateX(-50%)',
+          fontSize: 9,
+          fontWeight: 700,
+          color: condition.expectedResult === 'success' ? '#166534' : '#9f1239',
+          background: condition.expectedResult === 'success' ? '#dcfce7' : '#ffe4e6',
+          border: condition.expectedResult === 'success' ? '1px solid #86efac' : '1px solid #fda4af',
+          borderRadius: 999,
+          padding: '1px 6px',
+          whiteSpace: 'nowrap',
+        }}
+      >
+        Expect: {condition.expectedResult === 'success' ? 'Success' : 'Failure'}
       </div>
     </div>
   )

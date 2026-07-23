@@ -5,6 +5,7 @@
 
 import { apiGet, apiPost, apiDelete, apiPut } from './client'
 import { API } from './endpoints'
+import type { FlowData } from '../types/recipeFlow'
 
 export interface Recipe {
   id: number
@@ -19,19 +20,24 @@ export interface RecipeCreateRequest {
   createdBy: number
 }
 
-export interface FlowData {
-  nodes: any[]
-  edges: any[]
+export interface VisualizationRequest {
+  nodes: FlowData['nodes']
+  edges: FlowData['edges']
 }
 
-export interface VisualizationRequest {
-  nodes: any[]
-  edges: any[]
+export interface VisualizationClip {
+  clipId?: string
+  [key: string]: unknown
+}
+
+export interface VisualizationFinalClip {
+  clipId?: string
+  [key: string]: unknown
 }
 
 export interface VisualizationResponse {
-  clips?: any[]
-  finalClip?: any
+  clips?: VisualizationClip[]
+  finalClip?: VisualizationFinalClip
 }
 
 export const RecipeApi = {

@@ -59,8 +59,7 @@
   box-sizing: border-box; /* ensure padding/border do not increase width unexpectedly */
 }
 
-/* Resizer between main and properties panel */
-/* removed resizer - properties panel is static now */
+/* Resizer between main and properties panel is handled by the FlowCanvas drag divider. */
 
 /* Visual separators for clarity */
 .flow-sidebar-wrapper {

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import Sidebar from '../sidebar/Sidebar'
 import PropertiesPanel from '../toolbar/PropertiesPanel'
 import FlowEditorTopBar from '../toolbar/FlowEditorTopBar'
@@ -12,12 +12,15 @@ import {
   Background,
   Controls,
   MiniMap,
+  type ReactFlowInstance,
   useNodesState,
   useEdgesState,
   applyNodeChanges,
   addEdge,
   type Node,
   type Edge,
+  type IsValidConnection,
+  type Connection,
   type NodeChange,
   MarkerType,
   BackgroundVariant,
@@ -26,10 +29,45 @@ import {
 import '@xyflow/react/dist/style.css'
 import { nodeTypes } from '../../nodes/nodeTypes.ts'
 import {
+  createFlowDataPayload,
   createNodeForType,
+  normalizeFlowEdges,
+  normalizeFlowNode,
   serializeFlowData,
   type EdgeKind,
 } from './FlowCanvas.helpers.ts'
+import type { VisualizationResponse } from '../../../../api'
+import {
+  type FlowNodeType,
+  getFlowMetaCounts,
+  isConditionNode,
+  isParallelEndNode,
+  isParallelNode,
+  isParallelStartNode,
+  isRecipeStepNode,
+} from '../../model/flowNodeModel'
+import {
+  getParallelNodeTitle,
+  normalizeParallelNodeData,
+  getConditionNodeTitle,
+  normalizeConditionNodeData,
+  createDefaultStepFields,
+  getStepNodeIcon,
+  getStepNodeTitle,
+  normalizeStepNodeData,
+  type FlowData,
+  type FlowDraftStorage,
+  type FlowNodePayload,
+} from '../../../../types/recipeFlow'
+import {
+  CUSTOM_INGREDIENT_ID,
+  getIngredientDefaultUnit,
+} from '../../catalog/ingredientCatalog'
+import {
+  buildDurationLabel,
+  buildRepeatIntervalLabel,
+} from '../../catalog/stepFieldCatalog'
+import { getActionDisplayName, resolveStepActionId } from '../../catalog/actionCatalog'
 
 // ─── Constants / helpers are moved to FlowCanvas.helpers.ts ────────────────
 const initialNodes: Node[] = []
@@ -40,16 +78,33 @@ type FlowCanvasProps = {
   onBack: () => void
 }
 
+const getDraftKey = (recipeId: number | string) => `recipe-flow-draft:${recipeId}`
+
+const readDraftFlowData = (recipeId: number | string): FlowData | null => {
+  try {
+    const raw = localStorage.getItem(getDraftKey(recipeId))
+    if (!raw) return null
+
+    const parsed = JSON.parse(raw) as FlowDraftStorage
+    if (!parsed || parsed.version !== '2.0' || !parsed.data) return null
+    return parsed.data
+  } catch {
+    return null
+  }
+}
+
+const toFlowNodes = (rawNodes: FlowNodePayload[]): Node[] => rawNodes.map((node) => normalizeFlowNode(node))
+
 // ─── Component ────────────────────────────────────────────────────────────────
 export default function FlowCanvas({ recipe, onBack }: FlowCanvasProps) {
   const [nodes, setNodes, onNodesChange] = useNodesState(initialNodes)
   const [edges, setEdges, onEdgesChange] = useEdgesState(initialEdges)
-  const [flowMeta, setFlowMeta] = useState({ stepCount: 0, conditionCount: 0 })
+  const flowMeta = useMemo(() => getFlowMetaCounts(nodes), [nodes])
   const [history, setHistory] = useState<{ nodes: Node[]; edges: Edge[] }[]>([])
   const [future,  setFuture]  = useState<{ nodes: Node[]; edges: Edge[] }[]>([])
   const [exportJson, setExportJson] = useState<string | null>(null)
   const [copied, setCopied] = useState(false)
-  const [visualizationResult, setVisualizationResult] = useState<any>(null)
+  const [visualizationResult, setVisualizationResult] = useState<VisualizationResponse | null>(null)
   const [visualizing, setVisualizing] = useState(false)
   const dragSnapshotRef = useRef<{ nodes: Node[]; edges: Edge[] } | null>(null)
 
@@ -67,13 +122,6 @@ export default function FlowCanvas({ recipe, onBack }: FlowCanvasProps) {
 
   const selectedNode = nodes.find(n => n.selected)
   const selectedNodeId = selectedNode ? String(selectedNode.id) : null
-
-  useEffect(() => {
-    setFlowMeta({
-      stepCount: nodes.filter(node => node.type === 'recipeStepNode').length,
-      conditionCount: nodes.filter(node => node.type === 'conditionNode').length,
-    })
-  }, [nodes])
 
   const selectNodeFromSidebar = useCallback((nodeId: string | null) => {
     setNodes((ns) => {
@@ -168,7 +216,7 @@ export default function FlowCanvas({ recipe, onBack }: FlowCanvasProps) {
     }])
   }, [nodes, saveSnapshot, setNodes])
 
-  const addFreeNode = useCallback((nodeType: string) => {
+  const addFreeNode = useCallback((nodeType: FlowNodeType) => {
     saveSnapshot()
     const baseY = 140 + nodes.length * 70
     const newNode = createNodeForType(crypto.randomUUID(), nodeType, { x: 720, y: Math.min(baseY, 420) })
@@ -177,8 +225,191 @@ export default function FlowCanvas({ recipe, onBack }: FlowCanvasProps) {
 
   // ── Update field ──────────────────────────────────────────────────────────
   const updateNodeField = useCallback((nodeId: string, field: string, value: string) => {
-    setNodes(nds => nds.map(n => n.id === nodeId ? { ...n, data: { ...n.data, [field]: value } } : n))
+    setNodes((nds) => nds.map((node) => {
+      if (node.id !== nodeId) return node
+
+      if (field.startsWith('step.')) {
+        const stepField = field.slice(5)
+        const normalized = normalizeStepNodeData(node.data)
+        const mergedStep = {
+          ...createDefaultStepFields(),
+          ...normalized.step,
+          [stepField]: value,
+        }
+
+        if (stepField === 'ingredientId') {
+          if (!value) {
+            mergedStep.customIngredientName = ''
+          } else if (value === CUSTOM_INGREDIENT_ID) {
+            mergedStep.customIngredientName = mergedStep.customIngredientName
+          } else {
+            mergedStep.customIngredientName = ''
+            if (!mergedStep.unit.trim()) {
+              mergedStep.unit = getIngredientDefaultUnit(mergedStep.ingredientId)
+            }
+          }
+        }
+
+        if (stepField === 'unitOption') {
+          if (value === 'Custom') {
+            mergedStep.unit = mergedStep.customUnit.trim()
+          } else {
+            mergedStep.customUnit = ''
+            mergedStep.unit = value
+          }
+        }
+
+        if (stepField === 'customUnit') {
+          if (mergedStep.unitOption === 'Custom') {
+            mergedStep.unit = value
+          }
+        }
+
+        if (stepField === 'specificationOption') {
+          if (value === 'Custom') {
+            mergedStep.specification = mergedStep.customSpecification.trim()
+          } else {
+            mergedStep.customSpecification = ''
+            mergedStep.specification = value
+          }
+        }
+
+        if (stepField === 'customSpecification') {
+          if (mergedStep.specificationOption === 'Custom') {
+            mergedStep.specification = value
+          }
+        }
+
+        if (stepField === 'action' && !mergedStep.repeatAction) {
+          mergedStep.repeatAction = resolveStepActionId(value)
+        }
+
+        mergedStep.duration = buildDurationLabel(mergedStep.durationValue, mergedStep.durationUnit)
+        const repeatActionLabel = mergedStep.repeatAction ? getActionDisplayName(mergedStep.repeatAction) : ''
+        mergedStep.repeatInterval = buildRepeatIntervalLabel(
+          repeatActionLabel,
+          mergedStep.repeatEveryValue,
+          mergedStep.repeatEveryUnit,
+        )
+
+        const finalized = normalizeStepNodeData({ ...normalized, step: mergedStep })
+        return {
+          ...node,
+          data: finalized,
+        }
+      }
+
+      if (field.startsWith('condition.')) {
+        const conditionField = field.slice(10)
+        const normalized = normalizeConditionNodeData(node.data)
+        const mergedCondition = {
+          ...normalized.condition,
+          [conditionField]: value,
+        }
+
+        const finalized = normalizeConditionNodeData({
+          ...normalized,
+          condition: mergedCondition,
+        })
+
+        return {
+          ...node,
+          data: {
+            ...finalized,
+            title: getConditionNodeTitle(finalized.condition.question),
+            description: finalized.condition.notes,
+            yesLabel: finalized.condition.successLabel,
+            noLabel: finalized.condition.failureLabel,
+          },
+        }
+      }
+
+      if (field.startsWith('parallel.')) {
+        const parallelField = field.slice(9)
+        const fallbackKind = isParallelEndNode(node) ? 'end' : 'start'
+        const normalized = normalizeParallelNodeData(node.data, fallbackKind)
+        const mergedParallel = {
+          ...normalized.parallel,
+          [parallelField]: value,
+        }
+
+        const finalized = normalizeParallelNodeData({
+          ...normalized,
+          parallel: mergedParallel,
+        }, fallbackKind)
+
+        return {
+          ...node,
+          data: {
+            ...finalized,
+            title: getParallelNodeTitle(finalized.parallel.kind, finalized.parallel.label),
+            description: finalized.parallel.notes,
+          },
+        }
+      }
+
+      if (field === 'title' && isRecipeStepNode(node)) {
+        const normalized = normalizeStepNodeData(node.data)
+        const finalized = {
+          ...normalized,
+          title: getStepNodeTitle(normalized.step.action),
+          icon: getStepNodeIcon(normalized.step.action),
+        }
+        return {
+          ...node,
+          data: finalized,
+        }
+      }
+
+      return {
+        ...node,
+        data: {
+          ...node.data,
+          [field]: value,
+        },
+      }
+    }))
   }, [setNodes])
+
+  const isValidConnection = useCallback<IsValidConnection<Edge>>((connectionOrEdge) => {
+    const connection: Connection = {
+      source: connectionOrEdge.source,
+      target: connectionOrEdge.target,
+      sourceHandle: connectionOrEdge.sourceHandle ?? null,
+      targetHandle: connectionOrEdge.targetHandle ?? null,
+    }
+
+    if (!connection.source || !connection.target) return false
+    if (connection.source === connection.target) return false
+
+    const sourceNode = nodes.find((node) => node.id === connection.source)
+    const targetNode = nodes.find((node) => node.id === connection.target)
+    if (!sourceNode || !targetNode) return false
+
+    const duplicate = edges.some((edge) =>
+      edge.source === connection.source &&
+      edge.target === connection.target &&
+      (edge.sourceHandle ?? null) === (connection.sourceHandle ?? null) &&
+      (edge.targetHandle ?? null) === (connection.targetHandle ?? null)
+    )
+    if (duplicate) return false
+
+    const sourceOutgoing = edges.filter((edge) => edge.source === connection.source).length
+    const targetIncoming = edges.filter((edge) => edge.target === connection.target).length
+
+    if (isParallelEndNode(sourceNode) && sourceOutgoing >= 1) return false
+    if (isParallelStartNode(targetNode) && targetIncoming >= 1) return false
+
+    if (isParallelStartNode(sourceNode) && !String(connection.sourceHandle ?? '').startsWith('parallel-start-out')) {
+      return false
+    }
+
+    if (isParallelEndNode(targetNode) && !String(connection.targetHandle ?? '').startsWith('parallel-end-in')) {
+      return false
+    }
+
+    return true
+  }, [nodes, edges])
 
   // ── Export ────────────────────────────────────────────────────────────────
   const exportFlow = useCallback(() => {
@@ -205,42 +436,34 @@ export default function FlowCanvas({ recipe, onBack }: FlowCanvasProps) {
 
   useEffect(() => {
     const loadExistingFlow = async () => {
+      const draftData = readDraftFlowData(recipe.id)
+
       try {
         const flowData = await FlowApi.getFlowByRecipeId(recipe.id)
-        if (!flowData?.nodes && !flowData?.edges) return
+        const hasRemoteData = (flowData?.nodes?.length ?? 0) > 0 || (flowData?.edges?.length ?? 0) > 0
+        const sourceData = hasRemoteData ? flowData : draftData
+        if (!sourceData) return
 
-        const loadedNodes = (flowData.nodes ?? []).map((node: any) => ({
-          id: node.id,
-          type: node.type ?? 'recipeStepNode',
-          position: node.position ?? { x: 0, y: 0 },
-          data: node.data ?? {},
-          measured: node.measured,
-          parentId: node.parentId,
-          extent: node.extent,
-          draggable: node.draggable,
-          selectable: node.selectable,
-          deletable: node.deletable,
-          style: node.style,
-        }))
+        const loadedNodes = toFlowNodes((sourceData.nodes ?? []) as FlowNodePayload[])
 
-        const loadedEdges = (flowData.edges ?? []).map((edge: any) => ({
-          id: edge.id,
-          source: edge.source,
-          target: edge.target,
-          sourceHandle: edge.sourceHandle,
-          targetHandle: edge.targetHandle,
-          type: edge.type,
-          animated: edge.animated,
-          style: edge.style,
-          data: edge.data,
-          label: edge.label,
-        }))
+        const loadedEdges = normalizeFlowEdges(sourceData.edges ?? [])
 
         setNodes(loadedNodes)
         setEdges(loadedEdges)
         setHistory([])
         setFuture([])
       } catch (error) {
+        if (draftData) {
+          const loadedNodes = toFlowNodes((draftData.nodes ?? []) as FlowNodePayload[])
+          const loadedEdges = normalizeFlowEdges(draftData.edges ?? [])
+
+          setNodes(loadedNodes)
+          setEdges(loadedEdges)
+          setHistory([])
+          setFuture([])
+          return
+        }
+
         console.error('Unable to load existing flow', error)
       }
     }
@@ -250,34 +473,16 @@ export default function FlowCanvas({ recipe, onBack }: FlowCanvasProps) {
 
   const saveFlow = useCallback(async () => {
     try {
-      const flowData = {
-        nodes: nodes.map(node => ({
-          id: node.id,
-          type: node.type,
-          position: node.position,
-          measured: node.measured,
-          parentId: node.parentId,
-          extent: node.extent,
-          draggable: node.draggable,
-          selectable: node.selectable,
-          deletable: node.deletable,
-          data: node.data,
-        })),
-        edges: edges.map(edge => ({
-          id: edge.id,
-          source: edge.source,
-          target: edge.target,
-          sourceHandle: edge.sourceHandle,
-          targetHandle: edge.targetHandle,
-          type: edge.type,
-          animated: edge.animated,
-          style: edge.style,
-          data: edge.data,
-          label: edge.label,
-        })),
-      }
+      const flowData = createFlowDataPayload(nodes, edges)
 
       await FlowApi.saveFlow(recipe.id, flowData)
+      const draftRecord: FlowDraftStorage = {
+        version: '2.0',
+        recipeId: recipe.id,
+        updatedAt: new Date().toISOString(),
+        data: flowData,
+      }
+      localStorage.setItem(getDraftKey(recipe.id), JSON.stringify(draftRecord))
       console.log('Flow saved successfully')
       alert('Flow saved successfully')
     } catch (error) {
@@ -286,29 +491,23 @@ export default function FlowCanvas({ recipe, onBack }: FlowCanvasProps) {
     }
   }, [nodes, edges, recipe.id])
 
+  useEffect(() => {
+    const draftRecord: FlowDraftStorage = {
+      version: '2.0',
+      recipeId: recipe.id,
+      updatedAt: new Date().toISOString(),
+      data: createFlowDataPayload(nodes, edges),
+    }
+
+    localStorage.setItem(getDraftKey(recipe.id), JSON.stringify(draftRecord))
+  }, [nodes, edges, recipe.id])
+
   const visualizeFlow = useCallback(async () => {
     setVisualizing(true)
     setVisualizationResult(null)
 
     try {
-      const visualizationData = {
-        nodes: nodes.map(node => ({
-          id: node.id,
-          type: node.type,
-          position: node.position,
-          data: node.data,
-        })),
-        edges: edges.map(edge => ({
-          id: edge.id,
-          source: edge.source,
-          target: edge.target,
-          sourceHandle: edge.sourceHandle,
-          targetHandle: edge.targetHandle,
-          type: edge.type,
-          data: edge.data,
-          label: edge.label,
-        })),
-      }
+      const visualizationData = createFlowDataPayload(nodes, edges)
 
       const result = await VisualizationApi.generateVisualization(recipe.id, visualizationData)
       setVisualizationResult(result ?? null)
@@ -321,24 +520,26 @@ export default function FlowCanvas({ recipe, onBack }: FlowCanvasProps) {
   }, [nodes, edges, recipe.id])
 
   // ── onConnect ─────────────────────────────────────────────────────────────
-  const onConnect = useCallback((connection: any) => {
+  const onConnect = useCallback((connection: Connection) => {
+    if (!isValidConnection(connection)) return
     saveSnapshot()
     const isYes = connection.sourceHandle === 'condition-yes'
     const isNo  = connection.sourceHandle === 'condition-no'
-    const kind: EdgeKind = isYes ? 'yes' : isNo ? 'no' : 'step'
-    const colors: Record<EdgeKind, string> = { step: '#94a3b8', yes: '#16a34a', no: '#dc2626' }
+    const isParallel = String(connection.sourceHandle ?? '').startsWith('parallel-') || String(connection.targetHandle ?? '').startsWith('parallel-')
+    const kind: EdgeKind = isYes ? 'yes' : isNo ? 'no' : isParallel ? 'parallel' : 'step'
+    const colors: Record<EdgeKind, string> = { step: '#94a3b8', yes: '#16a34a', no: '#dc2626', parallel: '#7c3aed' }
     const color = colors[kind]
     setEdges(eds => addEdge({
       ...connection,
       type: 'smoothstep',
       animated: false,
-      label: isYes ? 'Yes ✓' : isNo ? 'No ✗' : undefined,
+      label: isYes ? 'Yes ✓' : isNo ? 'No ✗' : isParallel ? 'Parallel' : undefined,
       labelStyle: { fill: color, fontWeight: 700, fontSize: 11 },
-      labelBgStyle: { fill: isYes ? '#f0fdf4' : isNo ? '#fff5f5' : 'transparent' },
+      labelBgStyle: { fill: isYes ? '#f0fdf4' : isNo ? '#fff5f5' : isParallel ? '#f5f3ff' : 'transparent' },
       style: { stroke: color, strokeWidth: 1.5 },
       markerEnd: { type: MarkerType.ArrowClosed, color, width: 16, height: 16 },
     }, eds))
-  }, [saveSnapshot, setEdges])
+  }, [isValidConnection, saveSnapshot, setEdges])
 
   // ── Keyboard ──────────────────────────────────────────────────────────────
   useEffect(() => {
@@ -357,17 +558,17 @@ export default function FlowCanvas({ recipe, onBack }: FlowCanvasProps) {
   // refs for resize observation and reactflow instance
   const sidebarRef = useRef<HTMLDivElement | null>(null)
   const propsRef = useRef<HTMLDivElement | null>(null)
-  const reactFlowInstance = useRef<any>(null)
+  const reactFlowInstance = useRef<ReactFlowInstance<Node, Edge> | null>(null)
   const reactFlowWrapperRef = useRef<HTMLDivElement | null>(null)
 
   // observe size changes of the sidebar and call fitView
   useEffect(() => {
     if (!reactFlowInstance.current) return
     const ro = new ResizeObserver(() => {
-      try { reactFlowInstance.current.fitView({ padding: 0.12 }) } catch (e) { /* ignore */ }
+      try { reactFlowInstance.current?.fitView({ padding: 0.12 }) } catch (e) { /* ignore */ }
     })
     if (sidebarRef.current) ro.observe(sidebarRef.current)
-    const onWin = () => { try { reactFlowInstance.current.fitView({ padding: 0.12 }) } catch (e) {} }
+    const onWin = () => { try { reactFlowInstance.current?.fitView({ padding: 0.12 }) } catch (e) {} }
     window.addEventListener('resize', onWin)
     return () => { ro.disconnect(); window.removeEventListener('resize', onWin) }
   }, [reactFlowInstance])
@@ -425,6 +626,7 @@ export default function FlowCanvas({ recipe, onBack }: FlowCanvasProps) {
               onEdgesChange={onEdgesChange}
               nodeTypes={nodeTypes} 
               onConnect={onConnect}
+              isValidConnection={isValidConnection}
               fitView 
               fitViewOptions={{ padding: 0.12 }}
               style={{ width: '100%', height: '100%' }}
@@ -439,7 +641,8 @@ export default function FlowCanvas({ recipe, onBack }: FlowCanvasProps) {
             <MiniMap 
               style={{ borderRadius: 12, border: '1px solid #e2e8f0', boxShadow: '0 2px 8px rgba(0,0,0,0.06)' }}
               nodeColor={n => {
-                if (n.type === 'conditionNode') return '#fde68a'
+                if (isConditionNode(n)) return '#fde68a'
+                if (isParallelNode(n)) return '#ddd6fe'
                 return '#e2e8f0'
               }} 
             />
