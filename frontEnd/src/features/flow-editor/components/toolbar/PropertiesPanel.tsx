@@ -22,6 +22,8 @@ import {
   buildRepeatIntervalLabel,
 } from '../../catalog/stepFieldCatalog'
 import {
+  normalizeParallelNodeData,
+  type ParallelNodeStructuredFields,
   normalizeConditionNodeData,
   normalizeStepNodeData,
   type ConditionNodeStructuredFields,
@@ -39,6 +41,7 @@ type NodeData = {
     noLabel?: string
     step?: StepNodeStructuredFields
     condition?: ConditionNodeStructuredFields
+    parallel?: ParallelNodeStructuredFields
   }
 }
 
@@ -62,8 +65,12 @@ export default function PropertiesPanel({ node, updateNodeField, onDeleteNode, o
 
   const d = node.data
   const isCondition = node.type === 'conditionNode'
-  const stepData = !isCondition ? normalizeStepNodeData(d).step : undefined
+  const isParallel = node.type === 'parallelStartNode' || node.type === 'parallelEndNode'
+  const stepData = !isCondition && !isParallel ? normalizeStepNodeData(d).step : undefined
   const conditionData = isCondition ? normalizeConditionNodeData(d).condition : undefined
+  const parallelData = isParallel
+    ? normalizeParallelNodeData(d, node.type === 'parallelEndNode' ? 'end' : 'start').parallel
+    : undefined
   const ingredientInputValue = stepData ? getIngredientSearchValue(stepData.ingredientId, stepData.customIngredientName) : ''
   const ingredientListId = `ingredient-catalog-${node.id}`
   const selectedIngredientMeta = (() => {
@@ -75,11 +82,11 @@ export default function PropertiesPanel({ node, updateNodeField, onDeleteNode, o
     ? buildRepeatIntervalLabel(repeatActionLabel, stepData.repeatEveryValue, stepData.repeatEveryUnit)
     : ''
 
-  const typeIcon  = isCondition ? '🔀' : d.icon || '🍳'
-  const typeLabel = isCondition ? 'Condition' : 'Step'
-  const typeBg    = isCondition ? '#fffbeb' : '#f0fdf4'
-  const typeBorder= isCondition ? '#fcd34d' : '#86efac'
-  const typeColor = isCondition ? '#d97706' : '#16a34a'
+  const typeIcon  = isCondition ? '🔀' : isParallel ? '⎇' : d.icon || '🍳'
+  const typeLabel = isCondition ? 'Condition' : isParallel ? 'Parallel' : 'Step'
+  const typeBg    = isCondition ? '#fffbeb' : isParallel ? '#f5f3ff' : '#f0fdf4'
+  const typeBorder= isCondition ? '#fcd34d' : isParallel ? '#c4b5fd' : '#86efac'
+  const typeColor = isCondition ? '#d97706' : isParallel ? '#6d28d9' : '#16a34a'
 
   return (
     <div className="flow-properties-panel">
@@ -103,7 +110,7 @@ export default function PropertiesPanel({ node, updateNodeField, onDeleteNode, o
       <div className="flow-properties-content">
         <div className="flow-editor-section-heading">General</div>
 
-        {!isCondition && (
+        {!isCondition && !isParallel && (
           <>
             <div className="flow-properties-field">
               <label className="flow-properties-label">Action *</label>
@@ -333,6 +340,40 @@ export default function PropertiesPanel({ node, updateNodeField, onDeleteNode, o
                 value={stepData?.notes ?? ''}
                 onChange={e => updateNodeField(node.id, 'step.notes', e.target.value)}
                 placeholder="Any additional instructions"
+              />
+            </div>
+          </>
+        )}
+
+        {isParallel && (
+          <>
+            <div className="flow-properties-field">
+              <label className="flow-properties-label">Parallel Type</label>
+              <input
+                className="flow-properties-readonly"
+                value={parallelData?.kind === 'end' ? 'Parallel End' : 'Parallel Start'}
+                readOnly
+              />
+            </div>
+
+            <div className="flow-properties-field">
+              <label className="flow-properties-label">Label</label>
+              <input
+                className="flow-properties-input"
+                value={parallelData?.label ?? ''}
+                onChange={e => updateNodeField(node.id, 'parallel.label', e.target.value)}
+                placeholder={parallelData?.kind === 'end' ? 'Parallel End' : 'Parallel Start'}
+              />
+            </div>
+
+            <div className="flow-properties-field">
+              <label className="flow-properties-label">Notes</label>
+              <textarea
+                className="flow-properties-textarea"
+                rows={3}
+                value={parallelData?.notes ?? ''}
+                onChange={e => updateNodeField(node.id, 'parallel.notes', e.target.value)}
+                placeholder="Optional context"
               />
             </div>
           </>

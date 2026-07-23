@@ -1,18 +1,21 @@
 import type { Edge, Node } from '@xyflow/react'
 import {
   createDefaultConditionFields,
+  createDefaultParallelFields,
   createDefaultStepFields,
   getConditionNodeTitle,
+  getParallelNodeTitle,
   getStepNodeIcon,
   getStepNodeTitle,
   normalizeConditionNodeData,
+  normalizeParallelNodeData,
   normalizeStepNodeData,
   type FlowData,
   type FlowEdgePayload,
   type FlowNodePayload,
 } from '../../../../types/recipeFlow'
 
-export type EdgeKind = 'step' | 'yes' | 'no'
+export type EdgeKind = 'step' | 'yes' | 'no' | 'parallel'
 
 export const createRecipeStepNode = (id: string, position: { x: number; y: number }): Node => ({
   id,
@@ -45,10 +48,44 @@ export const createConditionNode = (id: string, position: { x: number; y: number
   },
 })
 
+export const createParallelStartNode = (id: string, position: { x: number; y: number }): Node => ({
+  id,
+  type: 'parallelStartNode',
+  position,
+  draggable: true,
+  selectable: true,
+  connectable: true,
+  style: { width: 180, height: 92 },
+  data: {
+    title: getParallelNodeTitle('start', ''),
+    parallel: createDefaultParallelFields('start'),
+    sectionId: null,
+  },
+})
+
+export const createParallelEndNode = (id: string, position: { x: number; y: number }): Node => ({
+  id,
+  type: 'parallelEndNode',
+  position,
+  draggable: true,
+  selectable: true,
+  connectable: true,
+  style: { width: 180, height: 92 },
+  data: {
+    title: getParallelNodeTitle('end', ''),
+    parallel: createDefaultParallelFields('end'),
+    sectionId: null,
+  },
+})
+
 export const createNodeForType = (id: string, nodeType: string, position: { x: number; y: number }): Node =>
   nodeType === 'conditionNode'
     ? createConditionNode(id, position)
-    : createRecipeStepNode(id, position)
+    : nodeType === 'parallelStartNode'
+      ? createParallelStartNode(id, position)
+      : nodeType === 'parallelEndNode'
+        ? createParallelEndNode(id, position)
+        : createRecipeStepNode(id, position)
 
 export const createFreeNode = (id: string, nodeType: string, position: { x: number; y: number }): Node =>
   createNodeForType(id, nodeType, position)
@@ -60,6 +97,14 @@ const normalizeNodeDataForSerialize = (node: Node) => {
 
   if (node.type === 'conditionNode') {
     return normalizeConditionNodeData(node.data)
+  }
+
+  if (node.type === 'parallelStartNode') {
+    return normalizeParallelNodeData(node.data, 'start')
+  }
+
+  if (node.type === 'parallelEndNode') {
+    return normalizeParallelNodeData(node.data, 'end')
   }
 
   return {
@@ -103,6 +148,10 @@ export const normalizeFlowNode = (node: FlowNodePayload): Node => {
     ? normalizeStepNodeData(baseData)
     : node.type === 'conditionNode'
       ? normalizeConditionNodeData(baseData)
+      : node.type === 'parallelStartNode'
+        ? normalizeParallelNodeData(baseData, 'start')
+        : node.type === 'parallelEndNode'
+          ? normalizeParallelNodeData(baseData, 'end')
       : baseData
 
   return {
@@ -136,6 +185,10 @@ export const createFlowDataPayload = (nodes: Node[], edges: Edge[]): FlowData =>
       ? normalizeStepNodeData(node.data)
       : node.type === 'conditionNode'
         ? normalizeConditionNodeData(node.data)
+        : node.type === 'parallelStartNode'
+          ? normalizeParallelNodeData(node.data, 'start')
+          : node.type === 'parallelEndNode'
+            ? normalizeParallelNodeData(node.data, 'end')
         : (node.data as Record<string, unknown>),
   }))
 

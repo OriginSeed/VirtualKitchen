@@ -18,6 +18,8 @@ import {
   addEdge,
   type Node,
   type Edge,
+  type IsValidConnection,
+  type Connection,
   type NodeChange,
   MarkerType,
   BackgroundVariant,
@@ -33,6 +35,8 @@ import {
   type EdgeKind,
 } from './FlowCanvas.helpers.ts'
 import {
+  getParallelNodeTitle,
+  normalizeParallelNodeData,
   getConditionNodeTitle,
   normalizeConditionNodeData,
   createDefaultStepFields,
@@ -83,7 +87,7 @@ const toFlowNodes = (rawNodes: FlowNodePayload[]): Node[] => rawNodes.map((node)
 export default function FlowCanvas({ recipe, onBack }: FlowCanvasProps) {
   const [nodes, setNodes, onNodesChange] = useNodesState(initialNodes)
   const [edges, setEdges, onEdgesChange] = useEdgesState(initialEdges)
-  const [flowMeta, setFlowMeta] = useState({ stepCount: 0, conditionCount: 0 })
+  const [flowMeta, setFlowMeta] = useState({ stepCount: 0, conditionCount: 0, parallelCount: 0 })
   const [history, setHistory] = useState<{ nodes: Node[]; edges: Edge[] }[]>([])
   const [future,  setFuture]  = useState<{ nodes: Node[]; edges: Edge[] }[]>([])
   const [exportJson, setExportJson] = useState<string | null>(null)
@@ -111,6 +115,7 @@ export default function FlowCanvas({ recipe, onBack }: FlowCanvasProps) {
     setFlowMeta({
       stepCount: nodes.filter(node => node.type === 'recipeStepNode').length,
       conditionCount: nodes.filter(node => node.type === 'conditionNode').length,
+      parallelCount: nodes.filter(node => node.type === 'parallelStartNode' || node.type === 'parallelEndNode').length,
     })
   }, [nodes])
 
@@ -315,6 +320,30 @@ export default function FlowCanvas({ recipe, onBack }: FlowCanvasProps) {
         }
       }
 
+      if (field.startsWith('parallel.')) {
+        const parallelField = field.slice(9)
+        const fallbackKind = node.type === 'parallelEndNode' ? 'end' : 'start'
+        const normalized = normalizeParallelNodeData(node.data, fallbackKind)
+        const mergedParallel = {
+          ...normalized.parallel,
+          [parallelField]: value,
+        }
+
+        const finalized = normalizeParallelNodeData({
+          ...normalized,
+          parallel: mergedParallel,
+        }, fallbackKind)
+
+        return {
+          ...node,
+          data: {
+            ...finalized,
+            title: getParallelNodeTitle(finalized.parallel.kind, finalized.parallel.label),
+            description: finalized.parallel.notes,
+          },
+        }
+      }
+
       if (field === 'title' && node.type === 'recipeStepNode') {
         const normalized = normalizeStepNodeData(node.data)
         const finalized = {
@@ -337,6 +366,46 @@ export default function FlowCanvas({ recipe, onBack }: FlowCanvasProps) {
       }
     }))
   }, [setNodes])
+
+  const isValidConnection = useCallback<IsValidConnection<Edge>>((connectionOrEdge) => {
+    const connection: Connection = {
+      source: connectionOrEdge.source,
+      target: connectionOrEdge.target,
+      sourceHandle: connectionOrEdge.sourceHandle ?? null,
+      targetHandle: connectionOrEdge.targetHandle ?? null,
+    }
+
+    if (!connection.source || !connection.target) return false
+    if (connection.source === connection.target) return false
+
+    const sourceNode = nodes.find((node) => node.id === connection.source)
+    const targetNode = nodes.find((node) => node.id === connection.target)
+    if (!sourceNode || !targetNode) return false
+
+    const duplicate = edges.some((edge) =>
+      edge.source === connection.source &&
+      edge.target === connection.target &&
+      (edge.sourceHandle ?? null) === (connection.sourceHandle ?? null) &&
+      (edge.targetHandle ?? null) === (connection.targetHandle ?? null)
+    )
+    if (duplicate) return false
+
+    const sourceOutgoing = edges.filter((edge) => edge.source === connection.source).length
+    const targetIncoming = edges.filter((edge) => edge.target === connection.target).length
+
+    if (sourceNode.type === 'parallelEndNode' && sourceOutgoing >= 1) return false
+    if (targetNode.type === 'parallelStartNode' && targetIncoming >= 1) return false
+
+    if (sourceNode.type === 'parallelStartNode' && !String(connection.sourceHandle ?? '').startsWith('parallel-start-out')) {
+      return false
+    }
+
+    if (targetNode.type === 'parallelEndNode' && !String(connection.targetHandle ?? '').startsWith('parallel-end-in')) {
+      return false
+    }
+
+    return true
+  }, [nodes, edges])
 
   // ── Export ────────────────────────────────────────────────────────────────
   const exportFlow = useCallback(() => {
@@ -469,24 +538,26 @@ export default function FlowCanvas({ recipe, onBack }: FlowCanvasProps) {
   }, [nodes, edges, recipe.id])
 
   // ── onConnect ─────────────────────────────────────────────────────────────
-  const onConnect = useCallback((connection: any) => {
+  const onConnect = useCallback((connection: Connection) => {
+    if (!isValidConnection(connection)) return
     saveSnapshot()
     const isYes = connection.sourceHandle === 'condition-yes'
     const isNo  = connection.sourceHandle === 'condition-no'
-    const kind: EdgeKind = isYes ? 'yes' : isNo ? 'no' : 'step'
-    const colors: Record<EdgeKind, string> = { step: '#94a3b8', yes: '#16a34a', no: '#dc2626' }
+    const isParallel = String(connection.sourceHandle ?? '').startsWith('parallel-') || String(connection.targetHandle ?? '').startsWith('parallel-')
+    const kind: EdgeKind = isYes ? 'yes' : isNo ? 'no' : isParallel ? 'parallel' : 'step'
+    const colors: Record<EdgeKind, string> = { step: '#94a3b8', yes: '#16a34a', no: '#dc2626', parallel: '#7c3aed' }
     const color = colors[kind]
     setEdges(eds => addEdge({
       ...connection,
       type: 'smoothstep',
       animated: false,
-      label: isYes ? 'Yes ✓' : isNo ? 'No ✗' : undefined,
+      label: isYes ? 'Yes ✓' : isNo ? 'No ✗' : isParallel ? 'Parallel' : undefined,
       labelStyle: { fill: color, fontWeight: 700, fontSize: 11 },
-      labelBgStyle: { fill: isYes ? '#f0fdf4' : isNo ? '#fff5f5' : 'transparent' },
+      labelBgStyle: { fill: isYes ? '#f0fdf4' : isNo ? '#fff5f5' : isParallel ? '#f5f3ff' : 'transparent' },
       style: { stroke: color, strokeWidth: 1.5 },
       markerEnd: { type: MarkerType.ArrowClosed, color, width: 16, height: 16 },
     }, eds))
-  }, [saveSnapshot, setEdges])
+  }, [isValidConnection, saveSnapshot, setEdges])
 
   // ── Keyboard ──────────────────────────────────────────────────────────────
   useEffect(() => {
@@ -573,6 +644,7 @@ export default function FlowCanvas({ recipe, onBack }: FlowCanvasProps) {
               onEdgesChange={onEdgesChange}
               nodeTypes={nodeTypes} 
               onConnect={onConnect}
+              isValidConnection={isValidConnection}
               fitView 
               fitViewOptions={{ padding: 0.12 }}
               style={{ width: '100%', height: '100%' }}
@@ -588,6 +660,7 @@ export default function FlowCanvas({ recipe, onBack }: FlowCanvasProps) {
               style={{ borderRadius: 12, border: '1px solid #e2e8f0', boxShadow: '0 2px 8px rgba(0,0,0,0.06)' }}
               nodeColor={n => {
                 if (n.type === 'conditionNode') return '#fde68a'
+                if (n.type === 'parallelStartNode' || n.type === 'parallelEndNode') return '#ddd6fe'
                 return '#e2e8f0'
               }} 
             />

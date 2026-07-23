@@ -81,7 +81,22 @@ export type ConditionNodeData = {
   sectionId?: string | null
 }
 
-export type FlowNodeData = RecipeStepNodeData | ConditionNodeData | Record<string, unknown>
+export type ParallelNodeKind = 'start' | 'end'
+
+export type ParallelNodeStructuredFields = {
+  kind: ParallelNodeKind
+  label: string
+  notes: string
+}
+
+export type ParallelNodeData = {
+  title: string
+  parallel: ParallelNodeStructuredFields
+  description?: string
+  sectionId?: string | null
+}
+
+export type FlowNodeData = RecipeStepNodeData | ConditionNodeData | ParallelNodeData | Record<string, unknown>
 
 export type FlowNodePayload = {
   id: string
@@ -171,7 +186,19 @@ export const createDefaultConditionFields = (): ConditionNodeStructuredFields =>
   notes: '',
 })
 
+export const createDefaultParallelFields = (kind: ParallelNodeKind): ParallelNodeStructuredFields => ({
+  kind,
+  label: kind === 'start' ? 'Parallel Start' : 'Parallel End',
+  notes: '',
+})
+
 export const getConditionNodeTitle = (question: string) => question.trim() || 'Condition?'
+
+export const getParallelNodeTitle = (kind: ParallelNodeKind, label: string) => {
+  const trimmed = label.trim()
+  if (trimmed) return trimmed
+  return kind === 'start' ? 'Parallel Start' : 'Parallel End'
+}
 
 export const normalizeStepNodeData = (value: unknown): RecipeStepNodeData => {
   const raw = asRecord(value)
@@ -299,6 +326,27 @@ export const normalizeConditionNodeData = (value: unknown): ConditionNodeData =>
     description: notes,
     yesLabel: successLabel,
     noLabel: failureLabel,
+    sectionId: typeof raw.sectionId === 'string' || raw.sectionId === null ? raw.sectionId : null,
+  }
+}
+
+export const normalizeParallelNodeData = (value: unknown, fallbackKind: ParallelNodeKind = 'start'): ParallelNodeData => {
+  const raw = asRecord(value)
+  const rawParallel = asRecord(raw.parallel)
+
+  const rawKind = toStringValue(rawParallel.kind).toLowerCase()
+  const kind: ParallelNodeKind = rawKind === 'end' ? 'end' : rawKind === 'start' ? 'start' : fallbackKind
+  const label = toStringValue(rawParallel.label || raw.title)
+  const notes = toStringValue(rawParallel.notes || raw.description)
+
+  return {
+    title: getParallelNodeTitle(kind, label),
+    parallel: {
+      kind,
+      label: label.trim() || (kind === 'start' ? 'Parallel Start' : 'Parallel End'),
+      notes,
+    },
+    description: notes,
     sectionId: typeof raw.sectionId === 'string' || raw.sectionId === null ? raw.sectionId : null,
   }
 }

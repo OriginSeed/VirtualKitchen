@@ -7,12 +7,13 @@ type SidebarProps = {
   edges: Edge[]
   selectedNodeId?: string | null
   onSelectNode?: (id: string | null) => void
-  flowMeta?: { stepCount: number; conditionCount: number }
+  flowMeta?: { stepCount: number; conditionCount: number; parallelCount: number }
 }
 
 export default function Sidebar({ onAddNode, nodes, edges, selectedNodeId, onSelectNode, flowMeta }: SidebarProps) {
   const stepNodes = nodes.filter(node => node.type === 'recipeStepNode')
   const conditionNodes = nodes.filter(node => node.type === 'conditionNode')
+  const parallelNodes = nodes.filter(node => node.type === 'parallelStartNode' || node.type === 'parallelEndNode')
 
   return (
     <div className="flow-sidebar flex min-w-[10rem] max-w-[26rem] flex-col overflow-y-auto border-r border-[var(--flow-border)] bg-white">
@@ -28,7 +29,7 @@ export default function Sidebar({ onAddNode, nodes, edges, selectedNodeId, onSel
 
       <div className="flex-shrink-0 px-2.5 pt-2.5">
         <div className="flow-editor-section-heading mb-2 px-1">Quick Add</div>
-        <div className="flex gap-1.5">
+        <div className="mb-1.5 flex gap-1.5">
           <button
             onClick={() => onAddNode('recipeStepNode')}
             className="flow-editor-action-button flex-1 border-sky-200 bg-sky-50 px-2 py-2 text-[0.7rem] font-semibold text-sky-700"
@@ -44,6 +45,22 @@ export default function Sidebar({ onAddNode, nodes, edges, selectedNodeId, onSel
             + Condition
           </button>
         </div>
+        <div className="flex gap-1.5">
+          <button
+            onClick={() => onAddNode('parallelStartNode')}
+            className="flow-editor-action-button flex-1 border-violet-200 bg-violet-50 px-2 py-2 text-[0.7rem] font-semibold text-violet-700"
+            title="Add a parallel start node"
+          >
+            + Parallel Start
+          </button>
+          <button
+            onClick={() => onAddNode('parallelEndNode')}
+            className="flow-editor-action-button flex-1 border-violet-200 bg-violet-50 px-2 py-2 text-[0.7rem] font-semibold text-violet-700"
+            title="Add a parallel end node"
+          >
+            + Parallel End
+          </button>
+        </div>
       </div>
 
       <div className="flex-shrink-0 border-b border-[var(--flow-border)] px-2.5 py-2.5">
@@ -56,6 +73,10 @@ export default function Sidebar({ onAddNode, nodes, edges, selectedNodeId, onSel
           <div className="rounded-lg bg-white px-2 py-2">
             <div className="text-[0.62rem] uppercase tracking-[0.16em] text-slate-400">Conditions</div>
             <div className="mt-1 text-base font-semibold text-slate-800">{flowMeta?.conditionCount ?? conditionNodes.length}</div>
+          </div>
+          <div className="col-span-2 rounded-lg bg-white px-2 py-2">
+            <div className="text-[0.62rem] uppercase tracking-[0.16em] text-slate-400">Parallel</div>
+            <div className="mt-1 text-base font-semibold text-slate-800">{flowMeta?.parallelCount ?? parallelNodes.length}</div>
           </div>
           <div className="col-span-2 rounded-lg bg-white px-2 py-2">
             <div className="text-[0.62rem] uppercase tracking-[0.16em] text-slate-400">Connections</div>
