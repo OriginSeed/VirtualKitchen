@@ -58,9 +58,11 @@ import {
   type FlowData,
   type FlowDraftStorage,
   type FlowNodePayload,
+  type ConditionNodeStructuredFields,
+  type ParallelNodeStructuredFields,
+  type StepNodeStructuredFields,
 } from '../../../../types/recipeFlow'
 import {
-  CUSTOM_INGREDIENT_ID,
   getIngredientDefaultUnit,
 } from '../../catalog/ingredientCatalog'
 import {
@@ -76,6 +78,21 @@ const initialEdges: Edge[] = []
 type FlowCanvasProps = {
   recipe: { id: number; title: string }
   onBack: () => void
+}
+
+type SelectedPanelNode = {
+  id: string
+  type?: string
+  data: {
+    title?: string
+    description?: string
+    icon?: string
+    yesLabel?: string
+    noLabel?: string
+    step?: StepNodeStructuredFields
+    condition?: ConditionNodeStructuredFields
+    parallel?: ParallelNodeStructuredFields
+  }
 }
 
 const getDraftKey = (recipeId: number | string) => `recipe-flow-draft:${recipeId}`
@@ -240,8 +257,6 @@ export default function FlowCanvas({ recipe, onBack }: FlowCanvasProps) {
         if (stepField === 'ingredientId') {
           if (!value) {
             mergedStep.customIngredientName = ''
-          } else if (value === CUSTOM_INGREDIENT_ID) {
-            mergedStep.customIngredientName = mergedStep.customIngredientName
           } else {
             mergedStep.customIngredientName = ''
             if (!mergedStep.unit.trim()) {
@@ -369,7 +384,20 @@ export default function FlowCanvas({ recipe, onBack }: FlowCanvasProps) {
         },
       }
     }))
-  }, [setNodes])
+
+    if (field === 'condition.successLabel' || field === 'condition.failureLabel') {
+      const sourceHandle = field === 'condition.successLabel' ? 'condition-yes' : 'condition-no'
+      const fallbackLabel = field === 'condition.successLabel' ? 'Yes' : 'No'
+
+      setEdges((currentEdges) => currentEdges.map((edge) => {
+        if (edge.source !== nodeId || edge.sourceHandle !== sourceHandle) return edge
+        return {
+          ...edge,
+          label: value.trim() || fallbackLabel,
+        }
+      }))
+    }
+  }, [setEdges, setNodes])
 
   const isValidConnection = useCallback<IsValidConnection<Edge>>((connectionOrEdge) => {
     const connection: Connection = {
@@ -523,6 +551,10 @@ export default function FlowCanvas({ recipe, onBack }: FlowCanvasProps) {
   const onConnect = useCallback((connection: Connection) => {
     if (!isValidConnection(connection)) return
     saveSnapshot()
+    const sourceNode = nodes.find((node) => node.id === connection.source)
+    const conditionLabels = sourceNode && isConditionNode(sourceNode)
+      ? normalizeConditionNodeData(sourceNode.data).condition
+      : null
     const isYes = connection.sourceHandle === 'condition-yes'
     const isNo  = connection.sourceHandle === 'condition-no'
     const isParallel = String(connection.sourceHandle ?? '').startsWith('parallel-') || String(connection.targetHandle ?? '').startsWith('parallel-')
@@ -533,13 +565,19 @@ export default function FlowCanvas({ recipe, onBack }: FlowCanvasProps) {
       ...connection,
       type: 'smoothstep',
       animated: false,
-      label: isYes ? 'Yes ✓' : isNo ? 'No ✗' : isParallel ? 'Parallel' : undefined,
+      label: isYes
+        ? conditionLabels?.successLabel || 'Yes'
+        : isNo
+          ? conditionLabels?.failureLabel || 'No'
+          : isParallel
+            ? 'Parallel'
+            : undefined,
       labelStyle: { fill: color, fontWeight: 700, fontSize: 11 },
       labelBgStyle: { fill: isYes ? '#f0fdf4' : isNo ? '#fff5f5' : isParallel ? '#f5f3ff' : 'transparent' },
       style: { stroke: color, strokeWidth: 1.5 },
       markerEnd: { type: MarkerType.ArrowClosed, color, width: 16, height: 16 },
     }, eds))
-  }, [isValidConnection, saveSnapshot, setEdges])
+  }, [isValidConnection, nodes, saveSnapshot, setEdges])
 
   // ── Keyboard ──────────────────────────────────────────────────────────────
   useEffect(() => {
@@ -560,18 +598,21 @@ export default function FlowCanvas({ recipe, onBack }: FlowCanvasProps) {
   const propsRef = useRef<HTMLDivElement | null>(null)
   const reactFlowInstance = useRef<ReactFlowInstance<Node, Edge> | null>(null)
   const reactFlowWrapperRef = useRef<HTMLDivElement | null>(null)
+  const fitCanvasView = useCallback(() => {
+    reactFlowInstance.current?.fitView({ padding: 0.12 })
+  }, [])
 
   // observe size changes of the sidebar and call fitView
   useEffect(() => {
     if (!reactFlowInstance.current) return
     const ro = new ResizeObserver(() => {
-      try { reactFlowInstance.current?.fitView({ padding: 0.12 }) } catch (e) { /* ignore */ }
+      fitCanvasView()
     })
     if (sidebarRef.current) ro.observe(sidebarRef.current)
-    const onWin = () => { try { reactFlowInstance.current?.fitView({ padding: 0.12 }) } catch (e) {} }
+    const onWin = () => { fitCanvasView() }
     window.addEventListener('resize', onWin)
     return () => { ro.disconnect(); window.removeEventListener('resize', onWin) }
-  }, [reactFlowInstance])
+  }, [fitCanvasView])
 
   return (
     <div className="flow-canvas-container">
@@ -619,7 +660,7 @@ export default function FlowCanvas({ recipe, onBack }: FlowCanvasProps) {
           )}
           
             <ReactFlow
-              onInit={inst => { reactFlowInstance.current = inst; try { inst.fitView({ padding: 0.12 }) } catch (e) {} }}
+              onInit={inst => { reactFlowInstance.current = inst; fitCanvasView() }}
               nodes={nodes} 
               edges={edges}
               onNodesChange={handleNodesChange} 
@@ -669,7 +710,7 @@ export default function FlowCanvas({ recipe, onBack }: FlowCanvasProps) {
               // throttle fitView with rAF
               if (rafId == null) {
                 rafId = window.requestAnimationFrame(() => {
-                  try { reactFlowInstance.current?.fitView({ padding: 0.12 }) } catch (e) {}
+                  fitCanvasView()
                   rafId = null
                 })
               }
@@ -690,7 +731,11 @@ export default function FlowCanvas({ recipe, onBack }: FlowCanvasProps) {
       {/* Properties Panel - Right Sidebar (wrapped so resizer can resize it) */}
       <div ref={propsRef} className="flow-properties-wrapper">
         <PropertiesPanel
-          node={selectedNode as any}
+          node={selectedNode ? {
+            id: String(selectedNode.id),
+            type: selectedNode.type,
+            data: selectedNode.data as SelectedPanelNode['data'],
+          } : undefined}
           updateNodeField={updateNodeField}
           onDeleteNode={deleteNode}
           onDuplicateNode={duplicateNode}

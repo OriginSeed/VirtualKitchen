@@ -10,20 +10,28 @@ import com.processVisualisation.virtualKitchen.repository.UserRepository;
 import com.processVisualisation.virtualKitchen.service.IUserService;
 import com.processVisualisation.virtualKitchen.service.SequenceGeneratorService;
 
-import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 
 @Service
 public class UserServiceImpl implements IUserService {
 
-    @Autowired
-    private UserRepository userRepository;
+    private final UserRepository userRepository;
+    private final SequenceGeneratorService sequenceGeneratorService;
+    private final UserMapper userMapper;
+    private final PasswordEncoder passwordEncoder;
 
-    @Autowired
-    private SequenceGeneratorService sequenceGeneratorService;
-
-    @Autowired
-    private UserMapper userMapper;
+    public UserServiceImpl(
+            UserRepository userRepository,
+            SequenceGeneratorService sequenceGeneratorService,
+            UserMapper userMapper,
+            PasswordEncoder passwordEncoder
+    ) {
+        this.userRepository = userRepository;
+        this.sequenceGeneratorService = sequenceGeneratorService;
+        this.userMapper = userMapper;
+        this.passwordEncoder = passwordEncoder;
+    }
 
     @Override
     public UserResponseDTO createUser(UserRequestDTO request) {
@@ -34,9 +42,7 @@ public class UserServiceImpl implements IUserService {
 
         User user = userMapper.toEntity(request);
         user.setId(sequenceGeneratorService.generateSequence(User.SEQUENCE_NAME));
-
-        // TODO: encode password using BCrypt
-        // user.setPasswordHash(passwordEncoder.encode(request.getPassword()));
+        user.setPasswordHash(passwordEncoder.encode(request.getPassword()));
 
         User saved = userRepository.save(user);
         return userMapper.toDTO(saved);

@@ -1,12 +1,13 @@
-import { useMemo, useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import type { CSSProperties, ReactNode } from 'react'
-import { Handle, Position, NodeResizeControl, useNodeId } from '@xyflow/react'
+import { Handle, Position, NodeResizeControl, useNodeId, useUpdateNodeInternals } from '@xyflow/react'
 import '../styles/flow-editor.css'
 import {
   getStepIngredientName,
   normalizeStepNodeData,
   type RecipeStepNodeData,
 } from '../../../types/recipeFlow'
+import { getVisibleStepDetailRows } from '../catalog/stepActionPresentation'
 
 const defaultStyle = {
   border: '#e5e7eb',
@@ -35,34 +36,68 @@ const toNumber = (value: unknown, fallback: number) => {
 export default function RecipeStepNode({ selected, style: nodeStyle, data, width: nodeWidth, height: nodeHeight }: RecipeStepNodeProps) {
   const style = defaultStyle
   const nodeId = useNodeId()
+  const updateNodeInternals = useUpdateNodeInternals()
+  const containerRef = useRef<HTMLDivElement | null>(null)
+  const notesRef = useRef<HTMLDivElement | null>(null)
   const [isNotesExpanded, setIsNotesExpanded] = useState(false)
+  const [shouldShowReadMore, setShouldShowReadMore] = useState(false)
   const normalized = normalizeStepNodeData(data)
   const step = normalized.step
   const width = toNumber(nodeWidth, toNumber(nodeStyle?.width, 320))
   const height = toNumber(nodeHeight, toNumber(nodeStyle?.height, 190))
   const notes = step.notes.trim() || 'Add notes for this step.'
-  const notesLineCount = useMemo(() => notes.split(/\r?\n/).length, [notes])
-  const shouldShowReadMore = notes.length > 120 || notesLineCount > 4
   const ingredientName = getStepIngredientName(step).trim()
   const ingredientSummary = [step.quantity.trim(), step.unit.trim(), ingredientName, step.specification.trim()]
     .filter(Boolean)
     .join(' ')
-  const heatSummary = [step.flame.trim(), step.temperature.trim()].filter(Boolean).join(' | ')
-  const timingSummary = [step.duration.trim(), step.repeatInterval.trim()]
-    .filter(Boolean)
-    .join(' | ')
+  const detailRows = getVisibleStepDetailRows(step)
   const minimumWidth = 260
   const minimumHeight = 190
-  const computedWidth = Math.max(width, minimumWidth)
-  const computedHeight = Math.max(height, minimumHeight)
+  const computedWidth = Math.min(Math.max(width, minimumWidth), 520)
+  const computedMinHeight = Math.max(height, minimumHeight)
+
+  const syncNodeLayout = useCallback(() => {
+    if (nodeId) {
+      updateNodeInternals(nodeId)
+    }
+
+    const noteElement = notesRef.current
+    if (!noteElement) {
+      setShouldShowReadMore(false)
+      return
+    }
+
+    setShouldShowReadMore(noteElement.scrollHeight > noteElement.clientHeight + 1)
+  }, [nodeId, updateNodeInternals])
+
+  useLayoutEffect(() => {
+    syncNodeLayout()
+  }, [syncNodeLayout, computedWidth, computedMinHeight, notes, detailRows.length])
+
+  useEffect(() => {
+    const containerElement = containerRef.current
+    if (!containerElement) return
+
+    const observer = new ResizeObserver(() => {
+      syncNodeLayout()
+    })
+
+    observer.observe(containerElement)
+    if (notesRef.current) {
+      observer.observe(notesRef.current)
+    }
+
+    return () => observer.disconnect()
+  }, [syncNodeLayout])
 
   return (
     <div
+      ref={containerRef}
       style={{
         width: computedWidth,
         minWidth: minimumWidth,
         maxWidth: 520,
-        height: computedHeight,
+        minHeight: computedMinHeight,
         background: 'white',
         borderRadius: 12,
         border: `1.5px solid ${selected ? style.accent : '#e5e7eb'}`,
@@ -87,6 +122,8 @@ export default function RecipeStepNode({ selected, style: nodeStyle, data, width
           minHeight={minimumHeight}
           maxWidth={520}
           maxHeight={640}
+          onResize={() => syncNodeLayout()}
+          onResizeEnd={() => syncNodeLayout()}
           position="bottom-right"
           style={{
             background: style.accent,
@@ -132,6 +169,7 @@ export default function RecipeStepNode({ selected, style: nodeStyle, data, width
             alignItems: 'center',
             gap: 8,
             minWidth: 0,
+            flex: 1,
           }}
         >
           <div
@@ -153,6 +191,8 @@ export default function RecipeStepNode({ selected, style: nodeStyle, data, width
           <div
             style={{
               minWidth: 0,
+              flex: 1,
+              width: '100%',
             }}
           >
             <div
@@ -169,6 +209,8 @@ export default function RecipeStepNode({ selected, style: nodeStyle, data, width
                 WebkitBoxOrient: 'vertical',
                 WebkitLineClamp: 2,
                 wordBreak: 'break-word',
+                overflowWrap: 'anywhere',
+                width: '100%',
               }}
             >
               {normalized.title || 'Select Action'}
@@ -212,48 +254,7 @@ export default function RecipeStepNode({ selected, style: nodeStyle, data, width
 
       <div
         style={{
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          gap: 8,
-          minHeight: 28,
-          padding: '0 2px',
-        }}
-      >
-        <div
-          style={{
-            fontSize: 10,
-            fontWeight: 700,
-            color: '#64748b',
-            letterSpacing: '0.04em',
-            textTransform: 'uppercase',
-          }}
-        >
-          Time
-        </div>
-        <div
-          style={{
-            display: 'inline-flex',
-            alignItems: 'center',
-            gap: 4,
-            background: style.badge,
-            border: `1px solid ${style.border}`,
-            borderRadius: 20,
-            padding: '4px 10px',
-            fontSize: 10,
-            color: style.accent,
-            fontWeight: 700,
-            flexShrink: 0,
-          }}
-        >
-          <span>⏱</span>
-          {step.duration?.trim() || 'Not set'}
-        </div>
-      </div>
-
-      <div
-        style={{
-          flex: 1,
+          width: '100%',
           minHeight: 78,
           borderRadius: 10,
           border: `1px solid ${style.border}`,
@@ -262,7 +263,7 @@ export default function RecipeStepNode({ selected, style: nodeStyle, data, width
           display: 'flex',
           flexDirection: 'column',
           justifyContent: 'flex-start',
-          overflow: 'hidden',
+          gap: 4,
         }}
       >
         <div
@@ -289,30 +290,18 @@ export default function RecipeStepNode({ selected, style: nodeStyle, data, width
             {ingredientSummary}
           </div>
         )}
-        {heatSummary && (
+        {detailRows.map((row) => (
           <div
+            key={row.key}
             style={{
               fontSize: 10,
               color: '#64748b',
               lineHeight: 1.35,
-              marginBottom: 4,
             }}
           >
-            Heat: {heatSummary}
+            {row.label}: {row.value}
           </div>
-        )}
-        {timingSummary && (
-          <div
-            style={{
-              fontSize: 10,
-              color: '#64748b',
-              lineHeight: 1.35,
-              marginBottom: 6,
-            }}
-          >
-            Timing: {timingSummary}
-          </div>
-        )}
+        ))}
         <div
           style={{
             fontSize: 10,
@@ -320,23 +309,26 @@ export default function RecipeStepNode({ selected, style: nodeStyle, data, width
             color: '#64748b',
             letterSpacing: '0.04em',
             textTransform: 'uppercase',
+            marginTop: detailRows.length > 0 || ingredientSummary ? 4 : 0,
             marginBottom: 4,
           }}
         >
           Notes
         </div>
         <div
+          ref={notesRef}
           style={{
             fontSize: 10,
             color: '#475569',
             lineHeight: 1.45,
-            overflow: isNotesExpanded ? 'auto' : 'hidden',
+            overflow: 'hidden',
             whiteSpace: 'pre-wrap',
             display: isNotesExpanded ? 'block' : '-webkit-box',
             WebkitBoxOrient: isNotesExpanded ? undefined : 'vertical',
             WebkitLineClamp: isNotesExpanded ? undefined : 4,
             wordBreak: 'break-word',
-            paddingRight: isNotesExpanded ? 2 : 0,
+            overflowWrap: 'anywhere',
+            width: '100%',
           }}
         >
           {notes}
