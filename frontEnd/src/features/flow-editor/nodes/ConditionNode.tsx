@@ -1,5 +1,6 @@
+import { useCallback, useLayoutEffect } from 'react'
 import type { CSSProperties } from 'react'
-import { Handle, Position, NodeResizeControl, useNodeId } from '@xyflow/react'
+import { Handle, Position, NodeResizeControl, useNodeId, useUpdateNodeInternals } from '@xyflow/react'
 import '../styles/flow-editor.css'
 import { normalizeConditionNodeData, type ConditionNodeData } from '../../../types/recipeFlow'
 
@@ -22,11 +23,22 @@ const toNumber = (value: unknown, fallback: number) => {
 
 export default function ConditionNode({ selected, style: nodeStyle, data, width: nodeWidth, height: nodeHeight }: ConditionNodeProps) {
   const nodeId = useNodeId()
+  const updateNodeInternals = useUpdateNodeInternals()
   const normalized = normalizeConditionNodeData(data)
   const condition = normalized.condition
   const width = toNumber(nodeWidth, toNumber(nodeStyle?.width, 160))
   const height = toNumber(nodeHeight, toNumber(nodeStyle?.height, 160))
   const size = Math.min(width, height)
+
+  const syncNodeLayout = useCallback(() => {
+    if (nodeId) {
+      updateNodeInternals(nodeId)
+    }
+  }, [nodeId, updateNodeInternals])
+
+  useLayoutEffect(() => {
+    syncNodeLayout()
+  }, [syncNodeLayout, width, height])
 
   return (
     <div
@@ -42,6 +54,8 @@ export default function ConditionNode({ selected, style: nodeStyle, data, width:
           nodeId={nodeId ?? undefined}
           minWidth={120}
           minHeight={120}
+          onResize={() => syncNodeLayout()}
+          onResizeEnd={() => syncNodeLayout()}
           position="bottom-right"
           style={{
             background: '#d97706',
@@ -145,42 +159,6 @@ export default function ConditionNode({ selected, style: nodeStyle, data, width:
           left: 0,
         }}
       />
-
-      {/* YES / NO labels */}
-      <div
-        style={{
-          position: 'absolute',
-          right: -28,
-          top: '50%',
-          transform: 'translateY(-50%)',
-          fontSize: 9,
-          fontWeight: 700,
-          color: '#16a34a',
-          background: '#f0fdf4',
-          border: '1px solid #86efac',
-          borderRadius: 4,
-          padding: '1px 4px',
-        }}
-      >
-        {condition.successLabel || 'Yes'}
-      </div>
-      <div
-        style={{
-          position: 'absolute',
-          left: -26,
-          top: '50%',
-          transform: 'translateY(-50%)',
-          fontSize: 9,
-          fontWeight: 700,
-          color: '#dc2626',
-          background: '#fff5f5',
-          border: '1px solid #fca5a5',
-          borderRadius: 4,
-          padding: '1px 4px',
-        }}
-      >
-        {condition.failureLabel || 'No'}
-      </div>
 
       <div
         style={{
