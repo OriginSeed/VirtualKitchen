@@ -34,6 +34,7 @@ import {
   normalizeFlowEdges,
   normalizeFlowNode,
   serializeFlowData,
+  NODE_BASE_SIZE,
   type EdgeKind,
 } from './FlowCanvas.helpers.ts'
 import type { VisualizationResponse } from '../../../../api'
@@ -123,6 +124,8 @@ export default function FlowCanvas({ recipe, onBack }: FlowCanvasProps) {
   const [copied, setCopied] = useState(false)
   const [visualizationResult, setVisualizationResult] = useState<VisualizationResponse | null>(null)
   const [visualizing, setVisualizing] = useState(false)
+  const [nodeZoomPercent, setNodeZoomPercent] = useState(100)
+  const nodeZoomPercentRef = useRef(100)
   const dragSnapshotRef = useRef<{ nodes: Node[]; edges: Edge[] } | null>(null)
 
   const hasDraggedNodesChanged = useCallback((before: Node[], after: Node[]) => {
@@ -237,8 +240,48 @@ export default function FlowCanvas({ recipe, onBack }: FlowCanvasProps) {
     saveSnapshot()
     const baseY = 140 + nodes.length * 70
     const newNode = createNodeForType(crypto.randomUUID(), nodeType, { x: 720, y: Math.min(baseY, 420) })
-    setNodes(n => [...n, newNode])
+    const zoomFactor = nodeZoomPercentRef.current / 100
+    const baseSize = NODE_BASE_SIZE[nodeType]
+    const zoomedNode = baseSize
+      ? {
+          ...newNode,
+          width: Math.round(baseSize.width * zoomFactor),
+          height: Math.round(baseSize.height * zoomFactor),
+        }
+      : newNode
+    setNodes(n => [...n, zoomedNode])
   }, [saveSnapshot, setNodes, nodes.length])
+
+  // ── Canvas-level uniform node zoom (keeps node spacing proportional while resizing) ──
+  const handleNodeZoomChange = useCallback((percent: number) => {
+    const clamped = Math.min(200, Math.max(50, percent))
+    if (clamped === nodeZoomPercentRef.current) return
+
+    saveSnapshot()
+    setNodeZoomPercent(clamped)
+    const previousFactor = nodeZoomPercentRef.current / 100
+    const nextFactor = clamped / 100
+    const layoutScale = nextFactor / previousFactor
+    nodeZoomPercentRef.current = clamped
+
+    setNodes((nds) => nds.map((node) => {
+      const base = NODE_BASE_SIZE[node.type ?? '']
+      const anchorX = Math.min(...nds.map((currentNode) => currentNode.position.x))
+      const anchorY = Math.min(...nds.map((currentNode) => currentNode.position.y))
+
+      if (!base) return node
+
+      return {
+        ...node,
+        position: {
+          x: anchorX + ((node.position.x - anchorX) * layoutScale),
+          y: anchorY + ((node.position.y - anchorY) * layoutScale),
+        },
+        width: Math.round(base.width * nextFactor),
+        height: Math.round(base.height * nextFactor),
+      }
+    }))
+  }, [saveSnapshot, setNodes])
 
   // ── Update field ──────────────────────────────────────────────────────────
   const updateNodeField = useCallback((nodeId: string, field: string, value: string) => {
@@ -643,6 +686,8 @@ export default function FlowCanvas({ recipe, onBack }: FlowCanvasProps) {
             onVisualize={visualizeFlow}
             isVisualizing={visualizing}
             onBack={onBack}
+            nodeZoomPercent={nodeZoomPercent}
+            onNodeZoomChange={handleNodeZoomChange}
           />
         </div>
 
@@ -670,14 +715,14 @@ export default function FlowCanvas({ recipe, onBack }: FlowCanvasProps) {
               isValidConnection={isValidConnection}
               fitView 
               fitViewOptions={{ padding: 0.12 }}
-              style={{ width: '100%', height: '100%' }}
+              style={{ width: '100%', height: '100%', background: 'var(--flow-canvas-bg)' }}
               connectionRadius={28}
               defaultEdgeOptions={{ 
                 type: 'smoothstep',
                 style: { stroke: '#94a3b8', strokeWidth: 1.5 },
                 markerEnd: { type: MarkerType.ArrowClosed, color: '#94a3b8', width: 16, height: 16 } 
               }}>
-            <Background variant={BackgroundVariant.Dots} color="#e2e8f0" gap={20} size={1} />
+            <Background variant={BackgroundVariant.Dots} color="var(--flow-canvas-dots)" gap={20} size={1} />
             <Controls style={{ borderRadius: 10, border: '1px solid #e2e8f0', boxShadow: '0 2px 8px rgba(0,0,0,0.06)' }} />
             <MiniMap 
               style={{ borderRadius: 12, border: '1px solid #e2e8f0', boxShadow: '0 2px 8px rgba(0,0,0,0.06)' }}

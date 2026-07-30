@@ -29,6 +29,10 @@ export default function ParallelEndNode({ selected, style: nodeStyle, width: nod
   const height = toNumber(nodeHeight, toNumber(nodeStyle?.height, 92))
   const computedWidth = Math.min(Math.max(width, 170), 320)
   const computedMinHeight = Math.max(height, 88)
+  const scale = Math.min(Math.max(computedWidth / 180, 0.85), 1.7)
+  const headerFontSize = Math.max(9, Math.round(10 * scale))
+  const labelFontSize = Math.max(10, Math.round(12 * scale))
+  const notesFontSize = Math.max(9, Math.round(10 * scale))
 
   const syncNodeLayout = useCallback(() => {
     if (nodeId) {
@@ -70,6 +74,7 @@ export default function ParallelEndNode({ selected, style: nodeStyle, width: nod
           minHeight={88}
           maxWidth={320}
           maxHeight={240}
+          keepAspectRatio
           onResize={() => syncNodeLayout()}
           onResizeEnd={() => syncNodeLayout()}
           position="bottom-right"
@@ -114,14 +119,14 @@ export default function ParallelEndNode({ selected, style: nodeStyle, width: nod
         }}
       />
 
-      <div style={{ fontSize: 10, fontWeight: 700, color: '#6d28d9', textTransform: 'uppercase', letterSpacing: '0.04em', width: '100%' }}>
+      <div style={{ fontSize: headerFontSize, fontWeight: 700, color: '#6d28d9', textTransform: 'uppercase', letterSpacing: '0.04em', width: '100%' }}>
         Parallel End
       </div>
-      <div style={{ fontSize: 12, fontWeight: 700, color: '#312e81', lineHeight: 1.25, width: '100%', wordBreak: 'break-word', overflowWrap: 'anywhere' }}>
+      <div style={{ fontSize: labelFontSize, fontWeight: 700, color: '#312e81', lineHeight: 1.25, width: '100%', wordBreak: 'break-word', overflowWrap: 'anywhere' }}>
         {normalized.parallel.label}
       </div>
       {normalized.parallel.notes && (
-        <div style={{ fontSize: 10, color: '#6b7280', lineHeight: 1.25, width: '100%', wordBreak: 'break-word', overflowWrap: 'anywhere' }}>
+        <div style={{ fontSize: notesFontSize, color: '#6b7280', lineHeight: 1.25, width: '100%', wordBreak: 'break-word', overflowWrap: 'anywhere' }}>
           {normalized.parallel.notes}
         </div>
       )}

@@ -1,6 +1,6 @@
-import { useCallback, useLayoutEffect } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import type { CSSProperties } from 'react'
-import { Handle, Position, NodeResizeControl, useNodeId, useUpdateNodeInternals } from '@xyflow/react'
+import { Handle, Position, NodeResizeControl, useNodeId, useUpdateNodeInternals, useReactFlow } from '@xyflow/react'
 import '../styles/flow-editor.css'
 import { normalizeConditionNodeData, type ConditionNodeData } from '../../../types/recipeFlow'
 
@@ -24,21 +24,73 @@ const toNumber = (value: unknown, fallback: number) => {
 export default function ConditionNode({ selected, style: nodeStyle, data, width: nodeWidth, height: nodeHeight }: ConditionNodeProps) {
   const nodeId = useNodeId()
   const updateNodeInternals = useUpdateNodeInternals()
+  const { updateNode } = useReactFlow()
   const normalized = normalizeConditionNodeData(data)
   const condition = normalized.condition
-  const width = toNumber(nodeWidth, toNumber(nodeStyle?.width, 160))
-  const height = toNumber(nodeHeight, toNumber(nodeStyle?.height, 160))
+  const width = toNumber(nodeWidth, toNumber(nodeStyle?.width, 190))
+  const height = toNumber(nodeHeight, toNumber(nodeStyle?.height, 190))
   const size = Math.min(width, height)
+  const diamondSize = size * 0.72
+
+  const titleRef = useRef<HTMLDivElement | null>(null)
+  const notesRef = useRef<HTMLDivElement | null>(null)
+  const collapsedSizeRef = useRef<{ width: number; height: number } | null>(null)
+  const [isExpanded, setIsExpanded] = useState(false)
+  const [shouldShowReadMore, setShouldShowReadMore] = useState(false)
+
+  // Expanded state grows the whole node (like zooming in on this node only) so clamped text can show in full.
+  const contentMaxWidth = isExpanded ? Math.max(120, Math.round(diamondSize * 0.9)) : Math.max(56, Math.round(diamondSize * 0.78))
+  const contentPaddingX = Math.max(4, Math.round(diamondSize * 0.06))
+  const iconFontSize = Math.max(12, Math.min(28, Math.round(diamondSize * 0.2)))
+  const titleFontSize = Math.max(8, Math.min(18, Math.round(diamondSize * 0.12)))
+  const notesFontSize = Math.max(7, Math.min(14, Math.round(diamondSize * 0.09)))
+  const notesMarginTop = Math.max(1, Math.round(diamondSize * 0.02))
+
+  const checkOverflow = useCallback(() => {
+    const titleOverflow = titleRef.current ? titleRef.current.scrollHeight > titleRef.current.clientHeight + 1 : false
+    const notesOverflow = notesRef.current ? notesRef.current.scrollHeight > notesRef.current.clientHeight + 1 : false
+    setShouldShowReadMore(titleOverflow || notesOverflow)
+  }, [])
 
   const syncNodeLayout = useCallback(() => {
     if (nodeId) {
       updateNodeInternals(nodeId)
     }
-  }, [nodeId, updateNodeInternals])
+    checkOverflow()
+  }, [nodeId, updateNodeInternals, checkOverflow])
 
   useLayoutEffect(() => {
     syncNodeLayout()
-  }, [syncNodeLayout, width, height])
+  }, [syncNodeLayout, width, height, normalized.title, condition.notes, isExpanded])
+
+  useEffect(() => {
+    const titleElement = titleRef.current
+    const notesElement = notesRef.current
+    if (!titleElement && !notesElement) return
+
+    const observer = new ResizeObserver(() => checkOverflow())
+    if (titleElement) observer.observe(titleElement)
+    if (notesElement) observer.observe(notesElement)
+
+    return () => observer.disconnect()
+  }, [checkOverflow])
+
+  const handleToggleExpand = useCallback(() => {
+    if (!nodeId) return
+
+    if (!isExpanded) {
+      collapsedSizeRef.current = { width, height }
+      const expandedSize = Math.min(Math.max(size * 1.8, 220), 380)
+      updateNode(nodeId, { width: expandedSize, height: expandedSize })
+      setIsExpanded(true)
+    } else {
+      const restored = collapsedSizeRef.current ?? { width: 190, height: 190 }
+      updateNode(nodeId, { width: restored.width, height: restored.height })
+      setIsExpanded(false)
+    }
+
+    requestAnimationFrame(() => syncNodeLayout())
+  }, [height, isExpanded, nodeId, size, syncNodeLayout, updateNode, width])
 
   return (
     <div
@@ -52,8 +104,9 @@ export default function ConditionNode({ selected, style: nodeStyle, data, width:
       {selected && (
         <NodeResizeControl
           nodeId={nodeId ?? undefined}
-          minWidth={120}
-          minHeight={120}
+          minWidth={140}
+          minHeight={140}
+          keepAspectRatio
           onResize={() => syncNodeLayout()}
           onResizeEnd={() => syncNodeLayout()}
           position="bottom-right"
@@ -72,8 +125,8 @@ export default function ConditionNode({ selected, style: nodeStyle, data, width:
       <div
         style={{
           position: 'absolute',
-          width: size * 0.72,
-          height: size * 0.72,
+          width: diamondSize,
+          height: diamondSize,
           background: selected
             ? 'linear-gradient(135deg, #fef3c7, #fde68a)'
             : 'linear-gradient(135deg, #fffbeb, #fef3c7)',
@@ -93,26 +146,67 @@ export default function ConditionNode({ selected, style: nodeStyle, data, width:
           position: 'relative',
           zIndex: 2,
           textAlign: 'center',
-          padding: '0 8px',
-          maxWidth: 80,
+          padding: `0 ${contentPaddingX}px`,
+          maxWidth: contentMaxWidth,
         }}
       >
-        <div style={{ fontSize: 16, marginBottom: 2 }}>🔀</div>
+        <div style={{ fontSize: iconFontSize, marginBottom: 2 }}>🔀</div>
         <div
+          ref={titleRef}
           style={{
-            fontSize: 10,
+            fontSize: titleFontSize,
             fontWeight: 700,
             color: '#92400e',
             lineHeight: 1.2,
             letterSpacing: '-0.01em',
+            display: isExpanded ? 'block' : '-webkit-box',
+            WebkitLineClamp: isExpanded ? undefined : 2,
+            WebkitBoxOrient: isExpanded ? undefined : 'vertical',
+            overflow: isExpanded ? 'visible' : 'hidden',
+            textOverflow: isExpanded ? 'clip' : 'ellipsis',
+            wordBreak: 'break-word',
           }}
         >
           {normalized.title || 'Condition?'}
         </div>
         {condition.notes && (
-          <div style={{ fontSize: 9, color: '#b45309', marginTop: 2, lineHeight: 1.2 }}>
+          <div
+            ref={notesRef}
+            style={{
+              fontSize: notesFontSize,
+              color: '#b45309',
+              marginTop: notesMarginTop,
+              lineHeight: 1.2,
+              display: isExpanded ? 'block' : '-webkit-box',
+              WebkitLineClamp: isExpanded ? undefined : 2,
+              WebkitBoxOrient: isExpanded ? undefined : 'vertical',
+              overflow: isExpanded ? 'visible' : 'hidden',
+              textOverflow: isExpanded ? 'clip' : 'ellipsis',
+              wordBreak: 'break-word',
+            }}
+          >
             {condition.notes}
           </div>
+        )}
+        {(shouldShowReadMore || isExpanded) && (
+          <button
+            type="button"
+            onClick={handleToggleExpand}
+            className="nodrag"
+            style={{
+              marginTop: notesMarginTop,
+              border: 'none',
+              background: 'transparent',
+              color: '#b45309',
+              fontSize: Math.max(8, notesFontSize - 1),
+              fontWeight: 700,
+              cursor: 'pointer',
+              padding: 0,
+              textDecoration: 'underline',
+            }}
+          >
+            {isExpanded ? 'Collapse' : 'Read more'}
+          </button>
         )}
       </div>
 

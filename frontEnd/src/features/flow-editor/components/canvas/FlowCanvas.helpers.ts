@@ -48,7 +48,7 @@ export const createConditionNode = (id: string, position: { x: number; y: number
   draggable: true,
   selectable: true,
   connectable: true,
-  style: { width: 160, height: 160 },
+  style: { width: 190, height: 190 },
   data: {
     title: getConditionNodeTitle(''),
     condition: createDefaultConditionFields(),
@@ -97,6 +97,14 @@ export const createNodeForType = (id: string, nodeType: FlowNodeType, position: 
 
 export const createFreeNode = (id: string, nodeType: FlowNodeType, position: { x: number; y: number }): Node =>
   createNodeForType(id, nodeType, position)
+
+// Base (100%) design size per node type, used by the canvas-level uniform zoom control.
+export const NODE_BASE_SIZE: Record<string, { width: number; height: number }> = {
+  [FLOW_NODE_TYPES.recipeStep]: { width: 320, height: 190 },
+  [FLOW_NODE_TYPES.condition]: { width: 190, height: 190 },
+  [FLOW_NODE_TYPES.parallelStart]: { width: 180, height: 92 },
+  [FLOW_NODE_TYPES.parallelEnd]: { width: 180, height: 92 },
+}
 
 const normalizeNodeDataForSerialize = (node: Node) => {
   if (isRecipeStepNode(node)) {
