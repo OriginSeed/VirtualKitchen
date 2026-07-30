@@ -55,6 +55,26 @@ export default function RecipeStepNode({ selected, style: nodeStyle, data, width
   const minimumHeight = 190
   const computedWidth = Math.min(Math.max(width, minimumWidth), 520)
   const computedMinHeight = Math.max(height, minimumHeight)
+  const scale = Math.min(Math.max(Math.sqrt((computedWidth * computedMinHeight) / (320 * 190)), 0.75), 1.6)
+  const iconBoxSize = Math.round(28 * scale)
+  const iconFontSize = Math.max(11, Math.round(15 * scale))
+  const titleFontSize = Math.max(11, Math.round(13 * scale))
+  const stepLabelFontSize = Math.max(9, Math.round(10 * scale))
+  const sectionHeadingFontSize = Math.max(9, Math.round(10 * scale))
+  const ingredientFontSize = Math.max(10, Math.round(11 * scale))
+  const detailRowFontSize = Math.max(9, Math.round(10 * scale))
+  const notesFontSize = Math.max(9, Math.round(10 * scale))
+  const readMoreFontSize = Math.max(9, Math.round(10 * scale))
+  const cardPaddingY = Math.round(12 * scale)
+  const cardPaddingX = Math.round(14 * scale)
+  const cardGap = Math.round(10 * scale)
+  const headerMinHeight = Math.round(36 * scale)
+  const headerPaddingY = Math.round(8 * scale)
+  const headerPaddingX = Math.round(10 * scale)
+  const headerIconGap = Math.round(8 * scale)
+  const detailsMinHeight = Math.round(78 * scale)
+  const detailsPaddingY = Math.round(10 * scale)
+  const detailsPaddingX = Math.round(12 * scale)
 
   const syncNodeLayout = useCallback(() => {
     if (nodeId) {
@@ -104,14 +124,14 @@ export default function RecipeStepNode({ selected, style: nodeStyle, data, width
         boxShadow: selected
           ? `0 0 0 2px ${style.accent}33, 0 4px 16px rgba(0,0,0,0.08)`
           : '0 1px 6px rgba(0,0,0,0.06)',
-        padding: '12px 14px',
+        padding: `${cardPaddingY}px ${cardPaddingX}px`,
         transition: 'all 0.18s ease',
         position: 'relative',
         boxSizing: 'border-box',
         overflow: 'visible',
         display: 'flex',
         flexDirection: 'column',
-        gap: 10,
+        gap: cardGap,
       }}
       className="flow-editor-surface"
     >
@@ -122,6 +142,7 @@ export default function RecipeStepNode({ selected, style: nodeStyle, data, width
           minHeight={minimumHeight}
           maxWidth={520}
           maxHeight={640}
+          keepAspectRatio
           onResize={() => syncNodeLayout()}
           onResizeEnd={() => syncNodeLayout()}
           position="bottom-right"
@@ -155,9 +176,9 @@ export default function RecipeStepNode({ selected, style: nodeStyle, data, width
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'space-between',
-          gap: 10,
-          minHeight: 36,
-          padding: '8px 10px',
+          gap: cardGap,
+          minHeight: headerMinHeight,
+          padding: `${headerPaddingY}px ${headerPaddingX}px`,
           borderRadius: 10,
           background: '#f8fafc',
           border: `1px solid ${style.border}`,
@@ -167,21 +188,21 @@ export default function RecipeStepNode({ selected, style: nodeStyle, data, width
           style={{
             display: 'flex',
             alignItems: 'center',
-            gap: 8,
+            gap: headerIconGap,
             minWidth: 0,
             flex: 1,
           }}
         >
           <div
             style={{
-              width: 28,
-              height: 28,
+              width: iconBoxSize,
+              height: iconBoxSize,
               borderRadius: 8,
               background: style.iconBg,
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
-              fontSize: 15,
+              fontSize: iconFontSize,
               flexShrink: 0,
               border: `1px solid ${style.border}`,
             }}
@@ -198,7 +219,7 @@ export default function RecipeStepNode({ selected, style: nodeStyle, data, width
             <div
               style={{
                 fontWeight: 700,
-                fontSize: 13,
+                fontSize: titleFontSize,
                 color: '#1e293b',
                 letterSpacing: '-0.01em',
                 lineHeight: 1.2,
@@ -217,7 +238,7 @@ export default function RecipeStepNode({ selected, style: nodeStyle, data, width
             </div>
             <div
               style={{
-                fontSize: 10,
+                fontSize: stepLabelFontSize,
                 color: '#64748b',
                 fontWeight: 600,
                 marginTop: 2,
@@ -255,11 +276,11 @@ export default function RecipeStepNode({ selected, style: nodeStyle, data, width
       <div
         style={{
           width: '100%',
-          minHeight: 78,
+          minHeight: detailsMinHeight,
           borderRadius: 10,
           border: `1px solid ${style.border}`,
           background: '#ffffff',
-          padding: '10px 12px',
+          padding: `${detailsPaddingY}px ${detailsPaddingX}px`,
           display: 'flex',
           flexDirection: 'column',
           justifyContent: 'flex-start',
@@ -268,7 +289,7 @@ export default function RecipeStepNode({ selected, style: nodeStyle, data, width
       >
         <div
           style={{
-            fontSize: 10,
+            fontSize: sectionHeadingFontSize,
             fontWeight: 700,
             color: '#64748b',
             letterSpacing: '0.04em',
@@ -281,7 +302,7 @@ export default function RecipeStepNode({ selected, style: nodeStyle, data, width
         {ingredientSummary && (
           <div
             style={{
-              fontSize: 11,
+              fontSize: ingredientFontSize,
               color: '#334155',
               lineHeight: 1.35,
               marginBottom: 6,
@@ -294,7 +315,7 @@ export default function RecipeStepNode({ selected, style: nodeStyle, data, width
           <div
             key={row.key}
             style={{
-              fontSize: 10,
+              fontSize: detailRowFontSize,
               color: '#64748b',
               lineHeight: 1.35,
             }}
@@ -304,7 +325,7 @@ export default function RecipeStepNode({ selected, style: nodeStyle, data, width
         ))}
         <div
           style={{
-            fontSize: 10,
+            fontSize: sectionHeadingFontSize,
             fontWeight: 700,
             color: '#64748b',
             letterSpacing: '0.04em',
@@ -318,7 +339,7 @@ export default function RecipeStepNode({ selected, style: nodeStyle, data, width
         <div
           ref={notesRef}
           style={{
-            fontSize: 10,
+            fontSize: notesFontSize,
             color: '#475569',
             lineHeight: 1.45,
             overflow: 'hidden',
@@ -333,7 +354,7 @@ export default function RecipeStepNode({ selected, style: nodeStyle, data, width
         >
           {notes}
         </div>
-        {shouldShowReadMore && (
+        {(shouldShowReadMore || isNotesExpanded) && (
           <button
             type="button"
             onClick={() => setIsNotesExpanded((value) => !value)}
@@ -344,7 +365,7 @@ export default function RecipeStepNode({ selected, style: nodeStyle, data, width
               border: 'none',
               background: 'transparent',
               color: style.accent,
-              fontSize: 10,
+              fontSize: readMoreFontSize,
               fontWeight: 700,
               cursor: 'pointer',
               padding: 0,
