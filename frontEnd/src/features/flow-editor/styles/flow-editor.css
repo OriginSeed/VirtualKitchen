@@ -22,6 +22,9 @@
   --flow-radius-lg: 1rem;
   --flow-radius-xl: 1.5rem;
   --flow-font: 'DM Sans', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  /* Canvas draw surface: distinct from both the app chrome (--flow-bg) and white node cards. */
+  --flow-canvas-bg: #eef1f7;
+  --flow-canvas-dots: #d7deea;
 }
 
 .flow-editor-shell {

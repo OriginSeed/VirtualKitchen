@@ -27,8 +27,8 @@ export default function ConditionNode({ selected, style: nodeStyle, data, width:
   const { updateNode } = useReactFlow()
   const normalized = normalizeConditionNodeData(data)
   const condition = normalized.condition
-  const width = toNumber(nodeWidth, toNumber(nodeStyle?.width, 160))
-  const height = toNumber(nodeHeight, toNumber(nodeStyle?.height, 160))
+  const width = toNumber(nodeWidth, toNumber(nodeStyle?.width, 190))
+  const height = toNumber(nodeHeight, toNumber(nodeStyle?.height, 190))
   const size = Math.min(width, height)
   const diamondSize = size * 0.72
 
@@ -84,7 +84,7 @@ export default function ConditionNode({ selected, style: nodeStyle, data, width:
       updateNode(nodeId, { width: expandedSize, height: expandedSize })
       setIsExpanded(true)
     } else {
-      const restored = collapsedSizeRef.current ?? { width: 160, height: 160 }
+      const restored = collapsedSizeRef.current ?? { width: 190, height: 190 }
       updateNode(nodeId, { width: restored.width, height: restored.height })
       setIsExpanded(false)
     }
@@ -104,8 +104,8 @@ export default function ConditionNode({ selected, style: nodeStyle, data, width:
       {selected && (
         <NodeResizeControl
           nodeId={nodeId ?? undefined}
-          minWidth={120}
-          minHeight={120}
+          minWidth={140}
+          minHeight={140}
           keepAspectRatio
           onResize={() => syncNodeLayout()}
           onResizeEnd={() => syncNodeLayout()}

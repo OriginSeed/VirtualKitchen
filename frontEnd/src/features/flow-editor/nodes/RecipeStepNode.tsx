@@ -123,7 +123,7 @@ export default function RecipeStepNode({ selected, style: nodeStyle, data, width
         border: `1.5px solid ${selected ? style.accent : '#e5e7eb'}`,
         boxShadow: selected
           ? `0 0 0 2px ${style.accent}33, 0 4px 16px rgba(0,0,0,0.08)`
-          : '0 1px 6px rgba(0,0,0,0.06)',
+          : '0 2px 10px rgba(15, 23, 42, 0.08)',
         padding: `${cardPaddingY}px ${cardPaddingX}px`,
         transition: 'all 0.18s ease',
         position: 'relative',

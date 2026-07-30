@@ -31,6 +31,7 @@ import {
   getStepActionPresentation,
   type StepContextFieldConfig,
 } from '../../catalog/stepActionPresentation'
+import SearchableSelect, { type SearchableSelectOption } from '../../../../shared/components/SearchableSelect'
 
 type NodeData = {
   id: string
@@ -82,6 +83,24 @@ export default function PropertiesPanel({ node, updateNodeField, onDeleteNode, o
     ? buildRepeatIntervalLabel(repeatActionLabel, stepData.repeatEveryValue, stepData.repeatEveryUnit)
     : ''
   const actionPresentation = stepData ? getStepActionPresentation(stepData.action) : null
+
+  const actionOptions: SearchableSelectOption[] = ACTION_CATEGORY_ORDER.flatMap((category) =>
+    ACTIONS_BY_CATEGORY[category].map((action) => ({
+      value: action.id,
+      label: action.displayName,
+      icon: action.icon,
+      category,
+    }))
+  )
+
+  const ingredientOptions: SearchableSelectOption[] = INGREDIENT_CATEGORY_ORDER.flatMap((category) =>
+    INGREDIENTS_BY_CATEGORY[category].map((ingredient) => ({
+      value: ingredient.id,
+      label: ingredient.name,
+      icon: ingredient.icon,
+      category,
+    }))
+  )
 
   const renderActionField = (field: StepContextFieldConfig) => {
     if (!stepData) return null
@@ -245,49 +264,28 @@ export default function PropertiesPanel({ node, updateNodeField, onDeleteNode, o
           <>
             <div className="flow-properties-field">
               <label className="flow-properties-label">Action *</label>
-              <select
-                className="flow-properties-input"
+              <SearchableSelect
                 value={stepData?.action ?? ''}
-                onChange={e => updateNodeField(node.id, 'step.action', e.target.value)}
-              >
-                <option value="">Select Action</option>
-                {ACTION_CATEGORY_ORDER.map((category) => (
-                  <optgroup key={category} label={category}>
-                    {ACTIONS_BY_CATEGORY[category].map((action) => (
-                      <option key={action.id} value={action.id}>
-                        {action.icon} {action.displayName}
-                      </option>
-                    ))}
-                  </optgroup>
-                ))}
-              </select>
+                onChange={(nextValue) => updateNodeField(node.id, 'step.action', nextValue)}
+                options={actionOptions}
+                placeholder="Select Action"
+              />
             </div>
 
             <div className="flow-editor-section-heading">Ingredient Details</div>
             <div className="flow-properties-field">
               <label className="flow-properties-label">Ingredient</label>
-              <select
-                className="flow-properties-input"
+              <SearchableSelect
                 value={stepData?.ingredientId ?? ''}
-                onChange={e => {
-                  const nextIngredientId = e.target.value
+                onChange={(nextIngredientId) => {
                   updateNodeField(node.id, 'step.ingredientId', nextIngredientId)
                   if (nextIngredientId !== CUSTOM_INGREDIENT_ID) {
                     updateNodeField(node.id, 'step.customIngredientName', '')
                   }
                 }}
-              >
-                <option value="">Select Ingredient</option>
-                {INGREDIENT_CATEGORY_ORDER.map((category) =>
-                  <optgroup key={category} label={category}>
-                    {INGREDIENTS_BY_CATEGORY[category].map((ingredient) => (
-                      <option key={ingredient.id} value={ingredient.id}>
-                        {ingredient.icon} {ingredient.name}
-                      </option>
-                    ))}
-                  </optgroup>
-                )}
-              </select>
+                options={ingredientOptions}
+                placeholder="Select Ingredient"
+              />
             </div>
 
             {stepData?.ingredientId === CUSTOM_INGREDIENT_ID && (
