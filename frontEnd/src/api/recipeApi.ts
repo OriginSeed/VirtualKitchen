@@ -25,6 +25,15 @@ export interface VisualizationRequest {
   edges: FlowData['edges']
 }
 
+export interface RecipeFlowGenerationRequest {
+  recipe: string
+}
+
+export interface RecipeFlowGenerationResponse {
+  nodes: unknown[]
+  edges: unknown[]
+}
+
 export interface VisualizationClip {
   clipId?: string
   [key: string]: unknown
@@ -79,6 +88,13 @@ export const FlowApi = {
     data: FlowData
   ): Promise<FlowData> {
     return apiPut<FlowData>(API.flows.byId(flowId), data)
+  },
+
+  /**
+   * Generate an initial flow from recipe text
+   */
+  async generateFlowFromRecipe(data: RecipeFlowGenerationRequest): Promise<RecipeFlowGenerationResponse> {
+    return apiPost<RecipeFlowGenerationResponse>(API.recipeGeneration.generateFlow, data)
   },
 }
 

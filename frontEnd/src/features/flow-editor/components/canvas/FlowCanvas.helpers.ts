@@ -1,4 +1,4 @@
-import type { Edge, Node } from '@xyflow/react'
+import { MarkerType, type Edge, type Node } from '@xyflow/react'
 import {
   FLOW_NODE_TYPES,
   type FlowNodeType,
@@ -24,6 +24,68 @@ import {
 } from '../../../../types/recipeFlow'
 
 export type EdgeKind = 'step' | 'yes' | 'no' | 'parallel'
+
+const EDGE_COLORS: Record<EdgeKind, string> = {
+  step: '#94a3b8',
+  yes: '#16a34a',
+  no: '#dc2626',
+  parallel: '#7c3aed',
+}
+
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  typeof value === 'object' && value !== null
+
+const asString = (value: unknown) => {
+  if (typeof value === 'string') return value
+  if (typeof value === 'number' || typeof value === 'boolean') return String(value)
+  return ''
+}
+
+const asOptionalRecord = (value: unknown): Record<string, unknown> | undefined =>
+  isRecord(value) ? value : undefined
+
+const getEdgeKind = (sourceHandle?: string | null, targetHandle?: string | null): EdgeKind => {
+  if (sourceHandle === 'condition-yes') return 'yes'
+  if (sourceHandle === 'condition-no') return 'no'
+  if (String(sourceHandle ?? '').startsWith('parallel-') || String(targetHandle ?? '').startsWith('parallel-')) {
+    return 'parallel'
+  }
+  return 'step'
+}
+
+const getDefaultEdgeLabel = (kind: EdgeKind) => {
+  if (kind === 'yes') return 'Yes'
+  if (kind === 'no') return 'No'
+  if (kind === 'parallel') return 'Parallel'
+  return undefined
+}
+
+export const getFlowEdgePresentation = (
+  sourceHandle?: string | null,
+  targetHandle?: string | null,
+  label?: string | null,
+) => {
+  const kind = getEdgeKind(sourceHandle, targetHandle)
+  const color = EDGE_COLORS[kind]
+
+  return {
+    type: 'smoothstep',
+    animated: false,
+    label: label ?? getDefaultEdgeLabel(kind),
+    labelStyle: { fill: color, fontWeight: 700, fontSize: 11 },
+    labelBgStyle: {
+      fill: kind === 'yes'
+        ? '#f0fdf4'
+        : kind === 'no'
+          ? '#fff5f5'
+          : kind === 'parallel'
+            ? '#f5f3ff'
+            : 'transparent',
+    },
+    style: { stroke: color, strokeWidth: 1.5 },
+    markerEnd: { type: MarkerType.ArrowClosed, color, width: 16, height: 16 },
+  }
+}
 
 export const createRecipeStepNode = (id: string, position: { x: number; y: number }): Node => ({
   id,
@@ -185,6 +247,70 @@ export const normalizeFlowNode = (node: FlowNodePayload): Node => {
   }
 }
 
+export const normalizeGeneratedFlowData = (value: unknown): FlowData => {
+  if (!isRecord(value)) {
+    throw new Error('Generated flow response is invalid.')
+  }
+
+  if (!Array.isArray(value.nodes) || !Array.isArray(value.edges)) {
+    throw new Error('Generated flow response is invalid.')
+  }
+
+  return {
+    nodes: value.nodes.map((entry, index) => {
+      if (!isRecord(entry)) {
+        throw new Error(`Generated node ${index + 1} is invalid.`)
+      }
+
+      const position = isRecord(entry.position)
+        ? {
+            x: typeof entry.position.x === 'number' ? entry.position.x : 0,
+            y: typeof entry.position.y === 'number' ? entry.position.y : 0,
+          }
+        : { x: 0, y: index * 140 }
+
+      return {
+        id: asString(entry.id) || crypto.randomUUID(),
+        type: asString(entry.type) || FLOW_NODE_TYPES.recipeStep,
+        position,
+        data: asOptionalRecord(entry.data) ?? {},
+        measured: entry.measured,
+        parentId: asString(entry.parentId) || undefined,
+        extent: entry.extent,
+        draggable: typeof entry.draggable === 'boolean' ? entry.draggable : true,
+        selectable: typeof entry.selectable === 'boolean' ? entry.selectable : true,
+        deletable: typeof entry.deletable === 'boolean' ? entry.deletable : true,
+        style: asOptionalRecord(entry.style),
+      }
+    }),
+    edges: value.edges.map((entry, index) => {
+      if (!isRecord(entry)) {
+        throw new Error(`Generated edge ${index + 1} is invalid.`)
+      }
+
+      const source = asString(entry.source)
+      const target = asString(entry.target)
+
+      if (!source || !target) {
+        throw new Error(`Generated edge ${index + 1} is missing a source or target.`)
+      }
+
+      return {
+        id: asString(entry.id) || `generated-edge-${index + 1}-${source}-${target}`,
+        source,
+        target,
+        sourceHandle: asString(entry.sourceHandle) || null,
+        targetHandle: asString(entry.targetHandle) || null,
+        type: asString(entry.type) || undefined,
+        animated: typeof entry.animated === 'boolean' ? entry.animated : undefined,
+        style: asOptionalRecord(entry.style),
+        data: asOptionalRecord(entry.data),
+        label: asString(entry.label) || null,
+      }
+    }),
+  }
+}
+
 export const createFlowDataPayload = (nodes: Node[], edges: Edge[]): FlowData => {
   const normalizedNodes: FlowNodePayload[] = nodes.map((node) => ({
     id: node.id,
@@ -228,15 +354,20 @@ export const createFlowDataPayload = (nodes: Node[], edges: Edge[]): FlowData =>
 }
 
 export const normalizeFlowEdges = (edges: FlowData['edges']): Edge[] =>
-  (edges ?? []).map((edge) => ({
-    id: edge.id,
-    source: edge.source,
-    target: edge.target,
-    sourceHandle: edge.sourceHandle,
-    targetHandle: edge.targetHandle,
-    type: edge.type,
-    animated: edge.animated,
-    style: edge.style,
-    data: edge.data,
-    label: edge.label,
-  }))
+  (edges ?? []).map((edge) => {
+    const presentation = getFlowEdgePresentation(edge.sourceHandle, edge.targetHandle, edge.label)
+
+    return {
+      id: edge.id,
+      source: edge.source,
+      target: edge.target,
+      sourceHandle: edge.sourceHandle,
+      targetHandle: edge.targetHandle,
+      ...presentation,
+      type: edge.type ?? presentation.type,
+      animated: edge.animated ?? presentation.animated,
+      style: edge.style ?? presentation.style,
+      data: edge.data,
+      label: edge.label ?? presentation.label,
+    }
+  })
