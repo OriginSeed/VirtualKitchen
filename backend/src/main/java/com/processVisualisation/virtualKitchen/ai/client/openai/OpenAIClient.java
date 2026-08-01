@@ -84,13 +84,34 @@ public class OpenAIClient implements AIClient {
             return parsed;
         } catch (RestClientResponseException ex) {
             long latencyMs = elapsedMs(startedAt);
-            if (ex.getStatusCode().value() == 401 || ex.getStatusCode().value() == 403) {
+            int status = ex.getStatusCode().value();
+            String responseBody = ex.getResponseBodyAsString();
+            if (status == 401 || status == 403) {
                 System.out.println("[AI] Failure. provider=openai reason=authentication_failed latencyMs=" + latencyMs);
                 throw new AIAuthenticationException("OpenAI authentication failed", ex);
             }
 
-            System.out.println("[AI] Failure. provider=openai reason=http_error status=" + ex.getStatusCode().value()
-                    + " latencyMs=" + latencyMs);
+            if (status == 429) {
+                String errorMessage = "OpenAI quota exceeded (429 Too Many Requests)";
+                try {
+                    JsonNode errorNode = objectMapper.readTree(responseBody).path("error");
+                    String msg = errorNode.path("message").asText(null);
+                    String code = errorNode.path("code").asText(null);
+                    if (msg != null) {
+                        errorMessage += ": " + msg;
+                    }
+                    if (code != null) {
+                        errorMessage += " code=" + code;
+                    }
+                } catch (Exception parseEx) {
+                    // ignore JSON parse errors and keep generic message
+                }
+                System.out.println("[AI] Failure. provider=openai reason=quota_exceeded status=429 latencyMs=" + latencyMs);
+                throw new AICommunicationException(errorMessage, ex);
+            }
+
+            System.out.println("[AI] Failure. provider=openai reason=http_error status=" + status
+                    + " latencyMs=" + latencyMs + " body=" + (responseBody != null ? responseBody : "NA"));
             throw new AICommunicationException("OpenAI API request failed with status: " + ex.getStatusCode(), ex);
         } catch (ResourceAccessException ex) {
             long latencyMs = elapsedMs(startedAt);

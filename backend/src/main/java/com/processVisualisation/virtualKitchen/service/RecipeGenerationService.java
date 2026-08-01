@@ -85,10 +85,13 @@ public class RecipeGenerationService {
                 return AttemptResult.invalid(content, List.of("Top-level JSON must contain arrays: nodes and edges"));
             }
 
-            List<Map<String, Object>> nodes = objectMapper.convertValue(nodesNode, LIST_OF_MAP_TYPE);
-            List<Map<String, Object>> edges = objectMapper.convertValue(edgesNode, LIST_OF_MAP_TYPE);
+             List<Map<String, Object>> nodes = objectMapper.convertValue(nodesNode, LIST_OF_MAP_TYPE);
+             List<Map<String, Object>> edges = objectMapper.convertValue(edgesNode, LIST_OF_MAP_TYPE);
 
-            RecipeFlowValidationResult validationResult = recipeValidator.validate(nodes, edges);
+             // Normalize node data: ensure all step/condition/parallel object fields are strings
+             normalizeNodeDataTypes(nodes);
+
+             RecipeFlowValidationResult validationResult = recipeValidator.validate(nodes, edges);
             if (!validationResult.isValid()) {
                 return AttemptResult.invalid(content, validationResult.getErrors());
             }
@@ -109,17 +112,77 @@ public class RecipeGenerationService {
         }
     }
 
-    private String stripCodeFences(String content) {
-        String trimmed = content.trim();
-        if (trimmed.startsWith("```")) {
-            int firstNewLine = trimmed.indexOf('\n');
-            int lastFence = trimmed.lastIndexOf("```");
-            if (firstNewLine >= 0 && lastFence > firstNewLine) {
-                return trimmed.substring(firstNewLine + 1, lastFence).trim();
-            }
-        }
-        return content;
-    }
+     private String stripCodeFences(String content) {
+         String trimmed = content.trim();
+         if (trimmed.startsWith("```")) {
+             int firstNewLine = trimmed.indexOf('\n');
+             int lastFence = trimmed.lastIndexOf("```");
+             if (firstNewLine >= 0 && lastFence > firstNewLine) {
+                 return trimmed.substring(firstNewLine + 1, lastFence).trim();
+             }
+         }
+         return content;
+     }
+
+     private void normalizeNodeDataTypes(List<Map<String, Object>> nodes) {
+         for (Map<String, Object> node : nodes) {
+             Object dataObj = node.get("data");
+             if (dataObj instanceof Map<?, ?>) {
+                 @SuppressWarnings("unchecked")
+                 Map<String, Object> data = (Map<String, Object>) dataObj;
+
+                 // For recipeStepNode, ensure step object fields are all strings
+                 if ("recipeStepNode".equals(node.get("type"))) {
+                     Object stepObj = data.get("step");
+                     if (stepObj instanceof Map<?, ?>) {
+                         @SuppressWarnings("unchecked")
+                         Map<String, Object> step = (Map<String, Object>) stepObj;
+                         coerceObjectFieldsToStrings(step);
+                     }
+                 }
+
+                 // For conditionNode, ensure condition object fields are all strings
+                 if ("conditionNode".equals(node.get("type"))) {
+                     Object conditionObj = data.get("condition");
+                     if (conditionObj instanceof Map<?, ?>) {
+                         @SuppressWarnings("unchecked")
+                         Map<String, Object> condition = (Map<String, Object>) conditionObj;
+                         coerceObjectFieldsToStrings(condition);
+                     }
+                 }
+
+                 // For parallelStartNode/parallelEndNode, ensure parallel object fields are strings
+                 if ("parallelStartNode".equals(node.get("type")) || "parallelEndNode".equals(node.get("type"))) {
+                     Object parallelObj = data.get("parallel");
+                     if (parallelObj instanceof Map<?, ?>) {
+                         @SuppressWarnings("unchecked")
+                         Map<String, Object> parallel = (Map<String, Object>) parallelObj;
+                         coerceObjectFieldsToStrings(parallel);
+                     }
+                 }
+             }
+         }
+     }
+
+     private void coerceObjectFieldsToStrings(Map<String, Object> obj) {
+         for (String key : new java.util.ArrayList<>(obj.keySet())) {
+             Object value = obj.get(key);
+             if (value == null) {
+                 obj.put(key, "");
+             } else if (value instanceof String) {
+                 // Already a string
+             } else if (value instanceof Number) {
+                 // Convert number to string
+                 obj.put(key, value.toString());
+             } else if (value instanceof Boolean) {
+                 // Convert boolean to string
+                 obj.put(key, value.toString());
+             } else {
+                 // Fallback: convert to string representation
+                 obj.put(key, value.toString());
+             }
+         }
+     }
 
     private record AttemptResult(
             boolean valid,

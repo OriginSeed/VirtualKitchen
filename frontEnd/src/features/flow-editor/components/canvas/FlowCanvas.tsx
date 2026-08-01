@@ -762,7 +762,13 @@ export default function FlowCanvas({ recipe, onBack }: FlowCanvasProps) {
           <div className="flow-canvas-workspace">
             <div
               ref={recipeBuilderRef}
-              style={{ width: builderCollapsed ? 48 : builderWidth, minWidth: builderCollapsed ? 48 : builderWidth }}
+              style={{
+                width: builderCollapsed ? 48 : builderWidth,
+                minWidth: builderCollapsed ? 48 : builderWidth,
+                height: '100%',
+                display: 'flex',
+                flexDirection: 'column',
+              }}
             >
               <RecipeBuilderPanel
                 collapsed={builderCollapsed}

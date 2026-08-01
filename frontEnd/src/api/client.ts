@@ -87,8 +87,16 @@ async function request<T>(
     )
   }
 
-  const data: ApiResponse<T> = await response.json()
-  return data.data
+  const raw = await response.json().catch(() => (null as any))
+
+  // Support two response shapes:
+  // 1) API wrapper: { success: boolean, message?: string, data: T }
+  // 2) Raw payload: T
+  if (raw && typeof raw === 'object' && 'data' in raw) {
+    return (raw as ApiResponse<T>).data
+  }
+
+  return raw as T
 }
 
 /**
