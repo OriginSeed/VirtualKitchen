@@ -35,6 +35,10 @@ export const API = {
     byUserId: (userId: number) => `/api/v1/process-templates/user/${userId}`,
   },
 
+  recipeGeneration: {
+    generateFlow: '/api/recipe/generate-flow',
+  },
+
   // Flows
   flows: {
     byId: (id: number | string) => `/api/v1/flows/${id}`,

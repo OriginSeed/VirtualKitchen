@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import Sidebar from '../sidebar/Sidebar'
 import PropertiesPanel from '../toolbar/PropertiesPanel'
 import FlowEditorTopBar from '../toolbar/FlowEditorTopBar'
+import RecipeBuilderPanel from './RecipeBuilderPanel'
 import { FlowApi, VisualizationApi } from '../../../../api'
 import './FlowCanvas.css'
 import '../sidebar/Sidebar.css'
@@ -31,11 +32,12 @@ import { nodeTypes } from '../../nodes/nodeTypes.ts'
 import {
   createFlowDataPayload,
   createNodeForType,
+  getFlowEdgePresentation,
+  normalizeGeneratedFlowData,
   normalizeFlowEdges,
   normalizeFlowNode,
   serializeFlowData,
   NODE_BASE_SIZE,
-  type EdgeKind,
 } from './FlowCanvas.helpers.ts'
 import type { VisualizationResponse } from '../../../../api'
 import {
@@ -124,7 +126,10 @@ export default function FlowCanvas({ recipe, onBack }: FlowCanvasProps) {
   const [copied, setCopied] = useState(false)
   const [visualizationResult, setVisualizationResult] = useState<VisualizationResponse | null>(null)
   const [visualizing, setVisualizing] = useState(false)
+  const [generatingFlow, setGeneratingFlow] = useState(false)
   const [nodeZoomPercent, setNodeZoomPercent] = useState(100)
+  const [builderWidth, setBuilderWidth] = useState(380)
+  const [builderCollapsed, setBuilderCollapsed] = useState(false)
   const nodeZoomPercentRef = useRef(100)
   const dragSnapshotRef = useRef<{ nodes: Node[]; edges: Edge[] } | null>(null)
 
@@ -598,27 +603,19 @@ export default function FlowCanvas({ recipe, onBack }: FlowCanvasProps) {
     const conditionLabels = sourceNode && isConditionNode(sourceNode)
       ? normalizeConditionNodeData(sourceNode.data).condition
       : null
-    const isYes = connection.sourceHandle === 'condition-yes'
-    const isNo  = connection.sourceHandle === 'condition-no'
-    const isParallel = String(connection.sourceHandle ?? '').startsWith('parallel-') || String(connection.targetHandle ?? '').startsWith('parallel-')
-    const kind: EdgeKind = isYes ? 'yes' : isNo ? 'no' : isParallel ? 'parallel' : 'step'
-    const colors: Record<EdgeKind, string> = { step: '#94a3b8', yes: '#16a34a', no: '#dc2626', parallel: '#7c3aed' }
-    const color = colors[kind]
+    const edgePresentation = getFlowEdgePresentation(
+      connection.sourceHandle,
+      connection.targetHandle,
+      connection.sourceHandle === 'condition-yes'
+        ? conditionLabels?.successLabel || 'Yes'
+        : connection.sourceHandle === 'condition-no'
+          ? conditionLabels?.failureLabel || 'No'
+          : undefined,
+    )
+
     setEdges(eds => addEdge({
       ...connection,
-      type: 'smoothstep',
-      animated: false,
-      label: isYes
-        ? conditionLabels?.successLabel || 'Yes'
-        : isNo
-          ? conditionLabels?.failureLabel || 'No'
-          : isParallel
-            ? 'Parallel'
-            : undefined,
-      labelStyle: { fill: color, fontWeight: 700, fontSize: 11 },
-      labelBgStyle: { fill: isYes ? '#f0fdf4' : isNo ? '#fff5f5' : isParallel ? '#f5f3ff' : 'transparent' },
-      style: { stroke: color, strokeWidth: 1.5 },
-      markerEnd: { type: MarkerType.ArrowClosed, color, width: 16, height: 16 },
+      ...edgePresentation,
     }, eds))
   }, [isValidConnection, nodes, saveSnapshot, setEdges])
 
@@ -639,11 +636,78 @@ export default function FlowCanvas({ recipe, onBack }: FlowCanvasProps) {
   // refs for resize observation and reactflow instance
   const sidebarRef = useRef<HTMLDivElement | null>(null)
   const propsRef = useRef<HTMLDivElement | null>(null)
+  const recipeBuilderRef = useRef<HTMLDivElement | null>(null)
   const reactFlowInstance = useRef<ReactFlowInstance<Node, Edge> | null>(null)
   const reactFlowWrapperRef = useRef<HTMLDivElement | null>(null)
   const fitCanvasView = useCallback(() => {
     reactFlowInstance.current?.fitView({ padding: 0.12 })
   }, [])
+
+  const applyCurrentNodeZoom = useCallback((nextNodes: Node[]) => {
+    const zoomFactor = nodeZoomPercentRef.current / 100
+
+    if (zoomFactor === 1 || nextNodes.length === 0) {
+      return nextNodes
+    }
+
+    const anchorX = Math.min(...nextNodes.map((node) => node.position.x))
+    const anchorY = Math.min(...nextNodes.map((node) => node.position.y))
+
+    return nextNodes.map((node) => {
+      const base = NODE_BASE_SIZE[node.type ?? '']
+      if (!base) return node
+
+      return {
+        ...node,
+        position: {
+          x: anchorX + ((node.position.x - anchorX) * zoomFactor),
+          y: anchorY + ((node.position.y - anchorY) * zoomFactor),
+        },
+        width: Math.round(base.width * zoomFactor),
+        height: Math.round(base.height * zoomFactor),
+      }
+    })
+  }, [])
+
+  const replaceCanvasFlow = useCallback((flowData: FlowData) => {
+    if (nodes.length > 0 || edges.length > 0) {
+      saveSnapshot()
+    }
+
+    const nextNodes = applyCurrentNodeZoom(toFlowNodes((flowData.nodes ?? []) as FlowNodePayload[]))
+    const nextEdges = normalizeFlowEdges(flowData.edges ?? [])
+
+    setNodes(nextNodes)
+    setEdges(nextEdges)
+    setFuture([])
+    setVisualizationResult(null)
+    selectNodeFromSidebar(null)
+
+    window.requestAnimationFrame(() => {
+      fitCanvasView()
+    })
+  }, [applyCurrentNodeZoom, edges.length, fitCanvasView, nodes.length, saveSnapshot, selectNodeFromSidebar, setEdges, setFuture, setNodes])
+
+  const generateFlowFromRecipe = useCallback(async (recipeText: string) => {
+    try {
+      setGeneratingFlow(true)
+      const generated = await FlowApi.generateFlowFromRecipe({ recipe: recipeText })
+      const normalizedFlowData = normalizeGeneratedFlowData(generated)
+
+      replaceCanvasFlow(normalizedFlowData)
+    } catch (error) {
+      console.error(error)
+
+      const message = error instanceof Error
+        ? error.message
+        : 'Unable to generate the workflow right now.'
+
+      alert(message)
+      throw new Error(message)
+    } finally {
+      setGeneratingFlow(false)
+    }
+  }, [replaceCanvasFlow])
 
   // observe size changes of the sidebar and call fitView
   useEffect(() => {
@@ -652,6 +716,8 @@ export default function FlowCanvas({ recipe, onBack }: FlowCanvasProps) {
       fitCanvasView()
     })
     if (sidebarRef.current) ro.observe(sidebarRef.current)
+    if (recipeBuilderRef.current) ro.observe(recipeBuilderRef.current)
+    if (propsRef.current) ro.observe(propsRef.current)
     const onWin = () => { fitCanvasView() }
     window.addEventListener('resize', onWin)
     return () => { ro.disconnect(); window.removeEventListener('resize', onWin) }
@@ -692,47 +758,116 @@ export default function FlowCanvas({ recipe, onBack }: FlowCanvasProps) {
         </div>
 
         {/* Canvas Area */}
-        <div ref={reactFlowWrapperRef} className="flow-canvas-area">
-          {visualizationResult && (
-            <div className="flow-canvas-visualization-result">
-              <div className="flow-canvas-visualization-box">
-                <div className="flow-canvas-visualization-title">📝 Visualization plan prepared</div>
-                <div className="flow-canvas-visualization-info">
-                  {visualizationResult.clips?.length ?? 0} clips planned · final clip: {visualizationResult.finalClip?.clipId ?? 'n/a'}
-                </div>
-              </div>
+        <div className="flow-canvas-area">
+          <div className="flow-canvas-workspace">
+            <div
+              ref={recipeBuilderRef}
+              style={{
+                width: builderCollapsed ? 48 : builderWidth,
+                minWidth: builderCollapsed ? 48 : builderWidth,
+                height: '100%',
+                display: 'flex',
+                flexDirection: 'column',
+              }}
+            >
+              <RecipeBuilderPanel
+                collapsed={builderCollapsed}
+                isGenerating={generatingFlow}
+                onToggleCollapsed={() => setBuilderCollapsed((currentValue) => !currentValue)}
+                onGenerate={generateFlowFromRecipe}
+              />
             </div>
-          )}
-          
-            <ReactFlow
-              onInit={inst => { reactFlowInstance.current = inst; fitCanvasView() }}
-              nodes={nodes} 
-              edges={edges}
-              onNodesChange={handleNodesChange} 
-              onEdgesChange={onEdgesChange}
-              nodeTypes={nodeTypes} 
-              onConnect={onConnect}
-              isValidConnection={isValidConnection}
-              fitView 
-              fitViewOptions={{ padding: 0.12 }}
-              style={{ width: '100%', height: '100%', background: 'var(--flow-canvas-bg)' }}
-              connectionRadius={28}
-              defaultEdgeOptions={{ 
-                type: 'smoothstep',
-                style: { stroke: '#94a3b8', strokeWidth: 1.5 },
-                markerEnd: { type: MarkerType.ArrowClosed, color: '#94a3b8', width: 16, height: 16 } 
-              }}>
-            <Background variant={BackgroundVariant.Dots} color="var(--flow-canvas-dots)" gap={20} size={1} />
-            <Controls style={{ borderRadius: 10, border: '1px solid #e2e8f0', boxShadow: '0 2px 8px rgba(0,0,0,0.06)' }} />
-            <MiniMap 
-              style={{ borderRadius: 12, border: '1px solid #e2e8f0', boxShadow: '0 2px 8px rgba(0,0,0,0.06)' }}
-              nodeColor={n => {
-                if (isConditionNode(n)) return '#fde68a'
-                if (isParallelNode(n)) return '#ddd6fe'
-                return '#e2e8f0'
-              }} 
-            />
-          </ReactFlow>
+
+            {!builderCollapsed && (
+              <div
+                className="flow-inline-resizer"
+                onMouseDown={(event) => {
+                  const startX = event.clientX
+                  const startWidth = builderWidth
+                  const minWidth = 320
+                  const maxWidth = 560
+                  let frameId: number | null = null
+
+                  const onMove = (moveEvent: MouseEvent) => {
+                    const delta = moveEvent.clientX - startX
+                    let nextWidth = startWidth + delta
+
+                    if (nextWidth < minWidth) nextWidth = minWidth
+                    if (nextWidth > maxWidth) nextWidth = maxWidth
+
+                    setBuilderWidth(nextWidth)
+
+                    if (frameId == null) {
+                      frameId = window.requestAnimationFrame(() => {
+                        fitCanvasView()
+                        frameId = null
+                      })
+                    }
+                  }
+
+                  const onUp = () => {
+                    document.removeEventListener('mousemove', onMove)
+                    document.removeEventListener('mouseup', onUp)
+                    if (frameId != null) {
+                      window.cancelAnimationFrame(frameId)
+                      frameId = null
+                    }
+                  }
+
+                  document.addEventListener('mousemove', onMove)
+                  document.addEventListener('mouseup', onUp)
+                  event.preventDefault()
+                }}
+                role="separator"
+                aria-orientation="vertical"
+                aria-label="Resize AI recipe builder"
+              />
+            )}
+
+            <div ref={reactFlowWrapperRef} className="flow-canvas-viewport">
+              {visualizationResult && (
+                <div className="flow-canvas-visualization-result">
+                  <div className="flow-canvas-visualization-box">
+                    <div className="flow-canvas-visualization-title">📝 Visualization plan prepared</div>
+                    <div className="flow-canvas-visualization-info">
+                      {visualizationResult.clips?.length ?? 0} clips planned · final clip: {visualizationResult.finalClip?.clipId ?? 'n/a'}
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              <ReactFlow
+                onInit={inst => { reactFlowInstance.current = inst; fitCanvasView() }}
+                nodes={nodes}
+                edges={edges}
+                onNodesChange={handleNodesChange}
+                onEdgesChange={onEdgesChange}
+                nodeTypes={nodeTypes}
+                onConnect={onConnect}
+                isValidConnection={isValidConnection}
+                fitView
+                fitViewOptions={{ padding: 0.12 }}
+                style={{ width: '100%', height: '100%', background: 'var(--flow-canvas-bg)' }}
+                connectionRadius={28}
+                defaultEdgeOptions={{
+                  type: 'smoothstep',
+                  style: { stroke: '#94a3b8', strokeWidth: 1.5 },
+                  markerEnd: { type: MarkerType.ArrowClosed, color: '#94a3b8', width: 16, height: 16 },
+                }}
+              >
+                <Background variant={BackgroundVariant.Dots} color="var(--flow-canvas-dots)" gap={20} size={1} />
+                <Controls style={{ borderRadius: 10, border: '1px solid #e2e8f0', boxShadow: '0 2px 8px rgba(0,0,0,0.06)' }} />
+                <MiniMap
+                  style={{ borderRadius: 12, border: '1px solid #e2e8f0', boxShadow: '0 2px 8px rgba(0,0,0,0.06)' }}
+                  nodeColor={n => {
+                    if (isConditionNode(n)) return '#fde68a'
+                    if (isParallelNode(n)) return '#ddd6fe'
+                    return '#e2e8f0'
+                  }}
+                />
+              </ReactFlow>
+            </div>
+          </div>
         </div>
       </div>
 

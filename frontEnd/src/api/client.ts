@@ -7,6 +7,7 @@ import { API_CONFIG } from './config'
 
 interface FetchOptions extends RequestInit {
   params?: Record<string, string | number | boolean>
+  timeout?: number
 }
 
 interface ApiResponse<T> {
@@ -38,18 +39,45 @@ async function request<T>(
   endpoint: string,
   options: FetchOptions = {}
 ): Promise<T> {
-  const { params, ...fetchOptions } = options
+  const { params, timeout = API_CONFIG.timeout, ...fetchOptions } = options
 
   const url = buildUrl(endpoint, params)
+  const controller = new AbortController()
+  const externalSignal = fetchOptions.signal
 
-  const response = await fetch(url, {
-    ...defaultFetchOptions,
-    ...fetchOptions,
-    headers: {
-      ...API_CONFIG.headers,
-      ...fetchOptions.headers,
-    },
-  })
+  if (externalSignal?.aborted) {
+    controller.abort(externalSignal.reason)
+  } else if (externalSignal) {
+    externalSignal.addEventListener('abort', () => controller.abort(externalSignal.reason), { once: true })
+  }
+
+  const timeoutId = timeout > 0
+    ? window.setTimeout(() => controller.abort(new DOMException('Request timed out', 'AbortError')), timeout)
+    : null
+
+  let response: Response
+
+  try {
+    response = await fetch(url, {
+      ...defaultFetchOptions,
+      ...fetchOptions,
+      signal: controller.signal,
+      headers: {
+        ...API_CONFIG.headers,
+        ...fetchOptions.headers,
+      },
+    })
+  } catch (error) {
+    if (error instanceof DOMException && error.name === 'AbortError') {
+      throw new Error('Request timed out. Please try again.')
+    }
+
+    throw error
+  } finally {
+    if (timeoutId != null) {
+      window.clearTimeout(timeoutId)
+    }
+  }
 
   if (!response.ok) {
     const errorData = await response.json().catch(() => ({}))
@@ -59,8 +87,16 @@ async function request<T>(
     )
   }
 
-  const data: ApiResponse<T> = await response.json()
-  return data.data
+  const raw = await response.json().catch(() => (null as any))
+
+  // Support two response shapes:
+  // 1) API wrapper: { success: boolean, message?: string, data: T }
+  // 2) Raw payload: T
+  if (raw && typeof raw === 'object' && 'data' in raw) {
+    return (raw as ApiResponse<T>).data
+  }
+
+  return raw as T
 }
 
 /**
