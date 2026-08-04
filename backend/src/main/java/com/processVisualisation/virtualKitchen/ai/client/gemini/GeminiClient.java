@@ -14,6 +14,7 @@ import com.processVisualisation.virtualKitchen.ai.exception.AITimeoutException;
 
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.beans.factory.annotation.Qualifier;
+import org.springframework.context.annotation.Primary;
 import org.springframework.http.MediaType;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
@@ -27,8 +28,9 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
 
-@ConditionalOnProperty(prefix = "ai", name = "provider", havingValue = "gemini")
+@ConditionalOnProperty(prefix = "ai", name = "provider", havingValue = "gemini", matchIfMissing = true)
 @Component
+@Primary
 public class GeminiClient implements AIClient {
 
     private final RestClient restClient;

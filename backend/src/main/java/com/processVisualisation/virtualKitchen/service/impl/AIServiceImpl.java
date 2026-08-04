@@ -22,11 +22,11 @@ public class AIServiceImpl implements IAIService {
     public AIServiceImpl(AIClient aiClient,
                          OpenAIProperties openAIProperties,
                          ObjectProvider<GeminiProperties> geminiPropertiesProvider,
-                         @Value("${ai.provider:openai}") String provider) {
+                         @Value("${ai.provider:gemini}") String provider) {
         this.aiClient = aiClient;
         this.openAIProperties = openAIProperties;
         this.geminiProperties = geminiPropertiesProvider.getIfAvailable();
-        this.provider = provider == null ? "openai" : provider;
+        this.provider = provider == null ? "gemini" : provider;
     }
 
     @Override
