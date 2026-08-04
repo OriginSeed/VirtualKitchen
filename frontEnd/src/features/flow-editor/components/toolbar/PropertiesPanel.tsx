@@ -13,12 +13,22 @@ import {
 } from '../../catalog/ingredientCatalog'
 import {
   DURATION_UNIT_OPTIONS,
-  FLAME_OPTIONS,
   REPEAT_INTERVAL_UNIT_OPTIONS,
-  SPECIFICATION_OPTIONS,
-  UNIT_OPTIONS,
   buildRepeatIntervalLabel,
 } from '../../catalog/stepFieldCatalog'
+import {
+  CUSTOM_UNIT_ID,
+  UNITS_BY_CATEGORY,
+  UNIT_CATEGORY_ORDER,
+} from '../../catalog/unitCatalog'
+import {
+  CUSTOM_PREPARATION_STYLE_ID,
+  PREPARATION_STYLE_CATALOG,
+} from '../../catalog/preparationStyleCatalog'
+import {
+  CUSTOM_FLAME_LEVEL_ID,
+  FLAME_LEVEL_CATALOG,
+} from '../../catalog/flameLevelCatalog'
 import {
   normalizeParallelNodeData,
   type ParallelNodeStructuredFields,
@@ -28,9 +38,12 @@ import {
   type StepNodeStructuredFields,
 } from '../../../../types/recipeFlow'
 import {
-  getStepActionPresentation,
   type StepContextFieldConfig,
 } from '../../catalog/stepActionPresentation'
+import {
+  getStepActionSchema,
+  isStepFieldEnabled,
+} from '../../catalog/actionSchemaCatalog'
 import SearchableSelect, { type SearchableSelectOption } from '../../../../shared/components/SearchableSelect'
 
 type NodeData = {
@@ -82,7 +95,7 @@ export default function PropertiesPanel({ node, updateNodeField, onDeleteNode, o
   const repeatExpression = stepData
     ? buildRepeatIntervalLabel(repeatActionLabel, stepData.repeatEveryValue, stepData.repeatEveryUnit)
     : ''
-  const actionPresentation = stepData ? getStepActionPresentation(stepData.action) : null
+  const actionSchema = stepData ? getStepActionSchema(stepData.action) : null
 
   const actionOptions: SearchableSelectOption[] = ACTION_CATEGORY_ORDER.flatMap((category) =>
     ACTIONS_BY_CATEGORY[category].map((action) => ({
@@ -102,35 +115,79 @@ export default function PropertiesPanel({ node, updateNodeField, onDeleteNode, o
     }))
   )
 
+  const unitOptions: SearchableSelectOption[] = UNIT_CATEGORY_ORDER.flatMap((category) =>
+    UNITS_BY_CATEGORY[category].map((unit) => ({
+      value: unit.id,
+      label: unit.label,
+      category,
+    }))
+  )
+
+  const preparationStyleOptions: SearchableSelectOption[] = PREPARATION_STYLE_CATALOG.map((style) => ({
+    value: style.id,
+    label: style.label,
+  }))
+
+  const flameLevelOptions: SearchableSelectOption[] = FLAME_LEVEL_CATALOG.map((flameLevel) => ({
+    value: flameLevel.id,
+    label: flameLevel.label,
+  }))
+
   const renderActionField = (field: StepContextFieldConfig) => {
     if (!stepData) return null
 
     switch (field.key) {
-      case 'cutType':
+      case 'ingredientId':
         return (
           <div key={field.key} className="flow-properties-field">
-            <label className="flow-properties-label">{field.label}</label>
-            <input
-              className="flow-properties-readonly"
-              value={stepData.action ? getActionDisplayName(stepData.action) : 'Not selected'}
-              readOnly
+            <label className="flow-properties-label">Ingredient</label>
+            <SearchableSelect
+              value={stepData.ingredientId}
+              onChange={(nextIngredientId) => {
+                updateNodeField(node.id, 'step.ingredientId', nextIngredientId)
+                if (nextIngredientId !== CUSTOM_INGREDIENT_ID) {
+                  updateNodeField(node.id, 'step.customIngredientName', '')
+                }
+              }}
+              options={ingredientOptions}
+              placeholder="Select Ingredient"
             />
           </div>
         )
-      case 'specification':
+      case 'quantity':
+        return (
+          <div key={field.key} className="flow-properties-field">
+            <label className="flow-properties-label">{actionSchema?.amountLabel ?? 'Quantity'}</label>
+            <input
+              className="flow-properties-input"
+              value={stepData.quantity}
+              onChange={e => updateNodeField(node.id, 'step.quantity', e.target.value)}
+              placeholder="2"
+            />
+          </div>
+        )
+      case 'unitId':
+        return (
+          <div key={field.key} className="flow-properties-field">
+            <label className="flow-properties-label">{actionSchema?.unitLabel ?? 'Unit'}</label>
+            <SearchableSelect
+              value={stepData.unitId}
+              onChange={(nextUnitId) => updateNodeField(node.id, 'step.unitId', nextUnitId)}
+              options={unitOptions}
+              placeholder="Select Unit"
+            />
+          </div>
+        )
+      case 'preparationStyleId':
         return (
           <div key={field.key} className="flow-properties-field">
             <label className="flow-properties-label">{field.label}</label>
-            <select
-              className="flow-properties-input"
-              value={stepData.specificationOption}
-              onChange={e => updateNodeField(node.id, 'step.specificationOption', e.target.value)}
-            >
-              <option value="">Select {field.label}</option>
-              {SPECIFICATION_OPTIONS.map((option) => (
-                <option key={option} value={option}>{option}</option>
-              ))}
-            </select>
+            <SearchableSelect
+              value={stepData.preparationStyleId}
+              onChange={(nextValue) => updateNodeField(node.id, 'step.preparationStyleId', nextValue)}
+              options={preparationStyleOptions}
+              placeholder="Select Preparation Style"
+            />
           </div>
         )
       case 'temperature':
@@ -141,23 +198,20 @@ export default function PropertiesPanel({ node, updateNodeField, onDeleteNode, o
               className="flow-properties-input"
               value={stepData.temperature}
               onChange={e => updateNodeField(node.id, 'step.temperature', e.target.value)}
-              placeholder={field.label === 'Water Temperature' ? 'Warm' : '180 C'}
+              placeholder="180 C"
             />
           </div>
         )
-      case 'flame':
+      case 'flameLevelId':
         return (
           <div key={field.key} className="flow-properties-field">
             <label className="flow-properties-label">{field.label}</label>
-            <select
-              className="flow-properties-input"
-              value={stepData.flame || 'None'}
-              onChange={e => updateNodeField(node.id, 'step.flame', e.target.value)}
-            >
-              {FLAME_OPTIONS.map((option) => (
-                <option key={option} value={option}>{option}</option>
-              ))}
-            </select>
+            <SearchableSelect
+              value={stepData.flameLevelId}
+              onChange={(nextValue) => updateNodeField(node.id, 'step.flameLevelId', nextValue)}
+              options={flameLevelOptions}
+              placeholder="Select Flame Level"
+            />
           </div>
         )
       case 'duration':
@@ -189,20 +243,12 @@ export default function PropertiesPanel({ node, updateNodeField, onDeleteNode, o
           <div key={field.key} className="flow-properties-field">
             <label className="flow-properties-label">{field.label}</label>
             <div className="flow-properties-actions" style={{ marginTop: 0, paddingTop: 0, borderTop: 'none', marginBottom: 8 }}>
-              <select
-                className="flow-properties-input"
+              <SearchableSelect
                 value={stepData.repeatAction}
-                onChange={e => updateNodeField(node.id, 'step.repeatAction', e.target.value)}
-              >
-                <option value="">Action</option>
-                {ACTION_CATEGORY_ORDER.map((category) => (
-                  <optgroup key={category} label={category}>
-                    {ACTIONS_BY_CATEGORY[category].map((action) => (
-                      <option key={action.id} value={action.id}>{action.displayName}</option>
-                    ))}
-                  </optgroup>
-                ))}
-              </select>
+                onChange={(nextAction) => updateNodeField(node.id, 'step.repeatAction', nextAction)}
+                options={actionOptions}
+                placeholder="Action"
+              />
               <input
                 className="flow-properties-input"
                 value={stepData.repeatEveryValue}
@@ -224,6 +270,19 @@ export default function PropertiesPanel({ node, updateNodeField, onDeleteNode, o
               className="flow-properties-readonly"
               value={repeatExpression || 'Example: Stir every 2 minutes'}
               readOnly
+            />
+          </div>
+        )
+      case 'notes':
+        return (
+          <div key={field.key} className="flow-properties-field">
+            <label className="flow-properties-label">Notes</label>
+            <textarea
+              className="flow-properties-textarea"
+              rows={3}
+              value={stepData.notes}
+              onChange={e => updateNodeField(node.id, 'step.notes', e.target.value)}
+              placeholder="Any additional instructions"
             />
           </div>
         )
@@ -272,112 +331,75 @@ export default function PropertiesPanel({ node, updateNodeField, onDeleteNode, o
               />
             </div>
 
-            <div className="flow-editor-section-heading">Ingredient Details</div>
-            <div className="flow-properties-field">
-              <label className="flow-properties-label">Ingredient</label>
-              <SearchableSelect
-                value={stepData?.ingredientId ?? ''}
-                onChange={(nextIngredientId) => {
-                  updateNodeField(node.id, 'step.ingredientId', nextIngredientId)
-                  if (nextIngredientId !== CUSTOM_INGREDIENT_ID) {
-                    updateNodeField(node.id, 'step.customIngredientName', '')
-                  }
-                }}
-                options={ingredientOptions}
-                placeholder="Select Ingredient"
-              />
-            </div>
-
-            {stepData?.ingredientId === CUSTOM_INGREDIENT_ID && (
-              <div className="flow-properties-field">
-                <label className="flow-properties-label">Custom Ingredient</label>
-                <input
-                  className="flow-properties-input"
-                  value={stepData.customIngredientName}
-                  onChange={e => updateNodeField(node.id, 'step.customIngredientName', e.target.value)}
-                  placeholder="Enter ingredient name"
-                />
-              </div>
-            )}
-
-            <div className="flow-properties-field">
-              <label className="flow-properties-label">Catalog Details</label>
-              <input
-                className="flow-properties-readonly"
-                value={
-                  selectedIngredientMeta
-                    ? `${selectedIngredientMeta.category} | Default unit: ${selectedIngredientMeta.defaultUnit}`
-                    : (stepData?.ingredientId === CUSTOM_INGREDIENT_ID ? 'Custom ingredient' : 'Not selected')
-                }
-                readOnly
-              />
-            </div>
-
-            <div className="flow-properties-field">
-              <label className="flow-properties-label">{actionPresentation?.amountLabel ?? 'Quantity'}</label>
-              <input
-                className="flow-properties-input"
-                value={stepData?.quantity ?? ''}
-                onChange={e => updateNodeField(node.id, 'step.quantity', e.target.value)}
-                placeholder="2"
-              />
-            </div>
-
-            <div className="flow-properties-field">
-              <label className="flow-properties-label">{actionPresentation?.unitLabel ?? 'Unit'}</label>
-              <select
-                className="flow-properties-input"
-                value={stepData?.unitOption ?? ''}
-                onChange={e => updateNodeField(node.id, 'step.unitOption', e.target.value)}
-              >
-                <option value="">Select Unit</option>
-                {UNIT_OPTIONS.map((option) => (
-                  <option key={option} value={option}>{option}</option>
-                ))}
-              </select>
-            </div>
-
-            {stepData?.unitOption === 'Custom' && (
-              <div className="flow-properties-field">
-                <label className="flow-properties-label">Custom Unit</label>
-                <input
-                  className="flow-properties-input"
-                  value={stepData.customUnit}
-                  onChange={e => updateNodeField(node.id, 'step.customUnit', e.target.value)}
-                  placeholder="Enter custom unit"
-                />
-              </div>
-            )}
-
-            {actionPresentation?.detailFields.some((field) => field.key === 'specification') && stepData?.specificationOption === 'Custom' && (
-              <div className="flow-properties-field">
-                <label className="flow-properties-label">Custom Specification</label>
-                <input
-                  className="flow-properties-input"
-                  value={stepData.customSpecification}
-                  onChange={e => updateNodeField(node.id, 'step.customSpecification', e.target.value)}
-                  placeholder="Enter custom specification"
-                />
-              </div>
-            )}
-
-            {actionPresentation && actionPresentation.detailFields.length > 0 && (
+            {actionSchema && stepData && (
               <>
-                <div className="flow-editor-section-heading">Action Details</div>
-                {actionPresentation.detailFields.map(renderActionField)}
+                <div className="flow-editor-section-heading">{actionSchema.category}</div>
+                {actionSchema.fields.map(renderActionField)}
+
+                {isStepFieldEnabled(stepData.action, 'ingredientId') && stepData.ingredientId === CUSTOM_INGREDIENT_ID && (
+                  <div className="flow-properties-field">
+                    <label className="flow-properties-label">Custom Ingredient</label>
+                    <input
+                      className="flow-properties-input"
+                      value={stepData.customIngredientName}
+                      onChange={e => updateNodeField(node.id, 'step.customIngredientName', e.target.value)}
+                      placeholder="Enter ingredient name"
+                    />
+                  </div>
+                )}
+
+                {isStepFieldEnabled(stepData.action, 'unitId') && stepData.unitId === CUSTOM_UNIT_ID && (
+                  <div className="flow-properties-field">
+                    <label className="flow-properties-label">Custom Unit</label>
+                    <input
+                      className="flow-properties-input"
+                      value={stepData.customUnit}
+                      onChange={e => updateNodeField(node.id, 'step.customUnit', e.target.value)}
+                      placeholder="Enter custom unit"
+                    />
+                  </div>
+                )}
+
+                {isStepFieldEnabled(stepData.action, 'preparationStyleId') && stepData.preparationStyleId === CUSTOM_PREPARATION_STYLE_ID && (
+                  <div className="flow-properties-field">
+                    <label className="flow-properties-label">Custom Preparation Style</label>
+                    <input
+                      className="flow-properties-input"
+                      value={stepData.customPreparationStyle}
+                      onChange={e => updateNodeField(node.id, 'step.customPreparationStyle', e.target.value)}
+                      placeholder="Enter custom preparation style"
+                    />
+                  </div>
+                )}
+
+                {isStepFieldEnabled(stepData.action, 'flameLevelId') && stepData.flameLevelId === CUSTOM_FLAME_LEVEL_ID && (
+                  <div className="flow-properties-field">
+                    <label className="flow-properties-label">Custom Flame Level</label>
+                    <input
+                      className="flow-properties-input"
+                      value={stepData.customFlameLevel}
+                      onChange={e => updateNodeField(node.id, 'step.customFlameLevel', e.target.value)}
+                      placeholder="Enter custom flame level"
+                    />
+                  </div>
+                )}
+
+                {isStepFieldEnabled(stepData.action, 'ingredientId') && (
+                  <div className="flow-properties-field">
+                    <label className="flow-properties-label">Catalog Details</label>
+                    <input
+                      className="flow-properties-readonly"
+                      value={
+                        selectedIngredientMeta
+                          ? `${selectedIngredientMeta.category} | Default unit: ${selectedIngredientMeta.defaultUnit}`
+                          : (stepData.ingredientId === CUSTOM_INGREDIENT_ID ? 'Custom ingredient' : 'Not selected')
+                      }
+                      readOnly
+                    />
+                  </div>
+                )}
               </>
             )}
-
-            <div className="flow-properties-field">
-              <label className="flow-properties-label">Notes</label>
-              <textarea
-                className="flow-properties-textarea"
-                rows={3}
-                value={stepData?.notes ?? ''}
-                onChange={e => updateNodeField(node.id, 'step.notes', e.target.value)}
-                placeholder="Any additional instructions"
-              />
-            </div>
           </>
         )}
 

@@ -1,52 +1,39 @@
 export const ACTION_CATEGORY_ORDER = [
-  'Preparation',
-  'Cooking',
-  'Ingredient',
-  'Timing',
-  'Finish',
-  'Other',
+  'Ingredient Operations',
+  'Preparation Operations',
+  'Cooking Operations',
+  'Mixing Operations',
+  'Waiting Operations',
+  'Finish Operations',
 ] as const
 
 export type ActionCategory = (typeof ACTION_CATEGORY_ORDER)[number]
 
 export const STEP_ACTION_CATALOG = [
-  { id: 'wash', displayName: 'Wash', icon: 'WA', category: 'Preparation' },
-  { id: 'peel', displayName: 'Peel', icon: 'PL', category: 'Preparation' },
-  { id: 'cut', displayName: 'Cut', icon: 'CT', category: 'Preparation' },
-  { id: 'chop', displayName: 'Chop', icon: 'CH', category: 'Preparation' },
-  { id: 'slice', displayName: 'Slice', icon: 'SL', category: 'Preparation' },
-  { id: 'dice', displayName: 'Dice', icon: 'DC', category: 'Preparation' },
-  { id: 'grate', displayName: 'Grate', icon: 'GR', category: 'Preparation' },
-  { id: 'crush', displayName: 'Crush', icon: 'CR', category: 'Preparation' },
-  { id: 'grind', displayName: 'Grind', icon: 'GD', category: 'Preparation' },
-  { id: 'marinate', displayName: 'Marinate', icon: 'MR', category: 'Preparation' },
+  { id: 'add', displayName: 'Add', icon: 'AD', category: 'Ingredient Operations' },
+  { id: 'remove', displayName: 'Remove', icon: 'RM', category: 'Ingredient Operations' },
+  { id: 'pour', displayName: 'Pour', icon: 'PO', category: 'Ingredient Operations' },
+  { id: 'season', displayName: 'Season', icon: 'SN', category: 'Ingredient Operations' },
 
-  { id: 'heat', displayName: 'Heat', icon: 'HT', category: 'Cooking' },
-  { id: 'boil', displayName: 'Boil', icon: 'BL', category: 'Cooking' },
-  { id: 'fry', displayName: 'Fry', icon: 'FR', category: 'Cooking' },
-  { id: 'deep-fry', displayName: 'Deep Fry', icon: 'DF', category: 'Cooking' },
-  { id: 'steam', displayName: 'Steam', icon: 'SM', category: 'Cooking' },
-  { id: 'bake', displayName: 'Bake', icon: 'BK', category: 'Cooking' },
-  { id: 'roast', displayName: 'Roast', icon: 'RS', category: 'Cooking' },
-  { id: 'grill', displayName: 'Grill', icon: 'GL', category: 'Cooking' },
-  { id: 'simmer', displayName: 'Simmer', icon: 'SI', category: 'Cooking' },
-  { id: 'pressure-cook', displayName: 'Pressure Cook', icon: 'PC', category: 'Cooking' },
+  { id: 'cut', displayName: 'Cut', icon: 'CT', category: 'Preparation Operations' },
+  { id: 'chop', displayName: 'Chop', icon: 'CH', category: 'Preparation Operations' },
+  { id: 'slice', displayName: 'Slice', icon: 'SL', category: 'Preparation Operations' },
+  { id: 'dice', displayName: 'Dice', icon: 'DC', category: 'Preparation Operations' },
 
-  { id: 'add', displayName: 'Add', icon: 'AD', category: 'Ingredient' },
-  { id: 'pour', displayName: 'Pour', icon: 'PO', category: 'Ingredient' },
-  { id: 'mix', displayName: 'Mix', icon: 'MX', category: 'Ingredient' },
-  { id: 'stir', displayName: 'Stir', icon: 'ST', category: 'Ingredient' },
-  { id: 'coat', displayName: 'Coat', icon: 'CO', category: 'Ingredient' },
-  { id: 'season', displayName: 'Season', icon: 'SN', category: 'Ingredient' },
-  { id: 'garnish', displayName: 'Garnish', icon: 'GN', category: 'Ingredient' },
+  { id: 'heat', displayName: 'Heat', icon: 'HT', category: 'Cooking Operations' },
+  { id: 'boil', displayName: 'Boil', icon: 'BL', category: 'Cooking Operations' },
+  { id: 'fry', displayName: 'Fry', icon: 'FR', category: 'Cooking Operations' },
+  { id: 'bake', displayName: 'Bake', icon: 'BK', category: 'Cooking Operations' },
 
-  { id: 'wait', displayName: 'Wait', icon: 'WT', category: 'Timing' },
-  { id: 'rest', displayName: 'Rest', icon: 'RE', category: 'Timing' },
+  { id: 'stir', displayName: 'Stir', icon: 'ST', category: 'Mixing Operations' },
+  { id: 'mix', displayName: 'Mix', icon: 'MX', category: 'Mixing Operations' },
+  { id: 'whisk', displayName: 'Whisk', icon: 'WK', category: 'Mixing Operations' },
 
-  { id: 'taste', displayName: 'Taste', icon: 'TS', category: 'Finish' },
-  { id: 'serve', displayName: 'Serve', icon: 'SV', category: 'Finish' },
+  { id: 'wait', displayName: 'Wait', icon: 'WT', category: 'Waiting Operations' },
+  { id: 'rest', displayName: 'Rest', icon: 'RE', category: 'Waiting Operations' },
 
-  { id: 'custom', displayName: 'Custom', icon: 'CU', category: 'Other' },
+  { id: 'serve', displayName: 'Serve', icon: 'SV', category: 'Finish Operations' },
+  { id: 'garnish', displayName: 'Garnish', icon: 'GN', category: 'Finish Operations' },
 ] as const
 
 export type StepActionId = (typeof STEP_ACTION_CATALOG)[number]['id']

@@ -1,3 +1,5 @@
+import { resolveUnitId } from './unitCatalog'
+
 export const INGREDIENT_CATEGORY_ORDER = [
   'Liquid',
   'Pantry',
@@ -17,8 +19,8 @@ export const INGREDIENT_CATALOG = [
   { id: 'rice', name: 'Rice', category: 'Pantry', icon: 'RC', defaultUnit: 'cup' },
   { id: 'onion', name: 'Onion', category: 'Produce', icon: 'ON', defaultUnit: 'piece' },
   { id: 'tomato', name: 'Tomato', category: 'Produce', icon: 'TM', defaultUnit: 'piece' },
-  { id: 'garlic', name: 'Garlic', category: 'Produce', icon: 'GC', defaultUnit: 'clove' },
-  { id: 'ginger', name: 'Ginger', category: 'Produce', icon: 'GI', defaultUnit: 'inch' },
+  { id: 'garlic', name: 'Garlic', category: 'Produce', icon: 'GC', defaultUnit: 'piece' },
+  { id: 'ginger', name: 'Ginger', category: 'Produce', icon: 'GI', defaultUnit: 'piece' },
   { id: 'chili', name: 'Chili', category: 'Produce', icon: 'CH', defaultUnit: 'piece' },
   { id: 'potato', name: 'Potato', category: 'Produce', icon: 'PT', defaultUnit: 'piece' },
   { id: 'carrot', name: 'Carrot', category: 'Produce', icon: 'CR', defaultUnit: 'piece' },
@@ -27,7 +29,7 @@ export const INGREDIENT_CATALOG = [
   { id: 'milk', name: 'Milk', category: 'Dairy', icon: 'MK', defaultUnit: 'ml' },
   { id: 'butter', name: 'Butter', category: 'Dairy', icon: 'BT', defaultUnit: 'tbsp' },
   { id: 'chicken', name: 'Chicken', category: 'Protein', icon: 'CK', defaultUnit: 'g' },
-  { id: 'custom', name: 'Custom Ingredient', category: 'Other', icon: 'CU', defaultUnit: 'unit' },
+  { id: 'custom', name: 'Custom Ingredient', category: 'Other', icon: 'CU', defaultUnit: 'custom' },
 ] as const
 
 export type IngredientId = (typeof INGREDIENT_CATALOG)[number]['id']
@@ -101,7 +103,8 @@ export const getIngredientDisplayName = (ingredientId: IngredientId | '', custom
 
 export const getIngredientDefaultUnit = (ingredientId: IngredientId | '') => {
   if (!ingredientId || ingredientId === CUSTOM_INGREDIENT_ID) return ''
-  return getIngredientById(ingredientId).defaultUnit
+  const resolved = resolveUnitId(getIngredientById(ingredientId).defaultUnit)
+  return resolved || ''
 }
 
 export const getIngredientSearchValue = (ingredientId: IngredientId | '', customIngredientName = '') =>

@@ -7,6 +7,8 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.processVisualisation.virtualKitchen.ai.client.AIClient;
 import com.processVisualisation.virtualKitchen.ai.dto.AIRequest;
 import com.processVisualisation.virtualKitchen.ai.dto.AIResponse;
+import com.processVisualisation.virtualKitchen.dto.RecipeExecutionEdgeDTO;
+import com.processVisualisation.virtualKitchen.dto.RecipeExecutionStepDTO;
 import com.processVisualisation.virtualKitchen.dto.RecipeFlowGenerationResponseDTO;
 import com.processVisualisation.virtualKitchen.exception.RecipeFlowGenerationException;
 import com.processVisualisation.virtualKitchen.service.recipe.RecipeFlowPromptBuilder;
@@ -17,12 +19,14 @@ import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 
 import java.util.List;
-import java.util.Map;
 
 @Service
 public class RecipeGenerationService {
 
-    private static final TypeReference<List<Map<String, Object>>> LIST_OF_MAP_TYPE = new TypeReference<>() {
+    private static final TypeReference<List<RecipeExecutionStepDTO>> LIST_OF_STEP_TYPE = new TypeReference<>() {
+    };
+
+    private static final TypeReference<List<RecipeExecutionEdgeDTO>> LIST_OF_EDGE_TYPE = new TypeReference<>() {
     };
 
     private final AIClient aiClient;
@@ -78,25 +82,24 @@ public class RecipeGenerationService {
 
         try {
             JsonNode root = parseJson(content);
-            JsonNode nodesNode = root.path("nodes");
+            JsonNode stepsNode = root.path("steps");
             JsonNode edgesNode = root.path("edges");
 
-            if (!nodesNode.isArray() || !edgesNode.isArray()) {
-                return AttemptResult.invalid(content, List.of("Top-level JSON must contain arrays: nodes and edges"));
+            if (!stepsNode.isArray() || !edgesNode.isArray()) {
+                return AttemptResult.invalid(content, List.of("Top-level JSON must contain arrays: steps and edges"));
             }
 
-             List<Map<String, Object>> nodes = objectMapper.convertValue(nodesNode, LIST_OF_MAP_TYPE);
-             List<Map<String, Object>> edges = objectMapper.convertValue(edgesNode, LIST_OF_MAP_TYPE);
+             List<RecipeExecutionStepDTO> steps = objectMapper.convertValue(stepsNode, LIST_OF_STEP_TYPE);
+             List<RecipeExecutionEdgeDTO> edges = objectMapper.convertValue(edgesNode, LIST_OF_EDGE_TYPE);
 
-             // Normalize node data: ensure all step/condition/parallel object fields are strings
-             normalizeNodeDataTypes(nodes);
+             normalizeExecutionDataTypes(steps, edges);
 
-             RecipeFlowValidationResult validationResult = recipeValidator.validate(nodes, edges);
+             RecipeFlowValidationResult validationResult = recipeValidator.validate(steps, edges);
             if (!validationResult.isValid()) {
                 return AttemptResult.invalid(content, validationResult.getErrors());
             }
 
-            RecipeFlowGenerationResponseDTO generated = new RecipeFlowGenerationResponseDTO(nodes, edges);
+            RecipeFlowGenerationResponseDTO generated = new RecipeFlowGenerationResponseDTO(steps, edges);
             return AttemptResult.valid(content, generated);
         } catch (JsonProcessingException ex) {
             return AttemptResult.invalid(content, List.of("Invalid JSON format: " + ex.getOriginalMessage()));
@@ -124,65 +127,35 @@ public class RecipeGenerationService {
          return content;
      }
 
-     private void normalizeNodeDataTypes(List<Map<String, Object>> nodes) {
-         for (Map<String, Object> node : nodes) {
-             Object dataObj = node.get("data");
-             if (dataObj instanceof Map<?, ?>) {
-                 @SuppressWarnings("unchecked")
-                 Map<String, Object> data = (Map<String, Object>) dataObj;
+     private void normalizeExecutionDataTypes(
+             List<RecipeExecutionStepDTO> steps,
+             List<RecipeExecutionEdgeDTO> edges
+     ) {
+         for (RecipeExecutionStepDTO step : steps) {
+             if (step == null) continue;
+             step.setId(toStringValue(step.getId()));
+             step.setAction(toStringValue(step.getAction()));
+             step.setIngredientId(toStringValue(step.getIngredientId()));
+             step.setQuantity(toStringValue(step.getQuantity()));
+             step.setUnit(toStringValue(step.getUnit()));
+             step.setStyle(toStringValue(step.getStyle()));
+             step.setDuration(toStringValue(step.getDuration()));
+             step.setFlame(toStringValue(step.getFlame()));
+             step.setTemperature(toStringValue(step.getTemperature()));
+             step.setNotes(toStringValue(step.getNotes()));
+         }
 
-                 // For recipeStepNode, ensure step object fields are all strings
-                 if ("recipeStepNode".equals(node.get("type"))) {
-                     Object stepObj = data.get("step");
-                     if (stepObj instanceof Map<?, ?>) {
-                         @SuppressWarnings("unchecked")
-                         Map<String, Object> step = (Map<String, Object>) stepObj;
-                         coerceObjectFieldsToStrings(step);
-                     }
-                 }
-
-                 // For conditionNode, ensure condition object fields are all strings
-                 if ("conditionNode".equals(node.get("type"))) {
-                     Object conditionObj = data.get("condition");
-                     if (conditionObj instanceof Map<?, ?>) {
-                         @SuppressWarnings("unchecked")
-                         Map<String, Object> condition = (Map<String, Object>) conditionObj;
-                         coerceObjectFieldsToStrings(condition);
-                     }
-                 }
-
-                 // For parallelStartNode/parallelEndNode, ensure parallel object fields are strings
-                 if ("parallelStartNode".equals(node.get("type")) || "parallelEndNode".equals(node.get("type"))) {
-                     Object parallelObj = data.get("parallel");
-                     if (parallelObj instanceof Map<?, ?>) {
-                         @SuppressWarnings("unchecked")
-                         Map<String, Object> parallel = (Map<String, Object>) parallelObj;
-                         coerceObjectFieldsToStrings(parallel);
-                     }
-                 }
-             }
+         for (RecipeExecutionEdgeDTO edge : edges) {
+             if (edge == null) continue;
+             edge.setFrom(toStringValue(edge.getFrom()));
+             edge.setTo(toStringValue(edge.getTo()));
          }
      }
 
-     private void coerceObjectFieldsToStrings(Map<String, Object> obj) {
-         for (String key : new java.util.ArrayList<>(obj.keySet())) {
-             Object value = obj.get(key);
-             if (value == null) {
-                 obj.put(key, "");
-             } else if (value instanceof String) {
-                 // Already a string
-             } else if (value instanceof Number) {
-                 // Convert number to string
-                 obj.put(key, value.toString());
-             } else if (value instanceof Boolean) {
-                 // Convert boolean to string
-                 obj.put(key, value.toString());
-             } else {
-                 // Fallback: convert to string representation
-                 obj.put(key, value.toString());
-             }
-         }
-     }
+    private String toStringValue(Object value) {
+        if (value == null) return "";
+        return String.valueOf(value);
+    }
 
     private record AttemptResult(
             boolean valid,

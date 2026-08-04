@@ -68,11 +68,23 @@ import {
 import {
   getIngredientDefaultUnit,
 } from '../../catalog/ingredientCatalog'
+import { pruneStepFieldsByActionSchema } from '../../catalog/actionSchemaCatalog'
 import {
   buildDurationLabel,
   buildRepeatIntervalLabel,
 } from '../../catalog/stepFieldCatalog'
 import { getActionDisplayName, resolveStepActionId } from '../../catalog/actionCatalog'
+import { CUSTOM_UNIT_ID, getUnitDisplayValue, resolveUnitId } from '../../catalog/unitCatalog'
+import {
+  CUSTOM_PREPARATION_STYLE_ID,
+  getPreparationStyleDisplayName,
+  resolvePreparationStyleId,
+} from '../../catalog/preparationStyleCatalog'
+import {
+  CUSTOM_FLAME_LEVEL_ID,
+  getFlameLevelDisplayName,
+  resolveFlameLevelId,
+} from '../../catalog/flameLevelCatalog'
 
 // ─── Constants / helpers are moved to FlowCanvas.helpers.ts ────────────────
 const initialNodes: Node[] = []
@@ -307,39 +319,59 @@ export default function FlowCanvas({ recipe, onBack }: FlowCanvasProps) {
             mergedStep.customIngredientName = ''
           } else {
             mergedStep.customIngredientName = ''
-            if (!mergedStep.unit.trim()) {
-              mergedStep.unit = getIngredientDefaultUnit(mergedStep.ingredientId)
+            if (!mergedStep.unitId) {
+              const defaultUnitId = resolveUnitId(getIngredientDefaultUnit(mergedStep.ingredientId))
+              mergedStep.unitId = defaultUnitId
+              mergedStep.unit = getUnitDisplayValue(defaultUnitId)
             }
           }
         }
 
-        if (stepField === 'unitOption') {
-          if (value === 'Custom') {
+        if (stepField === 'unitId') {
+          mergedStep.unitId = resolveUnitId(value)
+          if (mergedStep.unitId === CUSTOM_UNIT_ID) {
             mergedStep.unit = mergedStep.customUnit.trim()
           } else {
             mergedStep.customUnit = ''
-            mergedStep.unit = value
+            mergedStep.unit = getUnitDisplayValue(mergedStep.unitId)
           }
         }
 
         if (stepField === 'customUnit') {
-          if (mergedStep.unitOption === 'Custom') {
+          if (mergedStep.unitId === CUSTOM_UNIT_ID) {
             mergedStep.unit = value
           }
         }
 
-        if (stepField === 'specificationOption') {
-          if (value === 'Custom') {
-            mergedStep.specification = mergedStep.customSpecification.trim()
+        if (stepField === 'preparationStyleId') {
+          mergedStep.preparationStyleId = resolvePreparationStyleId(value)
+          if (mergedStep.preparationStyleId === CUSTOM_PREPARATION_STYLE_ID) {
+            mergedStep.preparationStyle = mergedStep.customPreparationStyle.trim()
           } else {
-            mergedStep.customSpecification = ''
-            mergedStep.specification = value
+            mergedStep.customPreparationStyle = ''
+            mergedStep.preparationStyle = getPreparationStyleDisplayName(mergedStep.preparationStyleId)
           }
         }
 
-        if (stepField === 'customSpecification') {
-          if (mergedStep.specificationOption === 'Custom') {
-            mergedStep.specification = value
+        if (stepField === 'customPreparationStyle') {
+          if (mergedStep.preparationStyleId === CUSTOM_PREPARATION_STYLE_ID) {
+            mergedStep.preparationStyle = value
+          }
+        }
+
+        if (stepField === 'flameLevelId') {
+          mergedStep.flameLevelId = resolveFlameLevelId(value)
+          if (mergedStep.flameLevelId === CUSTOM_FLAME_LEVEL_ID) {
+            mergedStep.flameLevel = mergedStep.customFlameLevel.trim()
+          } else {
+            mergedStep.customFlameLevel = ''
+            mergedStep.flameLevel = getFlameLevelDisplayName(mergedStep.flameLevelId)
+          }
+        }
+
+        if (stepField === 'customFlameLevel') {
+          if (mergedStep.flameLevelId === CUSTOM_FLAME_LEVEL_ID) {
+            mergedStep.flameLevel = value
           }
         }
 
@@ -355,7 +387,9 @@ export default function FlowCanvas({ recipe, onBack }: FlowCanvasProps) {
           mergedStep.repeatEveryUnit,
         )
 
-        const finalized = normalizeStepNodeData({ ...normalized, step: mergedStep })
+        const prunedStep = pruneStepFieldsByActionSchema(mergedStep)
+
+        const finalized = normalizeStepNodeData({ ...normalized, step: prunedStep })
         return {
           ...node,
           data: finalized,
@@ -762,13 +796,7 @@ export default function FlowCanvas({ recipe, onBack }: FlowCanvasProps) {
           <div className="flow-canvas-workspace">
             <div
               ref={recipeBuilderRef}
-              style={{
-                width: builderCollapsed ? 48 : builderWidth,
-                minWidth: builderCollapsed ? 48 : builderWidth,
-                height: '100%',
-                display: 'flex',
-                flexDirection: 'column',
-              }}
+              style={{ width: builderCollapsed ? 48 : builderWidth, minWidth: builderCollapsed ? 48 : builderWidth }}
             >
               <RecipeBuilderPanel
                 collapsed={builderCollapsed}

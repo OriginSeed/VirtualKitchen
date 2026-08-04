@@ -1,37 +1,7 @@
-export const SPECIFICATION_OPTIONS = [
-  'Fine',
-  'Medium',
-  'Large',
-  'Thin Slice',
-  'Thick Slice',
-  'Julienne',
-  'Diced',
-  'Chopped',
-  'Custom',
-] as const
-
-export const UNIT_OPTIONS = [
-  'Piece',
-  'g',
-  'kg',
-  'ml',
-  'L',
-  'tsp',
-  'tbsp',
-  'Cup',
-  'Pinch',
-  'Custom',
-] as const
-
-export const FLAME_OPTIONS = ['None', 'Low', 'Medium', 'High'] as const
-
 export const DURATION_UNIT_OPTIONS = ['seconds', 'minutes', 'hours'] as const
 
 export const REPEAT_INTERVAL_UNIT_OPTIONS = ['seconds', 'minutes', 'hours'] as const
 
-export type SpecificationOption = (typeof SPECIFICATION_OPTIONS)[number]
-export type UnitOption = (typeof UNIT_OPTIONS)[number]
-export type FlameOption = (typeof FLAME_OPTIONS)[number]
 export type DurationUnitOption = (typeof DURATION_UNIT_OPTIONS)[number]
 export type RepeatIntervalUnitOption = (typeof REPEAT_INTERVAL_UNIT_OPTIONS)[number]
 

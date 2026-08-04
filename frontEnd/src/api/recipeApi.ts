@@ -5,7 +5,7 @@
 
 import { apiGet, apiPost, apiDelete, apiPut } from './client'
 import { API } from './endpoints'
-import type { FlowData } from '../types/recipeFlow'
+import type { FlowData, RecipeExecutionModel } from '../types/recipeFlow'
 
 export interface Recipe {
   id: number
@@ -29,10 +29,12 @@ export interface RecipeFlowGenerationRequest {
   recipe: string
 }
 
-export interface RecipeFlowGenerationResponse {
+export type LegacyRecipeFlowGenerationResponse = {
   nodes: unknown[]
   edges: unknown[]
 }
+
+export type RecipeFlowGenerationResponse = RecipeExecutionModel | LegacyRecipeFlowGenerationResponse
 
 export interface VisualizationClip {
   clipId?: string

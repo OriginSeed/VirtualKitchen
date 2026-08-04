@@ -47,7 +47,7 @@ export default function RecipeStepNode({ selected, style: nodeStyle, data, width
   const height = toNumber(nodeHeight, toNumber(nodeStyle?.height, 190))
   const notes = step.notes.trim() || 'Add notes for this step.'
   const ingredientName = getStepIngredientName(step).trim()
-  const ingredientSummary = [step.quantity.trim(), step.unit.trim(), ingredientName, step.specification.trim()]
+  const ingredientSummary = [step.quantity.trim(), step.unit.trim(), ingredientName, step.preparationStyle.trim()]
     .filter(Boolean)
     .join(' ')
   const detailRows = getVisibleStepDetailRows(step)

@@ -5,6 +5,7 @@ import {
   resolveStepActionId,
   type StepActionId,
 } from '../features/flow-editor/catalog/actionCatalog'
+import { pruneStepFieldsByActionSchema } from '../features/flow-editor/catalog/actionSchemaCatalog'
 import {
   CUSTOM_INGREDIENT_ID,
   getIngredientDisplayName,
@@ -12,20 +13,31 @@ import {
   type IngredientId,
 } from '../features/flow-editor/catalog/ingredientCatalog'
 import {
-  FLAME_OPTIONS,
-  SPECIFICATION_OPTIONS,
-  UNIT_OPTIONS,
   buildDurationLabel,
   buildRepeatIntervalLabel,
   parseDurationLabel,
   parseRepeatIntervalLabel,
-  toCatalogOption,
   type DurationUnitOption,
-  type FlameOption,
   type RepeatIntervalUnitOption,
-  type SpecificationOption,
-  type UnitOption,
 } from '../features/flow-editor/catalog/stepFieldCatalog'
+import {
+  CUSTOM_FLAME_LEVEL_ID,
+  getFlameLevelDisplayName,
+  resolveFlameLevelId,
+  type FlameLevelId,
+} from '../features/flow-editor/catalog/flameLevelCatalog'
+import {
+  CUSTOM_PREPARATION_STYLE_ID,
+  getPreparationStyleDisplayName,
+  resolvePreparationStyleId,
+  type PreparationStyleId,
+} from '../features/flow-editor/catalog/preparationStyleCatalog'
+import {
+  CUSTOM_UNIT_ID,
+  getUnitDisplayValue,
+  resolveUnitId,
+  type UnitId,
+} from '../features/flow-editor/catalog/unitCatalog'
 
 export type StepAction = StepActionId
 
@@ -34,13 +46,15 @@ export type StepNodeStructuredFields = {
   ingredientId: IngredientId | ''
   customIngredientName: string
   quantity: string
-  specificationOption: SpecificationOption | ''
-  customSpecification: string
-  unit: string
-  unitOption: UnitOption | ''
+  unitId: UnitId | ''
   customUnit: string
-  specification: string
-  flame: FlameOption | ''
+  unit: string
+  preparationStyleId: PreparationStyleId | ''
+  customPreparationStyle: string
+  preparationStyle: string
+  flameLevelId: FlameLevelId | ''
+  customFlameLevel: string
+  flameLevel: string
   temperature: string
   durationValue: string
   durationUnit: DurationUnitOption | ''
@@ -137,6 +151,29 @@ export interface FlowDraftStorage {
   data: FlowData
 }
 
+export type RecipeExecutionStep = {
+  id: string
+  action: string
+  ingredientId: string
+  quantity: string
+  unit: string
+  style: string
+  duration: string
+  flame: string
+  temperature: string
+  notes: string
+}
+
+export type RecipeExecutionEdge = {
+  from: string
+  to: string
+}
+
+export interface RecipeExecutionModel {
+  steps: RecipeExecutionStep[]
+  edges: RecipeExecutionEdge[]
+}
+
 const toStringValue = (value: unknown): string => {
   if (value == null) return ''
   if (typeof value === 'string') return value
@@ -151,6 +188,18 @@ const asRecord = (value: unknown): Record<string, unknown> => {
 
 const normalizeAction = (value: unknown): StepAction | '' => resolveStepActionId(value)
 
+const normalizeDurationUnitOption = (value: unknown): DurationUnitOption | '' => {
+  if (typeof value !== 'string') return ''
+  const normalized = value.trim().toLowerCase()
+  if (normalized === 'seconds' || normalized === 'second' || normalized === 'sec' || normalized === 's') return 'seconds'
+  if (normalized === 'minutes' || normalized === 'minute' || normalized === 'min' || normalized === 'm') return 'minutes'
+  if (normalized === 'hours' || normalized === 'hour' || normalized === 'hr' || normalized === 'h') return 'hours'
+  return ''
+}
+
+const normalizeRepeatIntervalUnitOption = (value: unknown): RepeatIntervalUnitOption | '' =>
+  normalizeDurationUnitOption(value)
+
 export const getStepNodeTitle = (action: StepAction | '') => getActionDisplayName(action)
 
 export const getStepNodeIcon = (action: StepAction | '') => getActionIcon(action)
@@ -160,13 +209,15 @@ export const createDefaultStepFields = (): StepNodeStructuredFields => ({
   ingredientId: '',
   customIngredientName: '',
   quantity: '',
-  specificationOption: '',
-  customSpecification: '',
-  unit: '',
-  unitOption: '',
+  unitId: '',
   customUnit: '',
-  specification: '',
-  flame: 'None',
+  unit: '',
+  preparationStyleId: '',
+  customPreparationStyle: '',
+  preparationStyle: '',
+  flameLevelId: '',
+  customFlameLevel: '',
+  flameLevel: '',
   temperature: '',
   durationValue: '',
   durationUnit: '',
@@ -229,26 +280,49 @@ export const normalizeStepNodeData = (value: unknown): RecipeStepNodeData => {
     customIngredientName = rawIngredientName
   }
 
-  const rawSpecification = toStringValue(rawStep.specification)
-  const specificationOption = toCatalogOption(rawStep.specificationOption, SPECIFICATION_OPTIONS)
-  const customSpecification = toStringValue(rawStep.customSpecification)
-  const resolvedSpecificationOption = specificationOption || toCatalogOption(rawSpecification, SPECIFICATION_OPTIONS)
-  const resolvedCustomSpecification = customSpecification || (resolvedSpecificationOption === 'Custom' ? rawSpecification : '')
-  const resolvedSpecification = resolvedSpecificationOption === 'Custom'
-    ? resolvedCustomSpecification
-    : (resolvedSpecificationOption || rawSpecification)
-
   const rawUnit = toStringValue(rawStep.unit)
-  const unitOption = toCatalogOption(rawStep.unitOption, UNIT_OPTIONS)
-  const customUnit = toStringValue(rawStep.customUnit)
-  const resolvedUnitOption = unitOption || toCatalogOption(rawUnit, UNIT_OPTIONS)
-  const resolvedCustomUnit = customUnit || (resolvedUnitOption === 'Custom' ? rawUnit : '')
-  const resolvedUnit = resolvedUnitOption === 'Custom' ? resolvedCustomUnit : (resolvedUnitOption || rawUnit)
+  const legacyUnitOption = toStringValue(rawStep.unitOption)
+  const rawCustomUnit = toStringValue(rawStep.customUnit)
+  const unitIdCandidate = resolveUnitId(rawStep.unitId) || resolveUnitId(legacyUnitOption) || resolveUnitId(rawUnit)
+  const resolvedUnitId: UnitId | '' = unitIdCandidate
+  const resolvedCustomUnit =
+    rawCustomUnit ||
+    (legacyUnitOption.toLowerCase() === 'custom' ? rawUnit : '') ||
+    (resolvedUnitId === CUSTOM_UNIT_ID ? rawUnit : '')
+  const resolvedUnit = getUnitDisplayValue(resolvedUnitId, resolvedCustomUnit)
 
-  const flame = toCatalogOption(rawStep.flame, FLAME_OPTIONS, 'None')
+  const rawPreparationStyle =
+    toStringValue(rawStep.preparationStyle) ||
+    toStringValue(rawStep.specification)
+  const legacyPreparationStyleOption = toStringValue(rawStep.specificationOption)
+  const rawCustomPreparationStyle =
+    toStringValue(rawStep.customPreparationStyle) ||
+    toStringValue(rawStep.customSpecification)
+  const preparationStyleIdCandidate =
+    resolvePreparationStyleId(rawStep.preparationStyleId) ||
+    resolvePreparationStyleId(legacyPreparationStyleOption) ||
+    resolvePreparationStyleId(rawPreparationStyle)
+  const resolvedPreparationStyleId: PreparationStyleId | '' = preparationStyleIdCandidate
+  const resolvedCustomPreparationStyle =
+    rawCustomPreparationStyle ||
+    (legacyPreparationStyleOption.toLowerCase() === 'custom' ? rawPreparationStyle : '') ||
+    (resolvedPreparationStyleId === CUSTOM_PREPARATION_STYLE_ID ? rawPreparationStyle : '')
+  const resolvedPreparationStyle = getPreparationStyleDisplayName(
+    resolvedPreparationStyleId,
+    resolvedCustomPreparationStyle,
+  )
+
+  const rawFlameLevel = toStringValue(rawStep.flameLevel) || toStringValue(rawStep.flame)
+  const rawCustomFlameLevel = toStringValue(rawStep.customFlameLevel)
+  const flameLevelIdCandidate = resolveFlameLevelId(rawStep.flameLevelId) || resolveFlameLevelId(rawFlameLevel)
+  const resolvedFlameLevelId: FlameLevelId | '' = flameLevelIdCandidate
+  const resolvedCustomFlameLevel =
+    rawCustomFlameLevel ||
+    (resolvedFlameLevelId === CUSTOM_FLAME_LEVEL_ID ? rawFlameLevel : '')
+  const resolvedFlameLevel = getFlameLevelDisplayName(resolvedFlameLevelId, resolvedCustomFlameLevel)
 
   const durationValue = toStringValue(rawStep.durationValue)
-  const durationUnit = toCatalogOption(rawStep.durationUnit, ['seconds', 'minutes', 'hours'] as const)
+  const durationUnit = normalizeDurationUnitOption(rawStep.durationUnit)
   const rawDurationLabel = toStringValue(rawStep.duration ?? legacyDuration)
   const parsedLegacyDuration = parseDurationLabel(rawDurationLabel)
   const resolvedDurationValue = durationValue || parsedLegacyDuration.durationValue
@@ -257,7 +331,7 @@ export const normalizeStepNodeData = (value: unknown): RecipeStepNodeData => {
 
   const repeatAction = normalizeAction(rawStep.repeatAction)
   const repeatEveryValue = toStringValue(rawStep.repeatEveryValue)
-  const repeatEveryUnit = toCatalogOption(rawStep.repeatEveryUnit, ['seconds', 'minutes', 'hours'] as const)
+  const repeatEveryUnit = normalizeRepeatIntervalUnitOption(rawStep.repeatEveryUnit)
   const parsedLegacyRepeat = parseRepeatIntervalLabel(toStringValue(rawStep.repeatInterval))
   const resolvedRepeatAction = repeatAction || (normalizeAction(parsedLegacyRepeat.repeatPrefix) || action)
   const resolvedRepeatEveryValue = repeatEveryValue || parsedLegacyRepeat.repeatEveryValue
@@ -265,18 +339,20 @@ export const normalizeStepNodeData = (value: unknown): RecipeStepNodeData => {
   const repeatActionLabel = resolvedRepeatAction ? getStepActionById(resolvedRepeatAction).displayName : ''
   const resolvedRepeatInterval = buildRepeatIntervalLabel(repeatActionLabel, resolvedRepeatEveryValue, resolvedRepeatEveryUnit)
 
-  const step: StepNodeStructuredFields = {
+  const mergedStep: StepNodeStructuredFields = {
     action,
     ingredientId,
     customIngredientName,
     quantity: toStringValue(rawStep.quantity),
-    specificationOption: resolvedSpecificationOption,
-    customSpecification: resolvedCustomSpecification,
-    unit: resolvedUnit,
-    unitOption: resolvedUnitOption,
+    unitId: resolvedUnitId,
     customUnit: resolvedCustomUnit,
-    specification: resolvedSpecification,
-    flame,
+    unit: resolvedUnit,
+    preparationStyleId: resolvedPreparationStyleId,
+    customPreparationStyle: resolvedCustomPreparationStyle,
+    preparationStyle: resolvedPreparationStyle,
+    flameLevelId: resolvedFlameLevelId,
+    customFlameLevel: resolvedCustomFlameLevel,
+    flameLevel: resolvedFlameLevel,
     temperature: toStringValue(rawStep.temperature),
     durationValue: resolvedDurationValue,
     durationUnit: resolvedDurationUnit,
@@ -287,6 +363,8 @@ export const normalizeStepNodeData = (value: unknown): RecipeStepNodeData => {
     repeatInterval: resolvedRepeatInterval,
     notes: toStringValue(rawStep.notes ?? legacyDescription),
   }
+
+  const step = pruneStepFieldsByActionSchema(mergedStep)
 
   return {
     title: getStepNodeTitle(step.action),
