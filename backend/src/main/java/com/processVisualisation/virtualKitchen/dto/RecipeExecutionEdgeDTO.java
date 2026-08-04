@@ -4,13 +4,11 @@ import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
-import java.util.List;
-
 @Data
 @NoArgsConstructor
 @AllArgsConstructor
-public class RecipeFlowGenerationResponseDTO {
+public class RecipeExecutionEdgeDTO {
 
-    private List<RecipeExecutionStepDTO> steps;
-    private List<RecipeExecutionEdgeDTO> edges;
+    private String from;
+    private String to;
 }

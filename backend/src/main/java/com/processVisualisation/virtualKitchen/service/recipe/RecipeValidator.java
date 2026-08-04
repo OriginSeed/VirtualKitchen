@@ -1,30 +1,24 @@
 package com.processVisualisation.virtualKitchen.service.recipe;
 
+import com.processVisualisation.virtualKitchen.dto.RecipeExecutionEdgeDTO;
+import com.processVisualisation.virtualKitchen.dto.RecipeExecutionStepDTO;
+
 import org.springframework.stereotype.Component;
 
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.LinkedHashSet;
 import java.util.List;
-import java.util.Map;
 import java.util.Set;
 
 @Component
 public class RecipeValidator {
 
-    private static final Set<String> SUPPORTED_NODE_TYPES = Set.of(
-            "recipeStepNode",
-            "conditionNode",
-            "parallelStartNode",
-            "parallelEndNode",
-            "sectionNode"
-    );
-
-    public RecipeFlowValidationResult validate(List<Map<String, Object>> nodes, List<Map<String, Object>> edges) {
+    public RecipeFlowValidationResult validate(List<RecipeExecutionStepDTO> steps, List<RecipeExecutionEdgeDTO> edges) {
         List<String> errors = new ArrayList<>();
 
-        if (nodes == null) {
-            errors.add("nodes must be an array");
+        if (steps == null) {
+            errors.add("steps must be an array");
             return new RecipeFlowValidationResult(false, errors);
         }
         if (edges == null) {
@@ -32,94 +26,47 @@ public class RecipeValidator {
             return new RecipeFlowValidationResult(false, errors);
         }
 
-        Set<String> nodeIds = new LinkedHashSet<>();
-        Set<String> edgeIds = new HashSet<>();
+        Set<String> stepIds = new LinkedHashSet<>();
+        Set<String> edgeKeys = new HashSet<>();
 
-        for (int i = 0; i < nodes.size(); i++) {
-            Map<String, Object> node = nodes.get(i);
-            validateNode(node, i, nodeIds, errors);
+        for (int i = 0; i < steps.size(); i++) {
+            RecipeExecutionStepDTO step = steps.get(i);
+            validateStep(step, i, stepIds, errors);
         }
 
         for (int i = 0; i < edges.size(); i++) {
-            Map<String, Object> edge = edges.get(i);
-            validateEdge(edge, i, edgeIds, nodeIds, errors);
+            RecipeExecutionEdgeDTO edge = edges.get(i);
+            validateEdge(edge, i, edgeKeys, stepIds, errors);
         }
 
         return new RecipeFlowValidationResult(errors.isEmpty(), errors);
     }
 
-    private void validateNode(Map<String, Object> node, int index, Set<String> nodeIds, List<String> errors) {
-        if (node == null) {
-            errors.add("node[" + index + "] is null");
+    private void validateStep(RecipeExecutionStepDTO step, int index, Set<String> stepIds, List<String> errors) {
+        if (step == null) {
+            errors.add("step[" + index + "] is null");
             return;
         }
 
-        String id = asString(node.get("id"));
-        String type = asString(node.get("type"));
-        Object dataObj = node.get("data");
+        String id = asString(step.getId());
+        String action = asString(step.getAction());
 
         if (isBlank(id)) {
-            errors.add("node[" + index + "].id is required");
-        } else if (!nodeIds.add(id)) {
-            errors.add("node id must be unique: " + id);
+            errors.add("step[" + index + "].id is required");
+        } else if (!stepIds.add(id)) {
+            errors.add("step id must be unique: " + id);
         }
 
-        if (isBlank(type)) {
-            errors.add("node[" + index + "].type is required");
-            return;
-        }
-
-        if (!SUPPORTED_NODE_TYPES.contains(type)) {
-            errors.add("node[" + index + "] has unknown type: " + type);
-            return;
-        }
-
-        if (!(dataObj instanceof Map<?, ?>)) {
-            errors.add("node[" + index + "].data must be an object");
-            return;
-        }
-
-        @SuppressWarnings("unchecked")
-        Map<String, Object> data = (Map<String, Object>) dataObj;
-
-        if (isBlank(asString(data.get("title")))) {
-            errors.add("node[" + index + "].data.title is required");
-        }
-
-        if ("recipeStepNode".equals(type) && !(data.get("step") instanceof Map<?, ?>)) {
-            errors.add("node[" + index + "] recipeStepNode requires data.step object");
-        }
-
-        if ("conditionNode".equals(type) && !(data.get("condition") instanceof Map<?, ?>)) {
-            errors.add("node[" + index + "] conditionNode requires data.condition object");
-        }
-
-        if ("parallelStartNode".equals(type)) {
-            validateParallelKind(data, "start", index, errors);
-        }
-
-        if ("parallelEndNode".equals(type)) {
-            validateParallelKind(data, "end", index, errors);
-        }
-    }
-
-    private void validateParallelKind(Map<String, Object> data, String expectedKind, int index, List<String> errors) {
-        if (!(data.get("parallel") instanceof Map<?, ?> parallelObj)) {
-            errors.add("node[" + index + "] parallel node requires data.parallel object");
-            return;
-        }
-
-        Object kind = parallelObj.get("kind");
-        if (!expectedKind.equals(asString(kind))) {
-            errors.add("node[" + index + "] parallel kind must be '" + expectedKind + "'");
+        if (isBlank(action)) {
+            errors.add("step[" + index + "].action is required");
         }
     }
 
     private void validateEdge(
-            Map<String, Object> edge,
+            RecipeExecutionEdgeDTO edge,
             int index,
-            Set<String> edgeIds,
-            Set<String> nodeIds,
+            Set<String> edgeKeys,
+            Set<String> stepIds,
             List<String> errors
     ) {
         if (edge == null) {
@@ -127,26 +74,26 @@ public class RecipeValidator {
             return;
         }
 
-        String id = asString(edge.get("id"));
-        String source = asString(edge.get("source"));
-        String target = asString(edge.get("target"));
+        String from = asString(edge.getFrom());
+        String to = asString(edge.getTo());
 
-        if (isBlank(id)) {
-            errors.add("edge[" + index + "].id is required");
-        } else if (!edgeIds.add(id)) {
-            errors.add("edge id must be unique: " + id);
+        if (isBlank(from)) {
+            errors.add("edge[" + index + "].from is required");
+        } else if (!stepIds.contains(from)) {
+            errors.add("edge[" + index + "].from references unknown step: " + from);
         }
 
-        if (isBlank(source)) {
-            errors.add("edge[" + index + "].source is required");
-        } else if (!nodeIds.contains(source)) {
-            errors.add("edge[" + index + "].source references unknown node: " + source);
+        if (isBlank(to)) {
+            errors.add("edge[" + index + "].to is required");
+        } else if (!stepIds.contains(to)) {
+            errors.add("edge[" + index + "].to references unknown step: " + to);
         }
 
-        if (isBlank(target)) {
-            errors.add("edge[" + index + "].target is required");
-        } else if (!nodeIds.contains(target)) {
-            errors.add("edge[" + index + "].target references unknown node: " + target);
+        if (!isBlank(from) && !isBlank(to)) {
+            String key = from + "->" + to;
+            if (!edgeKeys.add(key)) {
+                errors.add("duplicate edge from " + from + " to " + to);
+            }
         }
     }
 

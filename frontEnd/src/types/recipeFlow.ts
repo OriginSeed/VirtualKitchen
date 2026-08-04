@@ -151,6 +151,29 @@ export interface FlowDraftStorage {
   data: FlowData
 }
 
+export type RecipeExecutionStep = {
+  id: string
+  action: string
+  ingredientId: string
+  quantity: string
+  unit: string
+  style: string
+  duration: string
+  flame: string
+  temperature: string
+  notes: string
+}
+
+export type RecipeExecutionEdge = {
+  from: string
+  to: string
+}
+
+export interface RecipeExecutionModel {
+  steps: RecipeExecutionStep[]
+  edges: RecipeExecutionEdge[]
+}
+
 const toStringValue = (value: unknown): string => {
   if (value == null) return ''
   if (typeof value === 'string') return value

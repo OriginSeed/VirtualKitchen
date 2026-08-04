@@ -22,6 +22,10 @@ import {
   type FlowEdgePayload,
   type FlowNodePayload,
 } from '../../../../types/recipeFlow'
+import {
+  convertRecipeExecutionModelToFlowData,
+  normalizeRecipeExecutionModel,
+} from './RecipeExecutionGraphConverter'
 
 export type EdgeKind = 'step' | 'yes' | 'no' | 'parallel'
 
@@ -252,6 +256,13 @@ export const normalizeGeneratedFlowData = (value: unknown): FlowData => {
     throw new Error('Generated flow response is invalid.')
   }
 
+  // New contract: AI returns lightweight execution model.
+  if (Array.isArray(value.steps) && Array.isArray(value.edges)) {
+    const executionModel = normalizeRecipeExecutionModel(value)
+    return convertRecipeExecutionModelToFlowData(executionModel)
+  }
+
+  // Backward compatibility for older backend/AI responses.
   if (!Array.isArray(value.nodes) || !Array.isArray(value.edges)) {
     throw new Error('Generated flow response is invalid.')
   }
