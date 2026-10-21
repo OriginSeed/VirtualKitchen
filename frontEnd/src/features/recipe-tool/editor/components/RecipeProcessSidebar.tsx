@@ -4,7 +4,6 @@ import '../styles/RecipeEditorToolbar.css'
 import type { Process } from '../../../../types/process'
 import { isPendingProcessId } from '../../model/subprocessReferences'
 import { getPreparationFlows } from '../../model/preparationFlows'
-import AddNodeMenu from './AddNodeMenu'
 import PreparationNotesPopover from './PreparationNotesPopover'
 import { useProcessSidebarActions } from '../context/ProcessSidebarActionsContext'
 
@@ -36,7 +35,7 @@ const sectionLabel = 'px-1 text-[0.68rem] font-bold uppercase tracking-wide'
 /**
  * "Recipe": the Recipe Editor's two flow editors — Preparation (independent flows, each making one named component,
  * e.g. "Chopped Onions") above the Main Process (the one connected cooking sequence that uses them) — with the
- * editor's one "+ Add" menu at the top. Selecting a card just updates local state in RecipeEditorView — it never
+ * Step and Condition add buttons at the top. Selecting a card just updates local state in RecipeEditorView — it never
  * navigates to a different route ("keep the user inside the Recipe Tool").
  */
 export default function RecipeProcessSidebar({
@@ -188,15 +187,18 @@ export default function RecipeProcessSidebar({
 
       {readinessPanel}
 
-      {(onAddStep || onAddCondition || onOpenPreparation) && (
-        <div className="flex-shrink-0 border-b border-[var(--flow-border)] p-2.5">
-          <AddNodeMenu
-            onAddStep={onAddStep}
-            onAddCondition={onAddCondition}
-            onAddSubprocess={onOpenPreparation}
-            buttonClassName="recipe-sidebar-add"
-            placement="bottom-start"
-          />
+      {(onAddStep || onAddCondition) && (
+        <div className="flex flex-shrink-0 gap-2 border-b border-[var(--flow-border)] p-2.5">
+          {onAddStep && (
+            <button type="button" className="recipe-sidebar-add" onClick={onAddStep} title="A cooking action in this process">
+              <span aria-hidden>▭</span> Step
+            </button>
+          )}
+          {onAddCondition && (
+            <button type="button" className="recipe-sidebar-add" onClick={onAddCondition} title="A yes / no check that branches the flow">
+              <span aria-hidden>◇</span> Condition
+            </button>
+          )}
         </div>
       )}
 

@@ -16,16 +16,16 @@ type Props = {
 const order = (i: number) => ({ '--i': i }) as CSSProperties
 
 const FEATURES = [
-  { icon: '🧩', title: 'Visual recipe editor', text: 'Lay out steps, conditions and subprocesses on a canvas. Auto Arrange keeps it tidy; autosave, undo and crash recovery keep it safe.' },
-  { icon: '✦', title: 'AI flow generation', text: 'Describe a dish in a sentence and get a structured flow, or ask AI to continue the one you already have.' },
-  { icon: '▶', title: 'Narrated walkthrough', text: 'Play any recipe as a slideshow with word-by-word captions and text-to-speech narration.' },
+  { icon: '🧩', title: 'Recipe editor', text: 'Build a recipe by hand: Preparation flows and a Main process, each step edited in its own card with a Description and an Expected result. Autosave and undo keep it safe.' },
+  { icon: '✦', title: 'Build with AI', text: 'Describe a dish and AI drafts the whole recipe, or ask it to continue or tweak the one you have. You review before anything changes.' },
+  { icon: '✍️', title: 'Easy step building', text: 'Type @ to tag ingredients, amounts and equipment in a step. Titles are written for you from the action, so building a recipe stays quick.' },
+  { icon: '▶', title: 'Visuals & narration', text: 'See an image for each preparation and play the recipe as a narrated, captioned walkthrough, so every step is clear.' },
   { icon: '🥕', title: 'Ingredients & nutrition', text: 'Pick quantities from a real ingredient catalog and see the nutrition of the whole recipe.' },
-  { icon: '🧺', title: 'Kitchen inventory & shop', text: 'Track what is in your pantry and shop for missing ingredients and equipment.' },
-  { icon: '📚', title: 'Recipe library', text: 'Keep your own recipes, browse the global library and copy any recipe to make it yours.' },
+  { icon: '📚', title: 'Recipe library', text: 'Keep your own recipes, open any recipe from the global library in read mode and add it to your kitchen to make it yours.' },
 ]
 
 const STEPS = [
-  { title: 'Design', text: 'Add steps, ingredients, quantities and conditions on the canvas.' },
+  { title: 'Create', text: 'Add Preparation and Main steps, tag ingredients with @ and set quantities.' },
   { title: 'Refine with AI', text: 'Generate a flow from a sentence or extend the one you have.' },
   { title: 'Visualize', text: 'Play it back as a narrated, step-by-step walkthrough.' },
   { title: 'Order & cook', text: 'Check your pantry, buy what is missing and track delivery.' },
@@ -34,9 +34,9 @@ const STEPS = [
 const ORDER_STAGES = ['Confirm', 'Ingredients', 'Payment', 'Receipt', 'Tracking']
 
 const FAQS = [
-  { q: 'Do I need cooking or technical experience?', a: 'No. Start from a blank canvas, copy a recipe from the global library, or describe a dish and let AI draft the first flow for you.' },
+  { q: 'Do I need cooking or technical experience?', a: 'No. Start from scratch, add a recipe from the global library to your kitchen, or describe a dish and let AI draft it for you.' },
   { q: 'How do AI credits work?', a: 'Every account gets a monthly AI credit allowance, visible in the AI menu. Bigger AI workflows show an estimate and wait for your approval before they run.' },
-  { q: 'Who can see my recipes?', a: 'You choose. Keep a recipe in My recipes or publish it to the global library so others can view and copy it.' },
+  { q: 'Who can see my recipes?', a: 'You choose. Keep a recipe in My recipes or publish it to the global library so others can view it and add it to their kitchen.' },
   { q: 'Is ordering real?', a: 'The ordering flow checks your kitchen inventory, reserves what you already have and lets you shop for the rest. Payment is a demo today, so no real charges are made.' },
   { q: 'What is the narrated walkthrough?', a: 'It turns your recipe flow into a step-by-step slideshow with captions that follow a spoken narration, so you can cook hands-free.' },
 ]
@@ -84,12 +84,12 @@ export default function HomePage({ onTryIt, onLogin }: Props) {
         <section className="home-hero">
           <div className="home-hero-glow" aria-hidden="true" />
           <div className="home-hero-copy">
-            <span className="home-eyebrow">Visual recipe studio</span>
-            <h1>Design recipes as <em>living flows.</em></h1>
+            <span className="home-eyebrow">You are the chef</span>
+            <h1>Cook your way. <em>Create your rules.</em></h1>
             <p>
-              Build every step, ingredient and condition on a visual canvas. Let AI draft
-              the flow, watch it play as a narrated walkthrough, then order exactly what
-              you need to cook it.
+              From a simple family recipe to something entirely your own, create every
+              step the way you want. AI helps you bring your recipe to life—you stay in
+              control.
             </p>
             <div className="home-hero-actions">
               <button type="button" className="home-btn home-btn-primary home-btn-lg" onClick={onTryIt}>
@@ -201,8 +201,8 @@ export default function HomePage({ onTryIt, onLogin }: Props) {
         <section className="home-cta">
           <div className="home-cta-card" data-reveal>
             <span className="home-eyebrow">Ready?</span>
-            <h2>Start designing your kitchen.</h2>
-            <p>Create your first recipe flow in minutes and see where it takes you.</p>
+            <h2>Start cooking your way.</h2>
+            <p>Create your first recipe in minutes, with AI at your side.</p>
             <button type="button" className="home-btn home-btn-primary home-btn-lg" onClick={onTryIt}>
               Try Virtual Kitchen <span aria-hidden="true">→</span>
             </button>
