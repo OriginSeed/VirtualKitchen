@@ -32,6 +32,58 @@ class RecipeProcessVisualizationPromptBuilderTest {
     }
 
     @Test
+    void buildBatchUserPrompt_listsPreparationsThenMainStepsByIdWithStoryboardsAndContinuity() {
+        RecipeProcessVisualizationInput cut = new RecipeProcessVisualizationInput(
+                "Cut", List.of(), List.of(), "Cut the chicken", "Cut Chicken", "", "", "", null);
+        RecipeProcessVisualizationInput marinate = new RecipeProcessVisualizationInput(
+                "Marinate", List.of(), List.of(), "Coat in yogurt", "Marinated Chicken", "", "", "", "Cut Chicken");
+        RecipeProcessVisualizationInput heat = new RecipeProcessVisualizationInput(
+                "Heat", List.of(), List.of(), "Heat the oil", "Hot oil", "", "Medium", "", null);
+        RecipeProcessVisualizationInput fry = new RecipeProcessVisualizationInput(
+                "Fry", List.of(), List.of("Marinated Chicken"), "Fry the chicken", "Golden chicken", "", "", "", "Hot oil");
+
+        String prompt = builder.buildBatchUserPrompt(List.of(
+                new RecipeProcessVisualizationPromptBuilder.BatchTarget("m1", stepTarget("n1", heat)),
+                new RecipeProcessVisualizationPromptBuilder.BatchTarget("p1", new RecipeProcessVisualizationService.VisualTarget(
+                        "n0", null, new RecipeProcessVisualizationService.FlowContext("Marinated Chicken", List.of(cut, marinate)))),
+                new RecipeProcessVisualizationPromptBuilder.BatchTarget("m2", stepTarget("n2", fry))
+        ), List.of());
+
+        assertTrue(prompt.indexOf("p1: making Marinated Chicken") < prompt.indexOf("m1: "), "preparations come first");
+        assertTrue(prompt.indexOf("m1: ") < prompt.indexOf("m2: "), "main steps stay in cooking order");
+        assertTrue(prompt.contains("ONE image laid out as a storyboard of 3 small panels"), prompt);
+        assertTrue(prompt.contains("Continues from: Hot oil"));
+        assertTrue(prompt.contains("ids: m1, p1, m2"), prompt);
+        assertFalse(prompt.contains("EXISTING PROMPTS"));
+    }
+
+    @Test
+    void buildBatchUserPrompt_withStyleReferences_asksNewPromptsToMatchThem() {
+        RecipeProcessVisualizationInput heat = new RecipeProcessVisualizationInput(
+                "Heat", List.of(), List.of(), "Heat the oil", "Hot oil", "", "", "", null);
+
+        String prompt = builder.buildBatchUserPrompt(
+                List.of(new RecipeProcessVisualizationPromptBuilder.BatchTarget("m1", stepTarget("n1", heat))),
+                List.of("A steel kadai on a marble counter, warm window light"));
+
+        assertTrue(prompt.contains("EXISTING PROMPTS OF THIS RECIPE"));
+        assertTrue(prompt.contains("A steel kadai on a marble counter, warm window light"));
+    }
+
+    @Test
+    void buildBatchSystemPrompt_requiresSelfContainedPromptsSharingOneStyle() {
+        String system = builder.buildBatchSystemPrompt();
+
+        assertTrue(system.contains("styleGuide"));
+        assertTrue(system.contains("self-contained"));
+        assertTrue(system.contains("No text, labels"));
+    }
+
+    private static RecipeProcessVisualizationService.VisualTarget stepTarget(String nodeId, RecipeProcessVisualizationInput input) {
+        return new RecipeProcessVisualizationService.VisualTarget(nodeId, input, null);
+    }
+
+    @Test
     void buildFlowUserPrompt_singleStep_isOneScene() {
         RecipeProcessVisualizationInput chop = new RecipeProcessVisualizationInput(
                 "Chop", List.of(), List.of(), "Chop the onions", "Chopped Onions", "", "", "", null);

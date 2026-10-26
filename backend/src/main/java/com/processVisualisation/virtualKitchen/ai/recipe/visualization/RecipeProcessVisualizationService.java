@@ -136,8 +136,45 @@ public class RecipeProcessVisualizationService {
      */
     public VisualizationAsset resolveTarget(Long userId, Long recipeId, VisualTarget target) {
         if (target.flow() == null) return resolveVisualizationAsset(userId, recipeId, target.nodeId(), target.step());
-        return resolveAsset(userId, VisualizationKeyBuilder.buildFlow(String.valueOf(recipeId), target.nodeId()),
+        return resolveAsset(userId, visualizationKey(recipeId, target),
                 () -> promptBuilder.buildFlowUserPrompt(target.flow().outputName(), target.flow().steps()));
+    }
+
+    /** The asset key a visual target's image is stored under (see {@link #resolveTarget}). */
+    public static String visualizationKey(Long recipeId, VisualTarget target) {
+        return target.flow() == null
+                ? VisualizationKeyBuilder.build(String.valueOf(recipeId), target.nodeId())
+                : VisualizationKeyBuilder.buildFlow(String.valueOf(recipeId), target.nodeId());
+    }
+
+    /** The image prompt already stored for this key, or empty when it has none yet (it then needs one written). */
+    public Optional<String> existingPrompt(String visualizationKey) {
+        return assetRepository.findByVisualizationKey(visualizationKey)
+                .map(VisualizationAsset::getImagePrompt)
+                .filter(StringUtils::hasText);
+    }
+
+    /**
+     * Stores an image prompt written ahead of the per-step work (by {@link VisualizationPromptBatchService}): fills
+     * the existing asset's empty prompt, or creates the asset. {@link #resolveTarget} then finds the prompt and only
+     * generates the image. An asset that already has a prompt is left unchanged.
+     */
+    public VisualizationAsset savePrompt(String visualizationKey, String imagePrompt) {
+        Optional<VisualizationAsset> existing = assetRepository.findByVisualizationKey(visualizationKey);
+        if (existing.isPresent() && StringUtils.hasText(existing.get().getImagePrompt())) {
+            return existing.get();
+        }
+        VisualizationAsset asset = existing.orElseGet(() -> {
+            VisualizationAsset created = new VisualizationAsset();
+            created.setId(sequenceGeneratorService.generateSequence(VisualizationAsset.SEQUENCE_NAME));
+            created.setVisualizationKey(visualizationKey);
+            created.setType(VisualizationAssetType.ATOMIC);
+            return created;
+        });
+        asset.setImagePrompt(imagePrompt);
+        asset.setVideoPrompt(null);
+        asset.setVideoUrl(null);
+        return assetRepository.save(asset);
     }
 
     private VisualizationAsset resolveAsset(Long userId, String visualizationKey, Supplier<String> userPrompt) {

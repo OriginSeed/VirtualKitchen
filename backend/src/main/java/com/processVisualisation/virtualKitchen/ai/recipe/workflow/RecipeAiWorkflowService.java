@@ -474,7 +474,8 @@ public class RecipeAiWorkflowService {
             String jobId = null;
             try {
                 try (MDC.MDCCloseable ignored = MDC.putCloseable(AiAnalyticsRecorder.WORKFLOW_ID_MDC, workflowId)) {
-                    jobId = visualizationJobService.startJob(userId, recipeId, processId).getJobId();
+                    // Same prompt scope for every process started here: their image prompts are written in one call.
+                    jobId = visualizationJobService.startJob(userId, recipeId, processId, processIds).getJobId();
                 }
             } catch (RuntimeException e) {
                 FailureLogger.logFailure(log, "ai_workflow_visuals_start_failed", e,

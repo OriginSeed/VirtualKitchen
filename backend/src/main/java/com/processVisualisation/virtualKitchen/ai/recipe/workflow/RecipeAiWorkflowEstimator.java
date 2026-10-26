@@ -4,6 +4,7 @@ import com.processVisualisation.virtualKitchen.ai.platform.registry.AiCapability
 import com.processVisualisation.virtualKitchen.ai.platform.registry.AiModelRegistry;
 import com.processVisualisation.virtualKitchen.ai.platform.registry.ModelDefinition;
 import com.processVisualisation.virtualKitchen.ai.platform.registry.ModelTier;
+import com.processVisualisation.virtualKitchen.ai.recipe.visualization.VisualizationPromptBatchService;
 import com.processVisualisation.virtualKitchen.ai.recipe.workflow.dto.RecipeAiWorkflowEstimateDTO;
 import com.processVisualisation.virtualKitchen.ai.recipe.workflow.dto.RecipeAiWorkflowEstimateDTO.TaskEstimate;
 import com.processVisualisation.virtualKitchen.ai.recipe.workflow.model.RecipeAiTaskType;
@@ -19,7 +20,8 @@ import java.util.List;
  * retries, are why every figure is a range.
  * <ul>
  *   <li>Recipe Process — one text call, plus one corrective retry if validation fails.</li>
- *   <li>Step Visuals — per step, one text call for the image prompt and one image call.</li>
+ *   <li>Step Visuals — one text call writing the image prompts of the whole recipe (one per
+ *       {@link VisualizationPromptBatchService#MAX_TARGETS_PER_REQUEST} images), plus one image call per image.</li>
  *   <li>Voice Narration — per step, one TTS call (the script itself is built without AI).</li>
  * </ul>
  */
@@ -68,13 +70,15 @@ public class RecipeAiWorkflowEstimator {
                         .basis("1–" + MAX_PROCESS_ATTEMPTS + " text requests × " + credits(textCost))
                         .build();
                 case VISUALS -> {
-                    int perStep = textCost + creditCost(AiCapability.TEXT_TO_IMAGE);
+                    int imageCost = creditCost(AiCapability.TEXT_TO_IMAGE);
+                    int maxPromptRequests = promptRequests(steps.maxVisualSteps());
                     yield TaskEstimate.builder()
                             .task(task)
-                            .minCredits(steps.minVisualSteps() * perStep)
-                            .maxCredits(steps.maxVisualSteps() * perStep)
-                            .basis(range(steps.minVisualSteps(), steps.maxVisualSteps()) + " × " + credits(perStep)
-                                    + " (image prompt + image)")
+                            .minCredits(promptRequests(steps.minVisualSteps()) * textCost + steps.minVisualSteps() * imageCost)
+                            .maxCredits(maxPromptRequests * textCost + steps.maxVisualSteps() * imageCost)
+                            .basis(range(promptRequests(steps.minVisualSteps()), maxPromptRequests) + " × " + credits(textCost)
+                                    + " (image prompts) + " + range(steps.minVisualSteps(), steps.maxVisualSteps())
+                                    + " × " + credits(imageCost) + " (image)")
                             .build();
                 }
                 case NARRATION -> {
@@ -95,6 +99,12 @@ public class RecipeAiWorkflowEstimator {
                 .approximate(true)
                 .stepCountKnown(steps.known())
                 .build();
+    }
+
+    /** Text calls the prompt batch makes for this many images: one per {@code MAX_TARGETS_PER_REQUEST}, none for none. */
+    static int promptRequests(int images) {
+        int perRequest = VisualizationPromptBatchService.MAX_TARGETS_PER_REQUEST;
+        return images <= 0 ? 0 : (images + perRequest - 1) / perRequest;
     }
 
     /** Credits one request costs with the capability's default model; 0 for open-source or unconfigured models. */

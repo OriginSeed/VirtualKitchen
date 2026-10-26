@@ -19,7 +19,7 @@ public enum OperationContext {
         return switch (correlationType) {
             case "process-generation" -> RECIPE_FLOW_GENERATION;
             case "process-edit" -> RECIPE_FLOW_EDIT;
-            case "process-visualization-prompt" -> IMAGE_PROMPT_GENERATION;
+            case "process-visualization-prompt", "process-visualization-prompt-batch" -> IMAGE_PROMPT_GENERATION;
             case "process-visualization-image" -> STEP_IMAGE_GENERATION;
             case "step-narration" -> STEP_NARRATION;
             case "global-asset-image" -> GLOBAL_ASSET_IMAGE;

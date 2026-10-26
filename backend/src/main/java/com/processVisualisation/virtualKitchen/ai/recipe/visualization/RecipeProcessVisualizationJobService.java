@@ -48,19 +48,27 @@ public class RecipeProcessVisualizationJobService {
     private final MongoTemplate mongoTemplate;
     private final TaskPool visualizationTaskPool;
     private final TaskPool visualizationOrchestratorTaskPool;
+    private final VisualizationPromptBatchService promptBatchService;
 
     public RecipeProcessVisualizationJobService(
             RecipeProcessVisualizationService recipeProcessVisualizationService,
             VisualizationJobRepository visualizationJobRepository,
             MongoTemplate mongoTemplate,
             @Qualifier("visualizationTaskPool") TaskPool visualizationTaskPool,
-            @Qualifier("visualizationOrchestratorTaskPool") TaskPool visualizationOrchestratorTaskPool
+            @Qualifier("visualizationOrchestratorTaskPool") TaskPool visualizationOrchestratorTaskPool,
+            VisualizationPromptBatchService promptBatchService
     ) {
         this.recipeProcessVisualizationService = recipeProcessVisualizationService;
         this.visualizationJobRepository = visualizationJobRepository;
         this.mongoTemplate = mongoTemplate;
         this.visualizationTaskPool = visualizationTaskPool;
         this.visualizationOrchestratorTaskPool = visualizationOrchestratorTaskPool;
+        this.promptBatchService = promptBatchService;
+    }
+
+    /** Starts the visuals of one process, writing its image prompts in one batch first (see the 4-argument form). */
+    public VisualizationJobResponseDTO startJob(Long userId, Long recipeId, Long processId) {
+        return startJob(userId, recipeId, processId, List.of(processId));
     }
 
     /**
@@ -69,11 +77,16 @@ public class RecipeProcessVisualizationJobService {
      * pool and returns immediately. At most one job runs per process: if one is already
      * QUEUED/IN_PROGRESS, that job is returned with {@code reused=true} instead of starting (and
      * paying for) a duplicate whose final save would race the first one's.
+     * <p>
+     * Before its images, the job writes the image prompts of every process in {@code promptScope} in one text call
+     * ({@link VisualizationPromptBatchService}). Jobs started together for a recipe pass the same scope, so whichever
+     * runs first writes the prompts for all of them and the others find theirs already written.
      *
+     * @param promptScope the processes visualized together with this one (including it)
      * @throws RecipeProcessAiException if the process cannot be found
      * @throws NoSuchElementException   if the process belongs to a different recipe
      */
-    public VisualizationJobResponseDTO startJob(Long userId, Long recipeId, Long processId) {
+    public VisualizationJobResponseDTO startJob(Long userId, Long recipeId, Long processId, List<Long> promptScope) {
         String activeKey = activeKey(processId);
         var running = visualizationJobRepository.findByActiveKey(activeKey);
         if (running.isPresent()) {
@@ -115,8 +128,10 @@ public class RecipeProcessVisualizationJobService {
         }
         log.debug("event=visualization_job_queued jobId={} recipeId={} processId={}", job.getId(), recipeId, processId);
 
+        List<Long> scope = promptScope.contains(processId) ? List.copyOf(promptScope)
+                : java.util.stream.Stream.concat(promptScope.stream(), java.util.stream.Stream.of(processId)).toList();
         visualizationOrchestratorTaskPool.submit(new NamedTask<>(job.getId(), () -> {
-            runPipeline(userId, recipeId, job.getId(), preparation);
+            runPipeline(userId, recipeId, job.getId(), preparation, scope);
             return null;
         }));
 
@@ -156,12 +171,16 @@ public class RecipeProcessVisualizationJobService {
         return "viz:" + processId;
     }
 
-    private void runPipeline(Long userId, Long recipeId, String jobId, RecipeProcessVisualizationService.VisualPreparation preparation) {
+    private void runPipeline(Long userId, Long recipeId, String jobId, RecipeProcessVisualizationService.VisualPreparation preparation,
+                             List<Long> promptScope) {
         // Runs on the orchestrator pool; binds the job ID before submitAll so every step task inherits it.
         OperationLog operation = OperationLog.start(log, "visualization_job", jobId, "jobId=" + jobId
                 + " recipeId=" + recipeId + " processId=" + preparation.process().getId() + " steps=" + preparation.targets().size());
         markStatus(jobId, VisualizationJobStatus.IN_PROGRESS, Map.of("startedAt", Instant.now()));
         try {
+            // One text call for every prompt in scope; whatever it doesn't write, each step writes for itself below.
+            promptBatchService.ensurePrompts(userId, recipeId, promptScope);
+
             List<NamedTask<VisualizationAsset>> tasks = preparation.targets().stream()
                     .map(target -> new NamedTask<VisualizationAsset>(
                             target.nodeId(),

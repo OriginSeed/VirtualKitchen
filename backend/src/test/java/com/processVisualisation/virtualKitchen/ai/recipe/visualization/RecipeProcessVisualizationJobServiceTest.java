@@ -21,6 +21,9 @@ import com.processVisualisation.virtualKitchen.ai.platform.routing.ModelSelectio
 import com.processVisualisation.virtualKitchen.ai.provider.AiClient;
 import com.processVisualisation.virtualKitchen.ai.provider.ImageGenerationClient;
 import com.processVisualisation.virtualKitchen.ai.provider.ImageStorageClient;
+import com.processVisualisation.virtualKitchen.ai.platform.response.AiJsonResponseSupport;
+import com.processVisualisation.virtualKitchen.ai.platform.response.AiResponseService;
+import com.processVisualisation.virtualKitchen.ai.provider.dto.AiRequest;
 import com.processVisualisation.virtualKitchen.ai.provider.dto.AiResponse;
 import com.processVisualisation.virtualKitchen.ai.recipe.RecipeProcessAiException;
 import com.processVisualisation.virtualKitchen.ai.recipe.visualization.dto.VisualizationJobResponseDTO;
@@ -60,6 +63,7 @@ import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.timeout;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -69,6 +73,7 @@ class RecipeProcessVisualizationJobServiceTest {
     private VisualizationJobRepository visualizationJobRepository;
     private MongoTemplate mongoTemplate;
     private ImageGenerationClient imageGenerationClient;
+    private AiClient aiClient;
     private RecipeProcessVisualizationJobService service;
 
     @BeforeEach
@@ -76,7 +81,7 @@ class RecipeProcessVisualizationJobServiceTest {
         processRepository = mock(ProcessRepository.class);
         VisualizationAssetRepository assetRepository = mock(VisualizationAssetRepository.class);
         SequenceGeneratorService sequenceGeneratorService = mock(SequenceGeneratorService.class);
-        AiClient aiClient = mock(AiClient.class);
+        aiClient = mock(AiClient.class);
         imageGenerationClient = mock(ImageGenerationClient.class);
         ImageStorageClient imageStorageClient = mock(ImageStorageClient.class);
 
@@ -144,12 +149,41 @@ class RecipeProcessVisualizationJobServiceTest {
 
         mongoTemplate = mock(MongoTemplate.class);
 
+        RecipeProcessVisualizationPromptBuilder promptBuilder = new RecipeProcessVisualizationPromptBuilder();
+        VisualizationPromptBatchService promptBatchService = new VisualizationPromptBatchService(
+                recipeProcessVisualizationService, promptBuilder, queueService, clientResolver,
+                new AiJsonResponseSupport(mock(AiResponseService.class)));
+
         service = new RecipeProcessVisualizationJobService(
                 recipeProcessVisualizationService,
                 visualizationJobRepository,
                 mongoTemplate,
                 new ThreadPoolTaskPool(2, "test-process-visualization"),
-                new ThreadPoolTaskPool(1, "test-process-orchestrator"));
+                new ThreadPoolTaskPool(1, "test-process-orchestrator"),
+                promptBatchService);
+    }
+
+    @Test
+    void startJob_writesEveryImagePromptInOneBatchCall_thenOnlyGeneratesImages() throws Exception {
+        when(aiClient.chat(any())).thenAnswer(inv -> {
+            AiRequest request = inv.getArgument(0);
+            assertEquals("VISUALIZATION_PROMPT_BATCH", request.getOperation(), "no per-step prompt call expected");
+            return AiResponse.builder().content("{\"styleGuide\":\"one kitchen\",\"prompts\":["
+                    + "{\"id\":\"m1\",\"imagePrompt\":\"prompt one\"},"
+                    + "{\"id\":\"m2\",\"imagePrompt\":\"prompt two\"},"
+                    + "{\"id\":\"m3\",\"imagePrompt\":\"prompt three\"}]}").build();
+        });
+        when(imageGenerationClient.generate(anyString()))
+                .thenReturn(new ImageGenerationClient.GeneratedImage("image/png", new byte[]{1, 2, 3}));
+        when(processRepository.findById(1L)).thenReturn(Optional.of(processWithSteps(1L, 3)));
+
+        service.startJob(1L, 100L, 1L);
+
+        verify(processRepository, timeout(5000)).setStepVisualization(eq(1L), eq("node-0"), any(), eq("prompt one"), any());
+        verify(processRepository, timeout(5000)).setStepVisualization(eq(1L), eq("node-1"), any(), eq("prompt two"), any());
+        verify(processRepository, timeout(5000)).setStepVisualization(eq(1L), eq("node-2"), any(), eq("prompt three"), any());
+        verify(aiClient, times(1)).chat(any());
+        verify(imageGenerationClient, times(3)).generate(anyString());
     }
 
     @Test
