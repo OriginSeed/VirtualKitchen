@@ -79,7 +79,7 @@ public class RecipeProcessVisualizationPromptBuilder {
      * Bump whenever the batch system/user prompt wording or structure changes, so a change in image quality can be
      * tied to a prompt change (logged with every batch).
      */
-    public static final String BATCH_PROMPT_VERSION = "1";
+    public static final String BATCH_PROMPT_VERSION = "2";
 
     /** One image the batch call writes a prompt for, under the short id the model answers with ("m1", "p1"). */
     public record BatchTarget(String id, RecipeProcessVisualizationService.VisualTarget target) {
@@ -101,9 +101,16 @@ public class RecipeProcessVisualizationPromptBuilder {
                 countertop, the cookware (name each pan or pot used), the lighting, the camera angle, and the \
                 photographic style (photorealistic).
                 - Then write exactly one prompt per listed id, using that id.
+                - Read the whole recipe before writing. For each MAIN step, use the earlier steps to work out what \
+                is already in the pan, then describe that state explicitly in this step's prompt (e.g. "golden-brown \
+                fried onions with chopped tomatoes just added").
+                - Show only the current state after this step: ingredients that were cooked down have changed form, \
+                and nothing from earlier is shown separately unless it is still there.
+                - Each Preparation is its own flow: do not carry state between preparations or from the main steps. \
+                A MAIN step that uses a prepared component shows it by name.
                 - Each imagePrompt is sent to the image model ON ITS OWN: it must be self-contained, so repeat the \
                 relevant parts of the style guide (same kitchen, same cookware, same lighting) inside every prompt. \
-                Never refer to "the previous image" or to another id.
+                Never write "as before", "same as the previous step", "the previous image", or another id.
                 - Show each step's action and its expected result; keep quantities and ingredients faithful to the step.
                 - Keep the same cookware for the same pan across MAIN steps: the food in it changes, the pan does not.
                 - No text, labels, captions or watermarks in any image.

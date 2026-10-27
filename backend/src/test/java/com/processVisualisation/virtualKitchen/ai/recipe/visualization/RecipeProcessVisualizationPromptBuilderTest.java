@@ -76,6 +76,8 @@ class RecipeProcessVisualizationPromptBuilderTest {
 
         assertTrue(system.contains("styleGuide"));
         assertTrue(system.contains("self-contained"));
+        assertTrue(system.contains("describe that state explicitly"), "earlier steps are used, written out as state");
+        assertTrue(system.contains("Never write \"as before\""));
         assertTrue(system.contains("No text, labels"));
     }
 
