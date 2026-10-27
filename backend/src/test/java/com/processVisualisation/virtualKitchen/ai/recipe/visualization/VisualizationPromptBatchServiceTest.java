@@ -87,12 +87,80 @@ class VisualizationPromptBatchServiceTest {
             return AiRequestOutcome.fresh("job", work.run(selection), selection, null);
         });
 
-        service = new VisualizationPromptBatchService(
+        // Scene anchors off here, so these tests see the prompt batch alone; the scene tests below turn them on.
+        service = batchService(false);
+    }
+
+    private VisualizationPromptBatchService batchService(boolean sceneAnchorEnabled) {
+        VisualizationSceneAnchorService sceneAnchorService = mock(VisualizationSceneAnchorService.class);
+        when(sceneAnchorService.isEnabled()).thenReturn(sceneAnchorEnabled);
+        return new VisualizationPromptBatchService(
                 visualizationService,
                 new RecipeProcessVisualizationPromptBuilder(),
                 queueService,
                 new AiClientResolver(Map.of("testTextClient", aiClient), Map.of()),
-                new AiJsonResponseSupport(mock(AiResponseService.class)));
+                new AiJsonResponseSupport(mock(AiResponseService.class)),
+                sceneAnchorService);
+    }
+
+    @Test
+    void recipeWithoutAScene_asksForItInTheSameCallAndSavesIt() {
+        service = batchService(true);
+        givenMainWithSteps(2);
+        when(aiClient.chat(any())).thenReturn(AiResponse.builder().content("{\"styleGuide\":\"one kitchen\","
+                + "\"dishContext\":\"Part of making Egg Curry\",\"scenePrompt\":\"empty kadai on granite\",\"prompts\":["
+                + "{\"id\":\"m1\",\"imagePrompt\":\"prompt for m1\"},{\"id\":\"m2\",\"imagePrompt\":\"prompt for m2\"}]}").build());
+
+        service.ensurePrompts(USER, RECIPE, List.of(MAIN));
+
+        verify(aiClient, times(1)).chat(any());
+        assertTrue(capturedRequests().get(0).getUserPrompt().contains("SCENE: also write dishContext and scenePrompt"));
+        verify(visualizationService).saveScenePrompt(RECIPE, "empty kadai on granite", "Part of making Egg Curry");
+    }
+
+    @Test
+    void sceneMissingButEveryPromptWritten_makesASceneOnlyCall_whileAnImageIsStillMissing() {
+        service = batchService(true);
+        givenMainWithSteps(1);
+        storedPrompts.put(VisualizationKeyBuilder.build("100", "main-0"), "already written");
+        when(aiClient.chat(any())).thenReturn(AiResponse.builder().content("{\"styleGuide\":\"one kitchen\","
+                + "\"dishContext\":\"Part of making Egg Curry\",\"scenePrompt\":\"empty kadai\",\"prompts\":[]}").build());
+
+        service.ensurePrompts(USER, RECIPE, List.of(MAIN));
+
+        AiRequest request = capturedRequests().get(0);
+        assertTrue(request.getUserPrompt().contains("prompts is an empty list"), request.getUserPrompt());
+        assertTrue(request.getUserPrompt().contains("already written"), "the existing prompt is a style reference");
+        verify(visualizationService).saveScenePrompt(RECIPE, "empty kadai", "Part of making Egg Curry");
+    }
+
+    @Test
+    void sceneMissingButEveryImageDone_makesNoCall() {
+        service = batchService(true);
+        givenMainWithSteps(1);
+        storedPrompts.put(VisualizationKeyBuilder.build("100", "main-0"), "already written");
+        when(visualizationService.hasImage(anyString())).thenReturn(true);
+
+        assertEquals(0, service.ensurePrompts(USER, RECIPE, List.of(MAIN)));
+
+        verify(aiClient, never()).chat(any());
+    }
+
+    @Test
+    void existingScenePrompt_isNotAskedForAgain_andLeadsTheStyleReferences() {
+        service = batchService(true);
+        givenMainWithSteps(1);
+        com.processVisualisation.virtualKitchen.ai.asset.VisualizationAsset scene = new com.processVisualisation.virtualKitchen.ai.asset.VisualizationAsset();
+        scene.setImagePrompt("the stored empty scene");
+        when(visualizationService.findScene(RECIPE)).thenReturn(Optional.of(scene));
+        answerWithPromptsFor("m1");
+
+        service.ensurePrompts(USER, RECIPE, List.of(MAIN));
+
+        String prompt = capturedRequests().get(0).getUserPrompt();
+        assertTrue(prompt.contains("the stored empty scene"));
+        assertTrue(!prompt.contains("SCENE:"), prompt);
+        verify(visualizationService, never()).saveScenePrompt(any(), any(), any());
     }
 
     @Test

@@ -7,6 +7,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.time.Instant;
+import java.util.List;
 
 /**
  * Wraps a provider {@link ImageGenerationClient}: counts each call's token usage against the running AI request
@@ -30,11 +31,24 @@ class LoggingImageGenerationClient implements ImageGenerationClient {
 
     @Override
     public GeneratedImage generate(String prompt) throws JsonProcessingException {
+        return generate(prompt, List.of());
+    }
+
+    @Override
+    public boolean supportsReferenceImages() {
+        return delegate.supportsReferenceImages();
+    }
+
+    @Override
+    public GeneratedImage generate(String prompt, List<ReferenceImage> references) throws JsonProcessingException {
         long startedAt = System.nanoTime();
         Instant startedAtInstant = Instant.now();
         int promptChars = prompt == null ? 0 : prompt.length();
         try {
-            GeneratedImage image = delegate.generate(prompt);
+            // A call without references stays a plain generate(prompt), which every provider implements itself.
+            GeneratedImage image = references == null || references.isEmpty()
+                    ? delegate.generate(prompt)
+                    : delegate.generate(prompt, references);
             AiUsageMeter.record(image == null ? null : image.usage());
             AiUsageMeter.recordCall(AiCallRecords.withUsage(
                             AiCallRecords.started("IMAGE_GENERATION", provider, model, startedAtInstant, startedAt),
@@ -43,8 +57,9 @@ class LoggingImageGenerationClient implements ImageGenerationClient {
                     .inputChars(promptChars)
                     .outputBytes(image == null || image.data() == null ? null : (long) image.data().length)
                     .build());
-            log.debug("event=image_generation_completed provider={} model={} durationMs={} promptChars={} bytes={} mimeType={}",
+            log.debug("event=image_generation_completed provider={} model={} durationMs={} promptChars={} references={} bytes={} mimeType={}",
                     provider, model, LoggingAiClient.elapsedMs(startedAt), prompt == null ? 0 : prompt.length(),
+                    references == null ? 0 : references.size(),
                     image == null || image.data() == null ? 0 : image.data().length,
                     image == null ? null : image.mimeType());
             return image;

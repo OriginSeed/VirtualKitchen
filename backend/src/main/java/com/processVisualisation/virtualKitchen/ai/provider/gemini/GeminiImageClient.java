@@ -16,6 +16,7 @@ import org.springframework.web.client.ResourceAccessException;
 import org.springframework.web.client.RestClient;
 import org.springframework.web.client.RestClientResponseException;
 
+import java.util.ArrayList;
 import java.util.Base64;
 import java.util.List;
 import java.util.Map;
@@ -96,20 +97,15 @@ public class GeminiImageClient implements ImageGenerationClient {
      */
     @Override
     public GeneratedImage generate(String prompt) {
+        return generate(prompt, List.of());
+    }
 
-        Map<String, Object> request = Map.of(
-                "contents", List.of(
-                        Map.of(
-                                "parts", List.of(
-                                        Map.of("text", prompt)
-                                )
-                        )
-                ),
-                "generationConfig", Map.of(
-                        "responseModalities", List.of("IMAGE")
-                )
-        );
-
+    /**
+     * Same as {@link #generate(String)}, with each reference image sent as an {@code inlineData} part ahead of the
+     * prompt text, so the prompt can refer to "the reference image".
+     */
+    @Override
+    public GeneratedImage generate(String prompt, List<ReferenceImage> references) {
         try {
             String response = restClient.post()
                     .uri(uriBuilder -> uriBuilder
@@ -117,7 +113,7 @@ public class GeminiImageClient implements ImageGenerationClient {
                             .build(properties.getImageModel()))
                     .header("x-goog-api-key", properties.getApiKey())
                     .contentType(MediaType.APPLICATION_JSON)
-                    .body(request)
+                    .body(buildRequestPayload(prompt, references))
                     .retrieve()
                     .body(String.class);
 
@@ -137,4 +133,24 @@ public class GeminiImageClient implements ImageGenerationClient {
             throw new AiCommunicationException("Gemini image endpoint configuration is invalid", ex);
         }
     }
+
+    @Override
+    public boolean supportsReferenceImages() {
+        return true;
+    }
+
+    Map<String, Object> buildRequestPayload(String prompt, List<ReferenceImage> references) {
+        List<Map<String, Object>> parts = new ArrayList<>();
+        for (ReferenceImage reference : references == null ? List.<ReferenceImage>of() : references) {
+            parts.add(Map.of("inlineData", Map.of(
+                    "mimeType", reference.mimeType(),
+                    "data", Base64.getEncoder().encodeToString(reference.data()))));
+        }
+        parts.add(Map.of("text", prompt));
+        return Map.of(
+                "contents", List.of(Map.of("parts", parts)),
+                "generationConfig", Map.of("responseModalities", List.of("IMAGE"))
+        );
+    }
+
 }

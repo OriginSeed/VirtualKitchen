@@ -44,6 +44,14 @@ public final class VisualizationKeyBuilder {
         return normalize(recipeId) + SEPARATOR + "flow" + SEPARATOR + normalize(outputStepId);
     }
 
+    /**
+     * Builds the asset key for a recipe's scene anchor: one image of its empty setting (counter, cookware, lighting,
+     * no food) that every step image of the recipe is drawn against: {@code recipeId::scene}.
+     */
+    public static String buildScene(String recipeId) {
+        return normalize(recipeId) + SEPARATOR + "scene";
+    }
+
     private static String normalize(String value) {
         return value == null ? "" : value.trim();
     }

@@ -37,4 +37,35 @@ public interface ImageGenerationClient {
      * @throws JsonProcessingException if the provider's response cannot be parsed as JSON
      */
     GeneratedImage generate(String prompt) throws JsonProcessingException;
+
+    /**
+     * An image sent along with the prompt for the model to follow (e.g. a recipe's empty scene, so every step is
+     * drawn in the same kitchen with the same cookware).
+     *
+     * @param mimeType the MIME type of the image (e.g. "image/png")
+     * @param data the raw image bytes
+     */
+    record ReferenceImage(String mimeType, byte[] data) {
+    }
+
+    /**
+     * Generates an image from the prompt, following {@code references} where the provider can take image input.
+     * Providers that can't (the default) ignore them and generate from the prompt alone.
+     *
+     * @param prompt the text prompt describing the image to generate
+     * @param references images the result should follow; may be empty
+     * @return the generated image data and its MIME type
+     * @throws JsonProcessingException if the provider's response cannot be parsed as JSON
+     */
+    default GeneratedImage generate(String prompt, java.util.List<ReferenceImage> references) throws JsonProcessingException {
+        return generate(prompt);
+    }
+
+    /**
+     * Whether {@link #generate(String, java.util.List)} actually sends the reference images. Callers only phrase a
+     * prompt around "the reference image" when this is true.
+     */
+    default boolean supportsReferenceImages() {
+        return false;
+    }
 }

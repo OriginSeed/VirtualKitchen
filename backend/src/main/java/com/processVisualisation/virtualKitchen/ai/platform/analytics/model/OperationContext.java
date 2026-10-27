@@ -20,7 +20,7 @@ public enum OperationContext {
             case "process-generation" -> RECIPE_FLOW_GENERATION;
             case "process-edit" -> RECIPE_FLOW_EDIT;
             case "process-visualization-prompt", "process-visualization-prompt-batch" -> IMAGE_PROMPT_GENERATION;
-            case "process-visualization-image" -> STEP_IMAGE_GENERATION;
+            case "process-visualization-image", "process-visualization-scene" -> STEP_IMAGE_GENERATION;
             case "step-narration" -> STEP_NARRATION;
             case "global-asset-image" -> GLOBAL_ASSET_IMAGE;
             case "chat" -> CHAT;

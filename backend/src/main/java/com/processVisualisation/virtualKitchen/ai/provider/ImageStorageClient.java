@@ -20,4 +20,19 @@ public interface ImageStorageClient {
             String mimeType,
             String path
     );
+
+    /** An image read back from storage. */
+    record StoredImage(String mimeType, byte[] data) {
+    }
+
+    /**
+     * Reads back an image previously stored by {@link #upload}, by the URL it returned. Backends that can't read
+     * back throw {@link UnsupportedOperationException} (the default).
+     *
+     * @param url the URL {@link #upload} returned
+     * @return the image bytes and MIME type
+     */
+    default StoredImage download(String url) {
+        throw new UnsupportedOperationException("This image storage cannot read images back");
+    }
 }

@@ -49,6 +49,7 @@ public class RecipeProcessVisualizationJobService {
     private final TaskPool visualizationTaskPool;
     private final TaskPool visualizationOrchestratorTaskPool;
     private final VisualizationPromptBatchService promptBatchService;
+    private final VisualizationSceneAnchorService sceneAnchorService;
 
     public RecipeProcessVisualizationJobService(
             RecipeProcessVisualizationService recipeProcessVisualizationService,
@@ -56,7 +57,8 @@ public class RecipeProcessVisualizationJobService {
             MongoTemplate mongoTemplate,
             @Qualifier("visualizationTaskPool") TaskPool visualizationTaskPool,
             @Qualifier("visualizationOrchestratorTaskPool") TaskPool visualizationOrchestratorTaskPool,
-            VisualizationPromptBatchService promptBatchService
+            VisualizationPromptBatchService promptBatchService,
+            VisualizationSceneAnchorService sceneAnchorService
     ) {
         this.recipeProcessVisualizationService = recipeProcessVisualizationService;
         this.visualizationJobRepository = visualizationJobRepository;
@@ -64,6 +66,7 @@ public class RecipeProcessVisualizationJobService {
         this.visualizationTaskPool = visualizationTaskPool;
         this.visualizationOrchestratorTaskPool = visualizationOrchestratorTaskPool;
         this.promptBatchService = promptBatchService;
+        this.sceneAnchorService = sceneAnchorService;
     }
 
     /** Starts the visuals of one process, writing its image prompts in one batch first (see the 4-argument form). */
@@ -180,11 +183,18 @@ public class RecipeProcessVisualizationJobService {
         try {
             // One text call for every prompt in scope; whatever it doesn't write, each step writes for itself below.
             promptBatchService.ensurePrompts(userId, recipeId, promptScope);
+            // The recipe's empty-scene image every new image is drawn against — only fetched (or made) when this job
+            // still has an image to draw.
+            boolean anyImageMissing = preparation.targets().stream().anyMatch(target -> !recipeProcessVisualizationService
+                    .hasImage(RecipeProcessVisualizationService.visualizationKey(recipeId, target)));
+            RecipeProcessVisualizationService.SceneReference scene = anyImageMissing
+                    ? sceneAnchorService.ensureAnchor(userId, recipeId).orElse(null)
+                    : null;
 
             List<NamedTask<VisualizationAsset>> tasks = preparation.targets().stream()
                     .map(target -> new NamedTask<VisualizationAsset>(
                             target.nodeId(),
-                            () -> recipeProcessVisualizationService.resolveTarget(userId, recipeId, target)
+                            () -> recipeProcessVisualizationService.resolveTarget(userId, recipeId, target, scene)
                     ))
                     .toList();
 

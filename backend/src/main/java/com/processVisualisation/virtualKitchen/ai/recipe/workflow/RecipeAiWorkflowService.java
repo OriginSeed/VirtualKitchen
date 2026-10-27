@@ -641,7 +641,10 @@ public class RecipeAiWorkflowService {
                 narration += entry.getValue().size();
             }
         }
-        return RecipeAiWorkflowEstimator.StepCounts.exact(visual, narration);
+        boolean sceneImageNeeded = stepSource.findScene(recipeId)
+                .map(scene -> scene.getImageUrl() == null || scene.getImageUrl().isBlank())
+                .orElse(true);
+        return RecipeAiWorkflowEstimator.StepCounts.exact(visual, narration, sceneImageNeeded);
     }
 
     /** A step has an image when the visualization service wrote one (flat) or the editor kept one (nested). */

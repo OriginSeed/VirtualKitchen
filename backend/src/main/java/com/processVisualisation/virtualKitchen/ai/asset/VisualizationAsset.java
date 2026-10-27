@@ -32,6 +32,12 @@ public class VisualizationAsset {
 
     private String imagePrompt;
 
+    /**
+     * Scene anchor only ({@code recipeId::scene}): one line naming the dish ("Part of making Chicken Curry, a North
+     * Indian home-style dish"), sent with every step image of the recipe. Null on every other asset.
+     */
+    private String dishContext;
+
     private String imageUrl;
 
     /**

@@ -40,10 +40,10 @@ class RecipeAiWorkflowEstimatorTest {
 
         assertEquals(List.of(PROCESS, VISUALS, NARRATION), estimate.getTasks().stream().map(RecipeAiWorkflowEstimateDTO.TaskEstimate::getTask).toList());
         assertRange(estimate, PROCESS, 1, 2);       // 1–2 text requests
-        assertRange(estimate, VISUALS, 31, 101);    // 1 batched prompt request + 6–20 steps × 5 image
+        assertRange(estimate, VISUALS, 36, 106);    // 1 batched prompt request + 6–20 steps × 5 image + 5 scene image
         assertRange(estimate, NARRATION, 6, 20);    // 6–20 steps × 1
-        assertEquals(38, estimate.getMinCredits());
-        assertEquals(123, estimate.getMaxCredits());
+        assertEquals(43, estimate.getMinCredits());
+        assertEquals(128, estimate.getMaxCredits());
         assertTrue(estimate.isApproximate());
         assertFalse(estimate.isStepCountKnown());
     }
@@ -72,6 +72,13 @@ class RecipeAiWorkflowEstimatorTest {
         RecipeAiWorkflowEstimateDTO estimate = estimator.estimate(List.of(VISUALS), RecipeAiWorkflowEstimator.StepCounts.exact(25, 0));
 
         assertRange(estimate, VISUALS, 127, 127);   // 2 prompt requests (24 + 1) + 25 × 5 image
+    }
+
+    @Test
+    void aRecipeWithoutASceneImagePaysForItOnce() {
+        RecipeAiWorkflowEstimateDTO estimate = estimator.estimate(List.of(VISUALS), RecipeAiWorkflowEstimator.StepCounts.exact(3, 0, true));
+
+        assertRange(estimate, VISUALS, 21, 21);     // 1 prompt request + 3 × 5 image + 5 scene image
     }
 
     @Test

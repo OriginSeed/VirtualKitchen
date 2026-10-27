@@ -79,7 +79,7 @@ public class RecipeProcessVisualizationPromptBuilder {
      * Bump whenever the batch system/user prompt wording or structure changes, so a change in image quality can be
      * tied to a prompt change (logged with every batch).
      */
-    public static final String BATCH_PROMPT_VERSION = "2";
+    public static final String BATCH_PROMPT_VERSION = "3";
 
     /** One image the batch call writes a prompt for, under the short id the model answers with ("m1", "p1"). */
     public record BatchTarget(String id, RecipeProcessVisualizationService.VisualTarget target) {
@@ -94,12 +94,20 @@ public class RecipeProcessVisualizationPromptBuilder {
                 You are a culinary visualization prompt writer. You write the image prompts for every image of one \
                 recipe at once, so all images look like one cooking session.
 
-                Return strict JSON only: {"styleGuide": "...", "prompts": [{"id": "...", "imagePrompt": "..."}]}.
+                Return strict JSON only: {"styleGuide": "...", "dishContext": "...", "scenePrompt": "...", \
+                "prompts": [{"id": "...", "imagePrompt": "..."}]}.
                 No markdown, prose, or code fences.
 
                 - First write styleGuide: one short paragraph fixing the shared look of every image: the kitchen and \
                 countertop, the cookware (name each pan or pot used), the lighting, the camera angle, and the \
                 photographic style (photorealistic).
+                - When asked for a SCENE, also write:
+                  - dishContext: one line naming the dish, its cuisine and style (e.g. "Part of making Chicken \
+                Curry, a North Indian home-style dish"). No steps, ingredients or quantities.
+                  - scenePrompt: an image prompt for the EMPTY setting every image is drawn in: the countertop, the \
+                main pan or pot of the main cooking steps on the stove, a cutting board and empty prep bowls, the \
+                lighting and the camera angle from the styleGuide. Absolutely no food and no ingredients.
+                  Otherwise omit both.
                 - Then write exactly one prompt per listed id, using that id.
                 - Read the whole recipe before writing. For each MAIN step, use the earlier steps to work out what \
                 is already in the pan, then describe that state explicitly in this step's prompt (e.g. "golden-brown \
@@ -124,7 +132,18 @@ public class RecipeProcessVisualizationPromptBuilder {
      * must match.
      */
     public String buildBatchUserPrompt(List<BatchTarget> targets, List<String> styleReferences) {
+        return buildBatchUserPrompt(targets, styleReferences, null, false);
+    }
+
+    /**
+     * Same as {@link #buildBatchUserPrompt(List, List)}, also naming the dish and, when {@code sceneNeeded}, asking
+     * for the recipe's dishContext and empty-scene prompt (its scene anchor).
+     */
+    public String buildBatchUserPrompt(List<BatchTarget> targets, List<String> styleReferences, String dishName, boolean sceneNeeded) {
         StringBuilder prompt = new StringBuilder();
+        if (StringUtils.hasText(dishName)) {
+            prompt.append("DISH: ").append(dishName.trim()).append("\n\n");
+        }
         List<BatchTarget> flows = targets.stream().filter(target -> target.target().flow() != null).toList();
         List<BatchTarget> steps = targets.stream().filter(target -> target.target().flow() == null).toList();
 
@@ -165,10 +184,32 @@ public class RecipeProcessVisualizationPromptBuilder {
             prompt.append('\n');
         }
 
-        prompt.append("Return the styleGuide and one prompt for each of these ids: ")
-                .append(targets.stream().map(BatchTarget::id).collect(java.util.stream.Collectors.joining(", ")))
-                .append('.');
+        if (sceneNeeded) {
+            prompt.append("SCENE: also write dishContext and scenePrompt for this recipe.\n\n");
+        }
+        if (targets.isEmpty()) {
+            prompt.append("Return the styleGuide, dishContext and scenePrompt; prompts is an empty list.");
+        } else {
+            prompt.append("Return the styleGuide and one prompt for each of these ids: ")
+                    .append(targets.stream().map(BatchTarget::id).collect(java.util.stream.Collectors.joining(", ")))
+                    .append('.');
+        }
         return prompt.toString();
+    }
+
+    /** Asks the image model to keep the reference image's setting and change only the food and the step's action. */
+    static final String REFERENCE_INSTRUCTION = "Use the kitchen, countertop, cookware and lighting shown in the "
+            + "reference image; change only the food and what happens in this step.";
+
+    /**
+     * The text sent to the image model for one step: the dish context line, then (when the scene anchor is sent as a
+     * reference image) how to use it, then the step's own prompt.
+     */
+    public String buildImageRequestText(String imagePrompt, String dishContext, boolean hasReference) {
+        StringBuilder text = new StringBuilder();
+        if (StringUtils.hasText(dishContext)) text.append(dishContext.trim()).append('\n');
+        if (hasReference) text.append(REFERENCE_INSTRUCTION).append('\n');
+        return text.append(imagePrompt).toString();
     }
 
     /** The storyboard layout for a multi-step preparation flow's single image. */

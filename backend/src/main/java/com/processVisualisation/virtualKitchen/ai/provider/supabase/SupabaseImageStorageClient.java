@@ -82,6 +82,42 @@ public class SupabaseImageStorageClient implements ImageStorageClient {
         }
     }
 
+    /**
+     * Reads back an image this client uploaded, by the public URL {@link #upload} returned. Only URLs under this
+     * bucket's public prefix are fetched, so a stored URL can never make the server request another host.
+     *
+     * @throws AiCommunicationException if the URL isn't one of this bucket's, or Supabase answers with an error
+     * @throws AiTimeoutException if the request times out or the host cannot be reached
+     */
+    @Override
+    public StoredImage download(String url) {
+        validateConfiguration();
+        String prefix = properties.getUrl() + "/storage/v1/object/public/" + properties.getBucket() + "/";
+        if (url == null || !url.startsWith(prefix)) {
+            throw new AiCommunicationException("Not an image of this storage bucket");
+        }
+        long startedAt = System.nanoTime();
+        try {
+            var response = restClient.get()
+                    .uri(java.net.URI.create(url))
+                    .retrieve()
+                    .toEntity(byte[].class);
+            byte[] data = response.getBody();
+            if (data == null || data.length == 0) {
+                throw new AiCommunicationException("Supabase storage returned an empty image");
+            }
+            String mimeType = response.getHeaders().getContentType() != null
+                    ? response.getHeaders().getContentType().toString()
+                    : "image/png";
+            log.debug("event=image_download_completed provider=supabase bytes={} durationMs={}", data.length, elapsedMs(startedAt));
+            return new StoredImage(mimeType, data);
+        } catch (RestClientResponseException ex) {
+            throw new AiCommunicationException("Supabase storage download failed with status: " + ex.getStatusCode(), ex);
+        } catch (ResourceAccessException ex) {
+            throw new AiTimeoutException("Supabase storage download timed out or could not connect", ex);
+        }
+    }
+
     private static long elapsedMs(long startedAtNanos) {
         return (System.nanoTime() - startedAtNanos) / 1_000_000L;
     }
