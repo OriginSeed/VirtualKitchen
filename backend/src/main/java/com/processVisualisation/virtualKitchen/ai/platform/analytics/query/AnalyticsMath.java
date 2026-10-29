@@ -177,12 +177,12 @@ public final class AnalyticsMath {
                 historical);
     }
 
-    static Stat mean(List<Double> values) {
+    public static Stat mean(List<Double> values) {
         return values.isEmpty() ? Stat.none() : new Stat(sum(values) / values.size(), values.size());
     }
 
     /** Nearest-rank percentile (p in 0..100) of the values. */
-    static Stat percentile(List<Double> values, int p) {
+    public static Stat percentile(List<Double> values, int p) {
         if (values.isEmpty()) {
             return Stat.none();
         }

@@ -257,6 +257,20 @@ export default function KitchenNavbar({
             AI Analytics
           </NavLink>
         )}
+
+        {user.userType === 'ADMIN' && (
+          <NavLink
+            to="/kitchen/admin/ai-evaluation"
+            className={({ isActive }) =>
+              `navbar-nav-item ${
+                isActive ? 'active' : ''
+              }`
+            }
+          >
+            <span>🧪</span>
+            AI Evaluation
+          </NavLink>
+        )}
       </div>
 
       {/* Profile */}
