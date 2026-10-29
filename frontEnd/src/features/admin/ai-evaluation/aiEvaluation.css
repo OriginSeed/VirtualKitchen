@@ -1,0 +1,55 @@
+/* AI evaluation admin. Extends the AI analytics styles (aia-*) with the scoring views. */
+.aie-filters { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem 1.25rem; margin-bottom: 1rem; }
+.aie-filter { display: inline-flex; align-items: center; gap: 0.4rem; font-size: 0.85rem; }
+.aie-filters .aia-choice-row { margin-bottom: 0; }
+.aie-check input { margin: 0; }
+
+.aie-set-top { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.4fr); gap: 1rem; align-items: start; }
+.aie-scene { margin: 0; display: flex; flex-direction: column; gap: 0.5rem; }
+.aie-scene h3 { margin: 0; }
+.aie-image-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 340px), 1fr)); gap: 1rem; }
+.aie-image-card { display: flex; flex-direction: column; gap: 0.6rem; }
+.aie-image-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 0.75rem; }
+.aie-image-head h3 { margin: 0; }
+.aie-image-head p { margin: 0.15rem 0 0; }
+.aie-score {
+  min-width: 2.6rem; padding: 0.2rem 0.5rem; text-align: center; font-weight: 700; font-variant-numeric: tabular-nums;
+  border-radius: var(--flow-radius-md); background: var(--flow-accent-soft); color: var(--flow-accent-strong);
+}
+.aie-image-button { padding: 0; border: none; background: none; cursor: zoom-in; display: block; width: 100%; }
+.aie-image-button img {
+  display: block; width: 100%; aspect-ratio: 4 / 3; object-fit: cover; border-radius: var(--flow-radius-md);
+  border: 1px solid var(--flow-border);
+}
+.aie-metrics { font-size: 0.8rem; padding: 0.4rem 0.6rem; gap: 0.3rem 0.9rem; }
+
+.aie-ratings { display: flex; flex-direction: column; gap: 0.35rem; }
+.aie-rating { display: flex; justify-content: space-between; align-items: center; gap: 0.5rem; }
+.aie-rating-label { font-size: 0.82rem; }
+.aie-rating-buttons { display: inline-flex; gap: 0.2rem; }
+.aie-rating-button {
+  width: 2rem; height: 2rem; border: 1px solid var(--flow-border-strong); border-radius: var(--flow-radius-sm);
+  background: var(--flow-surface); color: var(--flow-text); font: inherit; font-size: 0.85rem; cursor: pointer;
+}
+.aie-rating-button:hover { border-color: var(--flow-accent); }
+.aie-rating-button.is-active { background: var(--flow-accent); border-color: var(--flow-accent); color: #fff; font-weight: 600; }
+.aie-chip--major { border-style: dashed; }
+.aie-note { display: flex; flex-direction: column; gap: 0.25rem; }
+.aie-note textarea {
+  font: inherit; font-size: 0.85rem; padding: 0.4rem 0.55rem; border: 1px solid var(--flow-border-strong);
+  border-radius: var(--flow-radius-sm); background: var(--flow-surface); color: var(--flow-text); resize: vertical;
+}
+.aie-card-actions { display: flex; justify-content: flex-end; align-items: center; gap: 0.75rem; margin-top: auto; }
+.aie-verdict { display: flex; flex-direction: column; gap: 0.6rem; }
+.aie-verdict h3 { margin: 0; }
+.aie-media-full img { max-height: 80vh; }
+
+.aie-model-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 460px), 1fr)); gap: 1rem; }
+.aie-model-cards h3 { display: flex; align-items: center; gap: 0.25rem; }
+.aie-axis {
+  margin: 0.9rem 0 0.4rem; font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--flow-text-muted);
+}
+
+@media (max-width: 760px) {
+  .aie-set-top { grid-template-columns: 1fr; }
+}

@@ -1,6 +1,7 @@
 import { useState, type ReactNode } from 'react'
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom'
 import AiAnalyticsPage from '../features/admin/ai-analytics/AiAnalyticsPage'
+import AiEvaluationPage from '../features/admin/ai-evaluation/AiEvaluationPage'
 import Auth from '../features/auth/Auth'
 import InventoryView from '../features/kitchen/inventory/InventoryView'
 import KitchenLayout from '../features/kitchen/layout/KitchenLayout'
@@ -73,6 +74,8 @@ function App() {
           <Route path="recipe-orders/:orderId/:view?" element={<IngredientCatalogGate><RecipeOrderRoute /></IngredientCatalogGate>} />
 
           <Route path="admin/ai-analytics/:tab?" element={<AdminOnly><AiAnalyticsPage /></AdminOnly>} />
+          <Route path="admin/ai-evaluation/sets/:setKey" element={<AdminOnly><AiEvaluationPage /></AdminOnly>} />
+          <Route path="admin/ai-evaluation/:tab?" element={<AdminOnly><AiEvaluationPage /></AdminOnly>} />
         </Route>
 
         <Route path="*" element={<Navigate to={session ? '/kitchen/inventory' : '/auth'} replace />} />
