@@ -63,6 +63,9 @@ supabase.timeoutMs=300000
 #ai.gemini.cache.enabled=true
 #ai.gemini.cache.ttlSeconds=3600
 
+# Scene anchor: one empty-scene image per recipe, sent as a reference image with every step image (default true).
+#ai.visualization.scene-anchor.enabled=true
+
 ai.provider=ollama
 ai.ollama.baseUrl=http://localhost:11434
 ai.ollama.chatEndpoint=/api/chat

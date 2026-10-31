@@ -4,6 +4,7 @@ import com.processVisualisation.virtualKitchen.ai.platform.registry.AiCapability
 import com.processVisualisation.virtualKitchen.ai.platform.registry.AiModelRegistry;
 import com.processVisualisation.virtualKitchen.ai.platform.registry.ModelDefinition;
 import com.processVisualisation.virtualKitchen.ai.platform.registry.ModelTier;
+import com.processVisualisation.virtualKitchen.ai.recipe.visualization.VisualizationPromptBatchService;
 import com.processVisualisation.virtualKitchen.ai.recipe.workflow.dto.RecipeAiWorkflowEstimateDTO;
 import com.processVisualisation.virtualKitchen.ai.recipe.workflow.dto.RecipeAiWorkflowEstimateDTO.TaskEstimate;
 import com.processVisualisation.virtualKitchen.ai.recipe.workflow.model.RecipeAiTaskType;
@@ -19,7 +20,9 @@ import java.util.List;
  * retries, are why every figure is a range.
  * <ul>
  *   <li>Recipe Process — one text call, plus one corrective retry if validation fails.</li>
- *   <li>Step Visuals — per step, one text call for the image prompt and one image call.</li>
+ *   <li>Step Visuals — one text call writing the image prompts of the whole recipe (one per
+ *       {@link VisualizationPromptBatchService#MAX_TARGETS_PER_REQUEST} images), one image call per image, and
+ *       one scene anchor image the first time a recipe is visualized.</li>
  *   <li>Voice Narration — per step, one TTS call (the script itself is built without AI).</li>
  * </ul>
  */
@@ -42,18 +45,24 @@ public class RecipeAiWorkflowEstimator {
      * yet the count is the configured range; otherwise it is the saved steps still missing an image
      * (resp. usable narration), since finished ones are reused without a provider call.
      */
-    public record StepCounts(int minVisualSteps, int maxVisualSteps, int minNarrationSteps, int maxNarrationSteps, boolean known) {
+    public record StepCounts(int minVisualSteps, int maxVisualSteps, int minNarrationSteps, int maxNarrationSteps, boolean known,
+                             boolean sceneImageNeeded) {
 
         public static StepCounts exact(int visualSteps, int narrationSteps) {
-            return new StepCounts(visualSteps, visualSteps, narrationSteps, narrationSteps, true);
+            return exact(visualSteps, narrationSteps, false);
+        }
+
+        /** @param sceneImageNeeded the recipe has no scene anchor image yet, so visuals would generate one first */
+        public static StepCounts exact(int visualSteps, int narrationSteps, boolean sceneImageNeeded) {
+            return new StepCounts(visualSteps, visualSteps, narrationSteps, narrationSteps, true, sceneImageNeeded);
         }
     }
 
-    /** The configured step range, for a selection that will generate a new process. */
+    /** The configured step range, for a selection that will generate a new process (which has no scene anchor yet). */
     public StepCounts assumedStepCounts() {
         int min = Math.max(0, properties.getEstimate().getMinSteps());
         int max = Math.max(min, properties.getEstimate().getMaxSteps());
-        return new StepCounts(min, max, min, max, false);
+        return new StepCounts(min, max, min, max, false, true);
     }
 
     public RecipeAiWorkflowEstimateDTO estimate(List<RecipeAiTaskType> tasks, StepCounts steps) {
@@ -68,13 +77,19 @@ public class RecipeAiWorkflowEstimator {
                         .basis("1–" + MAX_PROCESS_ATTEMPTS + " text requests × " + credits(textCost))
                         .build();
                 case VISUALS -> {
-                    int perStep = textCost + creditCost(AiCapability.TEXT_TO_IMAGE);
+                    int imageCost = creditCost(AiCapability.TEXT_TO_IMAGE);
+                    int maxPromptRequests = promptRequests(steps.maxVisualSteps());
+                    // The recipe's one scene anchor image, generated before its first step image.
+                    int minScene = steps.sceneImageNeeded() && steps.minVisualSteps() > 0 ? imageCost : 0;
+                    int maxScene = steps.sceneImageNeeded() && steps.maxVisualSteps() > 0 ? imageCost : 0;
                     yield TaskEstimate.builder()
                             .task(task)
-                            .minCredits(steps.minVisualSteps() * perStep)
-                            .maxCredits(steps.maxVisualSteps() * perStep)
-                            .basis(range(steps.minVisualSteps(), steps.maxVisualSteps()) + " × " + credits(perStep)
-                                    + " (image prompt + image)")
+                            .minCredits(promptRequests(steps.minVisualSteps()) * textCost + steps.minVisualSteps() * imageCost + minScene)
+                            .maxCredits(maxPromptRequests * textCost + steps.maxVisualSteps() * imageCost + maxScene)
+                            .basis(range(promptRequests(steps.minVisualSteps()), maxPromptRequests) + " × " + credits(textCost)
+                                    + " (image prompts) + " + range(steps.minVisualSteps(), steps.maxVisualSteps())
+                                    + " × " + credits(imageCost) + " (image)"
+                                    + (maxScene > 0 ? " + " + credits(imageCost) + " (scene image)" : ""))
                             .build();
                 }
                 case NARRATION -> {
@@ -95,6 +110,12 @@ public class RecipeAiWorkflowEstimator {
                 .approximate(true)
                 .stepCountKnown(steps.known())
                 .build();
+    }
+
+    /** Text calls the prompt batch makes for this many images: one per {@code MAX_TARGETS_PER_REQUEST}, none for none. */
+    static int promptRequests(int images) {
+        int perRequest = VisualizationPromptBatchService.MAX_TARGETS_PER_REQUEST;
+        return images <= 0 ? 0 : (images + perRequest - 1) / perRequest;
     }
 
     /** Credits one request costs with the capability's default model; 0 for open-source or unconfigured models. */

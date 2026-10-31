@@ -60,7 +60,9 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
@@ -155,7 +157,7 @@ class RecipeAiWorkflowServiceTest {
             generationJobs.put(job.getId(), job);
             return RecipeProcessGenerationJobResponseDTO.builder().jobId(job.getId()).status("QUEUED").mode("CREATE").build();
         });
-        when(visualizationJobService.startJob(eq(USER), eq(RECIPE), anyLong())).thenAnswer(inv ->
+        when(visualizationJobService.startJob(eq(USER), eq(RECIPE), anyLong(), anyList())).thenAnswer(inv ->
                 VisualizationJobResponseDTO.builder().jobId("viz-" + inv.getArgument(2)).processId(inv.getArgument(2)).build());
         // Jobs this test started are still queued unless a test says otherwise.
         when(visualizationJobRepository.findAllById(any())).thenAnswer(inv -> {
@@ -296,8 +298,9 @@ class RecipeAiWorkflowServiceTest {
         assertEquals(RecipeAiWorkflowStatus.RUNNING_DOWNSTREAM_TASKS, approved.getStatus());
         assertEquals(3L, approved.getApprovedRevision());
         assertEquals(List.of("s1", "s2-edited", "s4-new"), stored.getApprovedSnapshot().getProcesses().get(0).getStepIds());
-        verify(visualizationJobService).startJob(USER, RECIPE, MAIN);
-        verify(visualizationJobService).startJob(USER, RECIPE, SUB);
+        // Both processes share one prompt scope, so their image prompts are written in a single text call.
+        verify(visualizationJobService).startJob(eq(USER), eq(RECIPE), eq(MAIN), argThat(scope -> scope.containsAll(List.of(MAIN, SUB))));
+        verify(visualizationJobService).startJob(eq(USER), eq(RECIPE), eq(SUB), argThat(scope -> scope.containsAll(List.of(MAIN, SUB))));
         verify(narrationService).ensureAll(USER, RECIPE, MAIN, List.of("s1", "s2-edited", "s4-new"));
         verify(narrationService).ensureAll(USER, RECIPE, SUB, List.of("s3"));
         assertEquals(List.of("viz-10", "viz-11"), stored.getVisualizationJobs().stream().map(RecipeAiWorkflow.VisualizationJobRef::getJobId).toList());
@@ -310,7 +313,7 @@ class RecipeAiWorkflowServiceTest {
 
         service.approve(USER, RECIPE, stored.getId(), 3L);
 
-        verify(visualizationJobService, never()).startJob(any(), any(), any());
+        verify(visualizationJobService, never()).startJob(any(), any(), any(), any());
         verify(narrationService).ensureAll(USER, RECIPE, MAIN, List.of("s1", "s2"));
     }
 
@@ -341,7 +344,7 @@ class RecipeAiWorkflowServiceTest {
 
     @Test
     void visualsFailingToStartDoesNotBlockNarration() {
-        when(visualizationJobService.startJob(eq(USER), eq(RECIPE), anyLong())).thenThrow(new IllegalStateException("queue full"));
+        when(visualizationJobService.startJob(eq(USER), eq(RECIPE), anyLong(), anyList())).thenThrow(new IllegalStateException("queue full"));
         service.create(USER, RECIPE, request("Boil 2 eggs", true));
         completeGeneration(true);
 
@@ -360,7 +363,7 @@ class RecipeAiWorkflowServiceTest {
         service.approve(USER, RECIPE, stored.getId(), 3L);
 
         assertThrows(RecipeAiWorkflowException.class, () -> service.approve(USER, RECIPE, stored.getId(), 3L));
-        verify(visualizationJobService).startJob(USER, RECIPE, MAIN);
+        verify(visualizationJobService).startJob(eq(USER), eq(RECIPE), eq(MAIN), anyList());
     }
 
     // --- retry ---------------------------------------------------------------------------------
@@ -378,8 +381,8 @@ class RecipeAiWorkflowServiceTest {
 
         service.retryTask(USER, RECIPE, stored.getId(), VISUALS);
 
-        verify(visualizationJobService).startJob(USER, RECIPE, SUB);
-        verify(visualizationJobService, never()).startJob(USER, RECIPE, MAIN);
+        verify(visualizationJobService).startJob(eq(USER), eq(RECIPE), eq(SUB), anyList());
+        verify(visualizationJobService, never()).startJob(eq(USER), eq(RECIPE), eq(MAIN), anyList());
         assertEquals("viz-11", stored.getVisualizationJobs().get(1).getJobId());
         assertEquals("j-main", stored.getVisualizationJobs().get(0).getJobId(), "finished images are kept");
     }

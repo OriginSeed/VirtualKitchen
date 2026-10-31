@@ -194,6 +194,38 @@ class RecipeProcessVisualizationServiceArtifactTest {
     }
 
     @Test
+    void retainedPayloadDrawnAgainstAnOlderSceneAnchor_isNotReusedForANewOne() throws Exception {
+        when(imageStorageClient.upload(any(), anyString(), anyString()))
+                .thenThrow(new AiCommunicationException("Supabase storage upload failed with status: 503"))
+                .thenReturn("https://cdn.example/img.png");
+        RecipeProcessVisualizationService.VisualTarget target =
+                new RecipeProcessVisualizationService.VisualTarget(STEP_ID, input(), null);
+
+        service.resolveTarget(1L, RECIPE_ID, target, new RecipeProcessVisualizationService.SceneReference("7:old-scene", "Egg Curry", null));
+        VisualizationAsset redrawn = service.resolveTarget(1L, RECIPE_ID, target,
+                new RecipeProcessVisualizationService.SceneReference("8:new-scene", "Egg Curry", null));
+
+        assertEquals("https://cdn.example/img.png", redrawn.getImageUrl());
+        verify(imageGenerationClient, times(2)).generate(anyString());
+    }
+
+    @Test
+    void retainedPayloadDrawnAgainstTheSameSceneAnchor_isReused() throws Exception {
+        when(imageStorageClient.upload(any(), anyString(), anyString()))
+                .thenThrow(new AiCommunicationException("Supabase storage upload failed with status: 503"))
+                .thenReturn("https://cdn.example/img.png");
+        RecipeProcessVisualizationService.VisualTarget target =
+                new RecipeProcessVisualizationService.VisualTarget(STEP_ID, input(), null);
+        RecipeProcessVisualizationService.SceneReference scene =
+                new RecipeProcessVisualizationService.SceneReference("7:scene", "Egg Curry", null);
+
+        service.resolveTarget(1L, RECIPE_ID, target, scene);
+        service.resolveTarget(1L, RECIPE_ID, target, scene);
+
+        verify(imageGenerationClient, times(1)).generate(anyString());
+    }
+
+    @Test
     void resolveVisualizationAsset_whenUploadSucceedsFirstTime_consumesTheArtifact() throws Exception {
         when(imageStorageClient.upload(any(), anyString(), anyString())).thenReturn("https://cdn.example/img.png");
 

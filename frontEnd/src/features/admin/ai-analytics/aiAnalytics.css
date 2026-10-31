@@ -206,6 +206,8 @@
 .aia-bar-track { height: 12px; background: var(--aia-series-soft); border-radius: 0 4px 4px 0; overflow: hidden; }
 .aia-bar-fill { display: block; height: 100%; background: var(--aia-series); border-radius: 0 4px 4px 0; }
 .aia-bar-value { font-variant-numeric: tabular-nums; text-align: right; min-width: 4.5rem; }
+.aia-bar-groups { display: flex; flex-direction: column; gap: 0.9rem; }
+.aia-bar-group-label { margin: 0 0 0.35rem; font-size: 0.8rem; font-weight: 600; color: var(--flow-text-muted); }
 .aia-line-wrap { position: relative; }
 .aia-line { width: 100%; height: auto; display: block; overflow: visible; }
 .aia-grid { stroke: var(--aia-grid); stroke-width: 1; }

@@ -41,6 +41,51 @@ export function BarList({ data, format, emptyText = 'No data for this period.', 
   )
 }
 
+export interface BarGroup {
+  label: string
+  data: BarDatum[]
+}
+
+interface GroupedBarListProps {
+  groups: BarGroup[]
+  format: (value: number | null) => string
+  /** The scale's top, e.g. 5 for 1–5 ratings; defaults to the largest value. */
+  max?: number
+  emptyText?: string
+  ariaLabel: string
+}
+
+/**
+ * Horizontal bars grouped under a heading (e.g. one group per quality dimension, one bar per model). Still a single
+ * series color: each bar is identified by its text label, and all groups share one scale so they compare directly.
+ */
+export function GroupedBarList({ groups, format, max, emptyText = 'No data for this period.', ariaLabel }: GroupedBarListProps) {
+  const top = max ?? Math.max(0, ...groups.flatMap((g) => g.data.map((d) => d.value ?? 0)))
+  if (groups.every((g) => g.data.length === 0)) return <p className="aia-empty">{emptyText}</p>
+  return (
+    <div className="aia-bar-groups" role="group" aria-label={ariaLabel}>
+      {groups.map((group) => (
+        <div key={group.label} className="aia-bar-group">
+          <h4 className="aia-bar-group-label">{group.label}</h4>
+          <ul className="aia-bars">
+            {group.data.map((d) => (
+              <li key={d.label} className="aia-bar-row" title={d.detail ? `${d.label}: ${format(d.value)} · ${d.detail}` : undefined}>
+                <span className="aia-bar-label">{d.label}</span>
+                <span className="aia-bar-track">
+                  {d.value !== null && top > 0 && (
+                    <span className="aia-bar-fill" style={{ width: `${Math.max(1.5, Math.min(100, (d.value / top) * 100))}%` }} />
+                  )}
+                </span>
+                <span className="aia-bar-value">{format(d.value)}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      ))}
+    </div>
+  )
+}
+
 export interface PointDatum {
   label: string
   value: number | null

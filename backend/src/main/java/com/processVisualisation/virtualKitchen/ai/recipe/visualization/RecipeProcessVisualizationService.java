@@ -127,7 +127,8 @@ public class RecipeProcessVisualizationService {
      * since {@code stepId} (a generated node id) is already globally unique.
      */
     public VisualizationAsset resolveVisualizationAsset(Long userId, Long recipeId, String stepId, RecipeProcessVisualizationInput input) {
-        return resolveAsset(userId, VisualizationKeyBuilder.build(String.valueOf(recipeId), stepId), () -> promptBuilder.buildUserPrompt(input));
+        return resolveAsset(userId, VisualizationKeyBuilder.build(String.valueOf(recipeId), stepId),
+                () -> promptBuilder.buildUserPrompt(input), null);
     }
 
     /**
@@ -135,12 +136,110 @@ public class RecipeProcessVisualizationService {
      * ({@link RecipeProcessVisualizationPromptBuilder#buildFlowUserPrompt}) keyed by its output step.
      */
     public VisualizationAsset resolveTarget(Long userId, Long recipeId, VisualTarget target) {
-        if (target.flow() == null) return resolveVisualizationAsset(userId, recipeId, target.nodeId(), target.step());
-        return resolveAsset(userId, VisualizationKeyBuilder.buildFlow(String.valueOf(recipeId), target.nodeId()),
-                () -> promptBuilder.buildFlowUserPrompt(target.flow().outputName(), target.flow().steps()));
+        return resolveTarget(userId, recipeId, target, null);
     }
 
-    private VisualizationAsset resolveAsset(Long userId, String visualizationKey, Supplier<String> userPrompt) {
+    /**
+     * Same as {@link #resolveTarget(Long, Long, VisualTarget)}, drawing a newly generated image against the recipe's
+     * scene anchor (its dish context line, and its empty-scene image as a reference where the provider takes one).
+     *
+     * @param scene the recipe's scene anchor, or null to generate from the prompt alone
+     */
+    public VisualizationAsset resolveTarget(Long userId, Long recipeId, VisualTarget target, SceneReference scene) {
+        Supplier<String> userPrompt = target.flow() == null
+                ? () -> promptBuilder.buildUserPrompt(target.step())
+                : () -> promptBuilder.buildFlowUserPrompt(target.flow().outputName(), target.flow().steps());
+        return resolveAsset(userId, visualizationKey(recipeId, target), userPrompt, scene);
+    }
+
+    /**
+     * A recipe's scene anchor, as step images use it.
+     *
+     * @param anchorKey identifies the anchor image ({@code assetId:imageUrl}); part of each step image's artifact key,
+     *                  so an image drawn against an older anchor is never reused for a new one. Null without an image.
+     * @param dishContext the one-line dish context sent with every step image, or null
+     * @param image the empty-scene image sent as a reference, or null when there is none
+     */
+    public record SceneReference(String anchorKey, String dishContext, ImageGenerationClient.ReferenceImage image) {
+    }
+
+    /** The recipe's scene anchor asset, if one exists (it may still lack a prompt or an image). */
+    public Optional<VisualizationAsset> findScene(Long recipeId) {
+        return assetRepository.findByVisualizationKey(VisualizationKeyBuilder.buildScene(String.valueOf(recipeId)));
+    }
+
+    /**
+     * Stores the scene anchor's prompt and dish context, as written by the prompt batch. A scene that already has a
+     * prompt is left unchanged, so an anchor in use never shifts underneath the recipe's images.
+     */
+    public VisualizationAsset saveScenePrompt(Long recipeId, String scenePrompt, String dishContext) {
+        String key = VisualizationKeyBuilder.buildScene(String.valueOf(recipeId));
+        Optional<VisualizationAsset> existing = assetRepository.findByVisualizationKey(key);
+        if (existing.isPresent() && StringUtils.hasText(existing.get().getImagePrompt())) {
+            return existing.get();
+        }
+        VisualizationAsset scene = savePrompt(key, scenePrompt);
+        scene.setDishContext(StringUtils.hasText(dishContext) ? dishContext.trim() : null);
+        return assetRepository.save(scene);
+    }
+
+    /**
+     * Generates the scene anchor's image from its prompt (no reference of its own) and stores it, like a step image.
+     * Returns the asset with {@code imageUrl} set, or null when generation or upload failed.
+     */
+    public VisualizationAsset generateSceneImage(Long userId, VisualizationAsset scene) {
+        VisualizationAsset generated = generateImage(userId, scene, null, SCENE_CORRELATION_TYPE);
+        return StringUtils.hasText(generated.getImageUrl()) ? generated : null;
+    }
+
+    static final String SCENE_CORRELATION_TYPE = "process-visualization-scene";
+
+    /** The asset key a visual target's image is stored under (see {@link #resolveTarget}). */
+    public static String visualizationKey(Long recipeId, VisualTarget target) {
+        return target.flow() == null
+                ? VisualizationKeyBuilder.build(String.valueOf(recipeId), target.nodeId())
+                : VisualizationKeyBuilder.buildFlow(String.valueOf(recipeId), target.nodeId());
+    }
+
+    /** Whether the asset under this key already has its image (so no image call is made for it). */
+    public boolean hasImage(String visualizationKey) {
+        return assetRepository.findByVisualizationKey(visualizationKey)
+                .map(VisualizationAsset::getImageUrl)
+                .filter(StringUtils::hasText)
+                .isPresent();
+    }
+
+    /** The image prompt already stored for this key, or empty when it has none yet (it then needs one written). */
+    public Optional<String> existingPrompt(String visualizationKey) {
+        return assetRepository.findByVisualizationKey(visualizationKey)
+                .map(VisualizationAsset::getImagePrompt)
+                .filter(StringUtils::hasText);
+    }
+
+    /**
+     * Stores an image prompt written ahead of the per-step work (by {@link VisualizationPromptBatchService}): fills
+     * the existing asset's empty prompt, or creates the asset. {@link #resolveTarget} then finds the prompt and only
+     * generates the image. An asset that already has a prompt is left unchanged.
+     */
+    public VisualizationAsset savePrompt(String visualizationKey, String imagePrompt) {
+        Optional<VisualizationAsset> existing = assetRepository.findByVisualizationKey(visualizationKey);
+        if (existing.isPresent() && StringUtils.hasText(existing.get().getImagePrompt())) {
+            return existing.get();
+        }
+        VisualizationAsset asset = existing.orElseGet(() -> {
+            VisualizationAsset created = new VisualizationAsset();
+            created.setId(sequenceGeneratorService.generateSequence(VisualizationAsset.SEQUENCE_NAME));
+            created.setVisualizationKey(visualizationKey);
+            created.setType(VisualizationAssetType.ATOMIC);
+            return created;
+        });
+        asset.setImagePrompt(imagePrompt);
+        asset.setVideoPrompt(null);
+        asset.setVideoUrl(null);
+        return assetRepository.save(asset);
+    }
+
+    private VisualizationAsset resolveAsset(Long userId, String visualizationKey, Supplier<String> userPrompt, SceneReference scene) {
         Optional<VisualizationAsset> existingAsset = assetRepository.findByVisualizationKey(visualizationKey);
         VisualizationAsset asset;
         if (existingAsset.isPresent()) {
@@ -150,13 +249,17 @@ public class RecipeProcessVisualizationService {
             }
             requirePrompted(asset, visualizationKey);
             if (asset.getImageUrl() == null || asset.getImageUrl().isEmpty()) {
-                asset = generateImage(userId, asset);
+                asset = generateImage(userId, asset, scene, STEP_IMAGE_CORRELATION_TYPE);
             }
         } else {
-            asset = createAsset(userId, visualizationKey, userPrompt);
+            asset = generatePrompt(userId, visualizationKey, userPrompt);
+            requirePrompted(asset, visualizationKey);
+            asset = generateImage(userId, asset, scene, STEP_IMAGE_CORRELATION_TYPE);
         }
         return asset;
     }
+
+    private static final String STEP_IMAGE_CORRELATION_TYPE = "process-visualization-image";
 
     /**
      * Attaches each successfully generated asset to its STEP node in the stored process. Each step
@@ -285,15 +388,21 @@ public class RecipeProcessVisualizationService {
      * of paying for a new one. Reuses {@link VisualizationImageArtifactConsumer} unchanged, since it
      * only depends on the (generic) {@code visualizationKey}, not on which model produced the asset.
      */
-    private VisualizationAsset generateImage(Long userId, VisualizationAsset asset) {
+    private VisualizationAsset generateImage(Long userId, VisualizationAsset asset, SceneReference scene, String correlationType) {
         String visualizationKey = asset.getVisualizationKey();
+        String dishContext = scene == null ? null : scene.dishContext();
+        ImageGenerationClient.ReferenceImage reference = scene == null ? null : scene.image();
         try {
+            // Without a scene the key is exactly as before, so payloads retained before scene anchors stay reusable.
+            String[] keyInputs = scene == null
+                    ? new String[]{asset.getImagePrompt()}
+                    : new String[]{asset.getImagePrompt(), orBlank(dishContext), orBlank(scene.anchorKey())};
             AiArtifactSpec<ImageGenerationClient.GeneratedImage> artifactSpec = AiArtifactSpec.of(
                     AiArtifactKeyBuilder.build(
                             AiCapability.TEXT_TO_IMAGE,
-                            "process-visualization-image",
+                            correlationType,
                             visualizationKey,
-                            asset.getImagePrompt()),
+                            keyInputs),
                     generatedImageCodec,
                     VisualizationImageArtifactConsumer.CONSUMER_ID
             );
@@ -303,14 +412,20 @@ public class RecipeProcessVisualizationService {
                     AiCapability.TEXT_TO_IMAGE,
                     null,
                     null,
-                    "process-visualization-image",
+                    correlationType,
                     visualizationKey,
                     artifactSpec,
-                    selection -> clientResolver.resolveImageClient(selection.model()).generate(asset.getImagePrompt())
+                    selection -> {
+                        ImageGenerationClient client = clientResolver.resolveImageClient(selection.model());
+                        // Only a provider that really sends the reference is told about it.
+                        boolean withReference = reference != null && client.supportsReferenceImages();
+                        String text = promptBuilder.buildImageRequestText(asset.getImagePrompt(), dishContext, withReference);
+                        return client.generate(text, withReference ? List.of(reference) : List.of());
+                    }
             );
 
             // The payload is durable from here on, whether it was just generated or reused.
-            AiArtifact artifact = artifactOrTransient(outcome, visualizationKey);
+            AiArtifact artifact = artifactOrTransient(outcome, visualizationKey, correlationType);
             String imageUrl = imageArtifactConsumer.consume(artifact, outcome.value());
             artifactService.markConsumed(artifact.getId());
 
@@ -331,21 +446,15 @@ public class RecipeProcessVisualizationService {
         return assetRepository.save(asset);
     }
 
-    private VisualizationAsset createAsset(Long userId, String visualizationKey, Supplier<String> userPrompt) {
-        VisualizationAsset asset = generatePrompt(userId, visualizationKey, userPrompt);
-        requirePrompted(asset, visualizationKey);
-        return generateImage(userId, asset);
-    }
-
     private AiArtifact artifactOrTransient(
-            AiRequestOutcome<ImageGenerationClient.GeneratedImage> outcome, String visualizationKey) {
+            AiRequestOutcome<ImageGenerationClient.GeneratedImage> outcome, String visualizationKey, String correlationType) {
         if (outcome.artifact() != null) {
             return outcome.artifact();
         }
         ModelSelectionOutcome selection = outcome.selection();
         AiArtifact transientArtifact = new AiArtifact();
         transientArtifact.setCorrelationId(visualizationKey);
-        transientArtifact.setCorrelationType("process-visualization-image");
+        transientArtifact.setCorrelationType(correlationType);
         transientArtifact.setCapability(AiCapability.TEXT_TO_IMAGE);
         transientArtifact.setProducedByModelKey(selection.model().getKey());
         transientArtifact.setProducedByTier(selection.model().getTier());

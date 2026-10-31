@@ -21,6 +21,9 @@ import com.processVisualisation.virtualKitchen.ai.platform.routing.ModelSelectio
 import com.processVisualisation.virtualKitchen.ai.provider.AiClient;
 import com.processVisualisation.virtualKitchen.ai.provider.ImageGenerationClient;
 import com.processVisualisation.virtualKitchen.ai.provider.ImageStorageClient;
+import com.processVisualisation.virtualKitchen.ai.platform.response.AiJsonResponseSupport;
+import com.processVisualisation.virtualKitchen.ai.platform.response.AiResponseService;
+import com.processVisualisation.virtualKitchen.ai.provider.dto.AiRequest;
 import com.processVisualisation.virtualKitchen.ai.provider.dto.AiResponse;
 import com.processVisualisation.virtualKitchen.ai.recipe.RecipeProcessAiException;
 import com.processVisualisation.virtualKitchen.ai.recipe.visualization.dto.VisualizationJobResponseDTO;
@@ -55,11 +58,13 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.timeout;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -69,6 +74,8 @@ class RecipeProcessVisualizationJobServiceTest {
     private VisualizationJobRepository visualizationJobRepository;
     private MongoTemplate mongoTemplate;
     private ImageGenerationClient imageGenerationClient;
+    private AiClient aiClient;
+    private ImageStorageClient imageStorageClient;
     private RecipeProcessVisualizationJobService service;
 
     @BeforeEach
@@ -76,9 +83,9 @@ class RecipeProcessVisualizationJobServiceTest {
         processRepository = mock(ProcessRepository.class);
         VisualizationAssetRepository assetRepository = mock(VisualizationAssetRepository.class);
         SequenceGeneratorService sequenceGeneratorService = mock(SequenceGeneratorService.class);
-        AiClient aiClient = mock(AiClient.class);
+        aiClient = mock(AiClient.class);
         imageGenerationClient = mock(ImageGenerationClient.class);
-        ImageStorageClient imageStorageClient = mock(ImageStorageClient.class);
+        imageStorageClient = mock(ImageStorageClient.class);
 
         AtomicLong idCounter = new AtomicLong(0);
         when(sequenceGeneratorService.generateSequence(anyString())).thenAnswer(inv -> idCounter.incrementAndGet());
@@ -144,12 +151,114 @@ class RecipeProcessVisualizationJobServiceTest {
 
         mongoTemplate = mock(MongoTemplate.class);
 
+        RecipeProcessVisualizationPromptBuilder promptBuilder = new RecipeProcessVisualizationPromptBuilder();
+        VisualizationSceneAnchorService sceneAnchorService = new VisualizationSceneAnchorService(
+                recipeProcessVisualizationService, imageStorageClient, true);
+        VisualizationPromptBatchService promptBatchService = new VisualizationPromptBatchService(
+                recipeProcessVisualizationService, promptBuilder, queueService, clientResolver,
+                new AiJsonResponseSupport(mock(AiResponseService.class)), sceneAnchorService);
+
         service = new RecipeProcessVisualizationJobService(
                 recipeProcessVisualizationService,
                 visualizationJobRepository,
                 mongoTemplate,
                 new ThreadPoolTaskPool(2, "test-process-visualization"),
-                new ThreadPoolTaskPool(1, "test-process-orchestrator"));
+                new ThreadPoolTaskPool(1, "test-process-orchestrator"),
+                promptBatchService,
+                sceneAnchorService);
+    }
+
+    @Test
+    void startJob_drawsEveryStepAgainstTheRecipesSceneAnchor() throws Exception {
+        when(aiClient.chat(any())).thenReturn(AiResponse.builder().content("{\"styleGuide\":\"one kitchen\","
+                + "\"dishContext\":\"Part of making Egg Curry\",\"scenePrompt\":\"empty steel kadai on granite\",\"prompts\":["
+                + "{\"id\":\"m1\",\"imagePrompt\":\"prompt one\"},"
+                + "{\"id\":\"m2\",\"imagePrompt\":\"prompt two\"}]}").build());
+        when(imageGenerationClient.supportsReferenceImages()).thenReturn(true);
+        // The anchor itself is drawn without a reference; every step with it.
+        when(imageGenerationClient.generate(anyString()))
+                .thenReturn(new ImageGenerationClient.GeneratedImage("image/png", new byte[]{9}));
+        when(imageGenerationClient.generate(anyString(), anyList()))
+                .thenReturn(new ImageGenerationClient.GeneratedImage("image/png", new byte[]{1, 2, 3}));
+        when(imageStorageClient.download("https://cdn.example/img.png"))
+                .thenReturn(new ImageStorageClient.StoredImage("image/png", new byte[]{9}));
+        when(processRepository.findById(1L)).thenReturn(Optional.of(processWithSteps(1L, 2)));
+
+        service.startJob(1L, 100L, 1L);
+
+        verify(processRepository, timeout(5000)).setStepVisualization(eq(1L), eq("node-0"), any(), eq("prompt one"), any());
+        verify(processRepository, timeout(5000)).setStepVisualization(eq(1L), eq("node-1"), any(), eq("prompt two"), any());
+        verify(imageGenerationClient, times(1)).generate("empty steel kadai on granite");
+        ArgumentCaptor<String> texts = ArgumentCaptor.forClass(String.class);
+        @SuppressWarnings("unchecked")
+        ArgumentCaptor<List<ImageGenerationClient.ReferenceImage>> references = ArgumentCaptor.forClass(List.class);
+        verify(imageGenerationClient, times(2)).generate(texts.capture(), references.capture());
+        for (String text : texts.getAllValues()) {
+            assertTrue(text.startsWith("Part of making Egg Curry\n" + RecipeProcessVisualizationPromptBuilder.REFERENCE_INSTRUCTION), text);
+        }
+        references.getAllValues().forEach(sent -> {
+            assertEquals(1, sent.size());
+            assertEquals(9, sent.get(0).data()[0], "the anchor image is the reference");
+        });
+        verify(aiClient, times(1)).chat(any());
+    }
+
+    @Test
+    void startJob_providerWithoutImageInput_getsTheDishContextButNoReferenceInstruction() throws Exception {
+        when(aiClient.chat(any())).thenReturn(AiResponse.builder().content("{\"styleGuide\":\"one kitchen\","
+                + "\"dishContext\":\"Part of making Egg Curry\",\"scenePrompt\":\"empty kadai\",\"prompts\":["
+                + "{\"id\":\"m1\",\"imagePrompt\":\"prompt one\"}]}").build());
+        when(imageGenerationClient.generate(anyString()))
+                .thenReturn(new ImageGenerationClient.GeneratedImage("image/png", new byte[]{1}));
+        when(imageStorageClient.download(anyString())).thenReturn(new ImageStorageClient.StoredImage("image/png", new byte[]{9}));
+        when(processRepository.findById(1L)).thenReturn(Optional.of(processWithSteps(1L, 1)));
+
+        service.startJob(1L, 100L, 1L);
+
+        verify(processRepository, timeout(5000)).setStepVisualization(eq(1L), eq("node-0"), any(), eq("prompt one"), any());
+        verify(imageGenerationClient).generate("Part of making Egg Curry\nprompt one");
+        verify(imageGenerationClient, never()).generate(anyString(), anyList());
+    }
+
+    @Test
+    void startJob_anchorThatCannotBeRead_stillGeneratesEveryStep() throws Exception {
+        when(aiClient.chat(any())).thenReturn(AiResponse.builder().content("{\"styleGuide\":\"one kitchen\","
+                + "\"dishContext\":\"Part of making Egg Curry\",\"scenePrompt\":\"empty kadai\",\"prompts\":["
+                + "{\"id\":\"m1\",\"imagePrompt\":\"prompt one\"}]}").build());
+        when(imageGenerationClient.supportsReferenceImages()).thenReturn(true);
+        when(imageGenerationClient.generate(anyString()))
+                .thenReturn(new ImageGenerationClient.GeneratedImage("image/png", new byte[]{1}));
+        when(imageStorageClient.download(anyString())).thenThrow(new RuntimeException("storage down"));
+        when(processRepository.findById(1L)).thenReturn(Optional.of(processWithSteps(1L, 1)));
+
+        service.startJob(1L, 100L, 1L);
+
+        verify(processRepository, timeout(5000)).setStepVisualization(eq(1L), eq("node-0"), any(), eq("prompt one"), eq("https://cdn.example/img.png"));
+        // No reference to send, so no reference instruction either.
+        verify(imageGenerationClient).generate("Part of making Egg Curry\nprompt one");
+    }
+
+    @Test
+    void startJob_writesEveryImagePromptInOneBatchCall_thenOnlyGeneratesImages() throws Exception {
+        when(aiClient.chat(any())).thenAnswer(inv -> {
+            AiRequest request = inv.getArgument(0);
+            assertEquals("VISUALIZATION_PROMPT_BATCH", request.getOperation(), "no per-step prompt call expected");
+            return AiResponse.builder().content("{\"styleGuide\":\"one kitchen\",\"prompts\":["
+                    + "{\"id\":\"m1\",\"imagePrompt\":\"prompt one\"},"
+                    + "{\"id\":\"m2\",\"imagePrompt\":\"prompt two\"},"
+                    + "{\"id\":\"m3\",\"imagePrompt\":\"prompt three\"}]}").build();
+        });
+        when(imageGenerationClient.generate(anyString()))
+                .thenReturn(new ImageGenerationClient.GeneratedImage("image/png", new byte[]{1, 2, 3}));
+        when(processRepository.findById(1L)).thenReturn(Optional.of(processWithSteps(1L, 3)));
+
+        service.startJob(1L, 100L, 1L);
+
+        verify(processRepository, timeout(5000)).setStepVisualization(eq(1L), eq("node-0"), any(), eq("prompt one"), any());
+        verify(processRepository, timeout(5000)).setStepVisualization(eq(1L), eq("node-1"), any(), eq("prompt two"), any());
+        verify(processRepository, timeout(5000)).setStepVisualization(eq(1L), eq("node-2"), any(), eq("prompt three"), any());
+        verify(aiClient, times(1)).chat(any());
+        verify(imageGenerationClient, times(3)).generate(anyString());
     }
 
     @Test

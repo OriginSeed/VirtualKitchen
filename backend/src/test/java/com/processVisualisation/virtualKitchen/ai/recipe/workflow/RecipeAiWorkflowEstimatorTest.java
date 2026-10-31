@@ -40,10 +40,10 @@ class RecipeAiWorkflowEstimatorTest {
 
         assertEquals(List.of(PROCESS, VISUALS, NARRATION), estimate.getTasks().stream().map(RecipeAiWorkflowEstimateDTO.TaskEstimate::getTask).toList());
         assertRange(estimate, PROCESS, 1, 2);       // 1–2 text requests
-        assertRange(estimate, VISUALS, 36, 120);    // 6–20 steps × (1 prompt + 5 image)
+        assertRange(estimate, VISUALS, 36, 106);    // 1 batched prompt request + 6–20 steps × 5 image + 5 scene image
         assertRange(estimate, NARRATION, 6, 20);    // 6–20 steps × 1
         assertEquals(43, estimate.getMinCredits());
-        assertEquals(142, estimate.getMaxCredits());
+        assertEquals(128, estimate.getMaxCredits());
         assertTrue(estimate.isApproximate());
         assertFalse(estimate.isStepCountKnown());
     }
@@ -62,9 +62,30 @@ class RecipeAiWorkflowEstimatorTest {
         RecipeAiWorkflowEstimateDTO estimate = estimator.estimate(List.of(VISUALS, NARRATION),
                 RecipeAiWorkflowEstimator.StepCounts.exact(3, 4));
 
-        assertRange(estimate, VISUALS, 18, 18);
+        assertRange(estimate, VISUALS, 16, 16);     // 1 prompt request + 3 × 5 image
         assertRange(estimate, NARRATION, 4, 4);
         assertTrue(estimate.isStepCountKnown());
+    }
+
+    @Test
+    void moreImagesThanOnePromptRequestHoldsNeedAnotherRequest() {
+        RecipeAiWorkflowEstimateDTO estimate = estimator.estimate(List.of(VISUALS), RecipeAiWorkflowEstimator.StepCounts.exact(25, 0));
+
+        assertRange(estimate, VISUALS, 127, 127);   // 2 prompt requests (24 + 1) + 25 × 5 image
+    }
+
+    @Test
+    void aRecipeWithoutASceneImagePaysForItOnce() {
+        RecipeAiWorkflowEstimateDTO estimate = estimator.estimate(List.of(VISUALS), RecipeAiWorkflowEstimator.StepCounts.exact(3, 0, true));
+
+        assertRange(estimate, VISUALS, 21, 21);     // 1 prompt request + 3 × 5 image + 5 scene image
+    }
+
+    @Test
+    void nothingMissingCostsNoPromptRequest() {
+        RecipeAiWorkflowEstimateDTO estimate = estimator.estimate(List.of(VISUALS), RecipeAiWorkflowEstimator.StepCounts.exact(0, 0));
+
+        assertRange(estimate, VISUALS, 0, 0);
     }
 
     @Test
@@ -74,7 +95,7 @@ class RecipeAiWorkflowEstimatorTest {
 
         RecipeAiWorkflowEstimateDTO estimate = estimator.estimate(List.of(VISUALS, NARRATION), RecipeAiWorkflowEstimator.StepCounts.exact(3, 3));
 
-        assertRange(estimate, VISUALS, 3, 3); // only the 1-credit prompt per step
+        assertRange(estimate, VISUALS, 1, 1); // only the one batched 1-credit prompt request
         assertRange(estimate, NARRATION, 0, 0);
     }
 
