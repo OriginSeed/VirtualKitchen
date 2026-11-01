@@ -963,3 +963,90 @@ Each phase is independently deployable and testable; nothing in phases 1–4 req
 2. Whether a failed structural-validation retry inside `AIRecipeGenerationService` (2 provider calls) should ever cost 2 credits instead of 1 — this design assumes 1 (charge only on final success) as the more user-friendly default.
 3. Whether `OPEN_SOURCE` models should have their *own* separate concurrency/resource cap distinct from credits (e.g., local Ollama/DrawThings GPU contention) — the bounded pool (Section 9) already caps this at the infrastructure level regardless of credits, but a stricter cap (e.g., only 1 concurrent Ollama call regardless of pool size) may be desired if the local model host is single-GPU; this is a one-line config change (`app.taskpool.ai-text.n-threads=1`) if needed, not a design change.
 4. Whether admins should be able to grant credits per-user only, or also adjust the org-wide default allocation live (currently a config property, requiring a restart to change globally).
+
+---
+
+## 24. Provider Setup: DeepInfra (DeepSeek V4 Flash)
+
+DeepInfra is a fourth text-to-text provider next to Gemini, Ollama and OpenAI. `DeepInfraClient` (bean `deepInfraAiClient`, package `ai.provider.deepinfra`) calls DeepInfra's OpenAI-compatible chat completions API. It is non-streaming and plugs into the model registry like every other provider, so recipe-flow generation, fallback, credits, analytics and cost tracking need no changes.
+
+### 24.1 Endpoint and model
+
+| | |
+|---|---|
+| Base URL | `https://api.deepinfra.com` |
+| Chat endpoint | `/v1/openai/chat/completions` |
+| Auth | `Authorization: Bearer $DEEPINFRA_API_KEY` |
+| Model id | `deepseek-ai/DeepSeek-V4-Flash` (override with `DEEPINFRA_MODEL`) |
+| Registry key | `deepinfra-deepseek-v4-flash` (`ai.models[7]`, `PAID`, falls back to `ollama-qwen`) |
+
+DeepInfra also lists `deepseek-ai/DeepSeek-V4-Flash-0731` as the official release that supersedes the preview id, at different prices. To switch, set `DEEPINFRA_MODEL` and update the `ai.models[7].*-usd-per-million` prices.
+
+### 24.2 Configuration
+
+`application.properties` is gitignored, so copy the DeepInfra block from `exampleProps` into your local copy:
+
+```properties
+ai.deepinfra.apiKey=${DEEPINFRA_API_KEY:}
+ai.deepinfra.baseUrl=https://api.deepinfra.com
+ai.deepinfra.chatEndpoint=/v1/openai/chat/completions
+ai.deepinfra.defaultModel=${DEEPINFRA_MODEL:deepseek-ai/DeepSeek-V4-Flash}
+ai.deepinfra.timeoutMs=120000
+ai.deepinfra.reasoningEffort=${DEEPINFRA_REASONING_EFFORT:none}   # sent as reasoning_effort; blank = omitted
+ai.deepinfra.jsonSchemaEnabled=${DEEPINFRA_JSON_SCHEMA_ENABLED:true}
+```
+
+The API key is read only from the environment. There is no fallback key: with the key unset, a DeepInfra call fails with "DeepInfra API key is not configured", and the rest of the app is unaffected. The key is sent only in the `Authorization` header. It never appears in log lines or exception messages.
+
+### 24.3 Enabling DeepInfra and switching providers
+
+The registry chooses the provider, not `ai.provider` (that property only feeds the legacy chat endpoint's default model id). To enable DeepInfra:
+
+```bash
+export DEEPINFRA_API_KEY=...                              # from the DeepInfra dashboard
+export DEEPINFRA_ENABLED=true                             # ai.models[7].enabled
+export AI_TEXT_DEFAULT_MODEL=deepinfra-deepseek-v4-flash  # ai.default-model.TEXT_TO_TEXT
+```
+
+To switch text generation, set `AI_TEXT_DEFAULT_MODEL`. This needs `ai.default-model.TEXT_TO_TEXT=${AI_TEXT_DEFAULT_MODEL:gemini-flash}` in your local `application.properties`; you can also set that property directly.
+
+| Provider | `AI_TEXT_DEFAULT_MODEL` | Also needs |
+|---|---|---|
+| Gemini | `gemini-flash` (default) | `ai.gemini.api-key` |
+| Ollama | `ollama-qwen` | a running Ollama server |
+| DeepInfra | `deepinfra-deepseek-v4-flash` | `DEEPINFRA_API_KEY`, `DEEPINFRA_ENABLED=true` |
+
+If the default points at a disabled model, `AiModelRegistry.defaultFor` fails fast with "missing or disabled".
+
+### 24.4 Request mapping and structured output
+
+- System and user prompts become `messages[{role: system}, {role: user}]`. `temperature` and `max_tokens` are sent only when the request sets them. `stream` is always `false`.
+- When an `AiRequest` carries a `responseSchema` (recipe-flow generation does), the client sends `response_format: {type: json_schema, json_schema: {name, schema, strict: false}}`, the same shape as `OpenAIClient`. DeepInfra documents `json_object` and `json_schema` response formats. It does not say per model whether DeepSeek V4 Flash supports `json_schema`. If the model rejects it, set `DEEPINFRA_JSON_SCHEMA_ENABLED=false` to fall back to `json_object`.
+- Constrained JSON guarantees only syntax. The recipe-flow output still goes through the existing structural validation and one validation retry, and the schema and semantic rules are unchanged.
+- `reasoning_effort=none` keeps a reasoning model from spending the output budget on thinking. A reply with no `content` (for example, all tokens spent reasoning, `finish_reason=length`) raises `AiInvalidResponseException`.
+
+### 24.5 Errors
+
+| DeepInfra response | Exception | Queue behaviour |
+|---|---|---|
+| 401 / 403 | `AiAuthenticationException` | not retried |
+| 429 (concurrency limit / busy model), 503 | `AiRateLimitedException` (carries `Retry-After` when sent) | retried with the rate-limit backoff |
+| other 4xx / 5xx | `AiCommunicationException` (status only; body logged at DEBUG, truncated) | normal retry |
+| timeout / connection failure | `AiTimeoutException` | normal retry |
+| empty body, no content, malformed JSON | `AiInvalidResponseException` | not retried by the queue |
+
+### 24.6 Token usage and cost
+
+`usage.prompt_tokens`, `completion_tokens` and `total_tokens` map to `AiResponse.promptTokens/completionTokens/totalTokens`. `usage.prompt_tokens_details.cached_tokens` maps to `cachedTokens` (a subset of prompt tokens, as for OpenAI) when DeepInfra reports it, and is null otherwise. Reasoning tokens are already inside `completion_tokens`, so `thoughtsTokens` stays null and nothing is billed twice. DeepInfra's own `usage.estimated_cost` is kept only in `rawResponse`.
+
+Cost is estimated by the existing `CostCalculator` from the registry prices (USD per 1M tokens, as supplied for this integration):
+
+| Token type | Price | Property |
+|---|---|---|
+| Uncached input | $0.20 | `ai.models[7].input-usd-per-million` |
+| Cached input | $0.006 | `ai.models[7].cached-input-usd-per-million` |
+| Output | $0.60 | `ai.models[7].output-usd-per-million` |
+
+`cost = (prompt - cached) x 0.20/M + cached x 0.006/M + completion x 0.60/M`. When no cached count is reported, all input is priced at the uncached rate. Example: 12,000 prompt tokens (10,240 cached) and 800 completion tokens cost $0.000893.
+
+DeepInfra's model page may show different rates. When you change a price, bump `vk.ai.pricing.version` so that earlier requests keep the rate card they were priced with.

@@ -11,7 +11,7 @@ import org.springframework.web.client.RestClient;
 /**
  * Spring configuration that builds and registers the {@link RestClient}
  * beans used by every outbound AI/storage client in this application
- * (Draw Things, Gemini, Ollama, OpenAI, and Supabase). Each bean is
+ * (Draw Things, Gemini, Ollama, OpenAI, DeepInfra, and Supabase). Each bean is
  * configured with the provider's base URL and connect/read timeout, both
  * sourced from that provider's {@code *Properties} configuration class.
  */
@@ -68,6 +68,19 @@ public class AiRestClientConfig {
     @Bean("openAiRestClient")
     public RestClient openAiRestClient(OpenAIProperties properties) {
         long configuredTimeout = properties.getTimeoutMs() == null ? 30000L : properties.getTimeoutMs();
+        return createRestClient(properties.getBaseUrl(), configuredTimeout);
+    }
+
+    // 5. DEEPINFRA CLIENT
+    /**
+     * Builds the {@link RestClient} used to call DeepInfra's OpenAI-compatible API.
+     *
+     * @param properties the configured DeepInfra base URL and timeout
+     * @return a {@link RestClient} configured for DeepInfra, registered as {@code deepInfraRestClient}
+     */
+    @Bean("deepInfraRestClient")
+    public RestClient deepInfraRestClient(DeepInfraProperties properties) {
+        long configuredTimeout = properties.getTimeoutMs() == null ? 120000L : properties.getTimeoutMs();
         return createRestClient(properties.getBaseUrl(), configuredTimeout);
     }
 

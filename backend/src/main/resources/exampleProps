@@ -133,6 +133,30 @@ ai.models[6].input-usd-per-million=0
 ai.models[6].output-usd-per-million=0
 ai.models[6].enabled=true
 
+# --- DeepInfra (OpenAI-compatible) text generation: see AI_MODEL_MANAGEMENT_DESIGN.md section 24 ---
+# Off unless DEEPINFRA_ENABLED=true; select it with AI_TEXT_DEFAULT_MODEL=deepinfra-deepseek-v4-flash
+# (and make ai.default-model.TEXT_TO_TEXT=${AI_TEXT_DEFAULT_MODEL:gemini-flash}). The key comes only from the environment.
+ai.models[7].key=deepinfra-deepseek-v4-flash
+ai.models[7].capability=TEXT_TO_TEXT
+ai.models[7].tier=PAID
+ai.models[7].provider-bean=deepInfraAiClient
+ai.models[7].provider-model-id=${ai.deepinfra.defaultModel}
+ai.models[7].credit-cost=1
+# USD per 1M tokens, as supplied for this integration; bump vk.ai.pricing.version when changing them.
+ai.models[7].input-usd-per-million=0.20
+ai.models[7].cached-input-usd-per-million=0.006
+ai.models[7].output-usd-per-million=0.60
+ai.models[7].fallback-model-key=ollama-qwen
+ai.models[7].enabled=${DEEPINFRA_ENABLED:false}
+
+ai.deepinfra.apiKey=${DEEPINFRA_API_KEY:}
+ai.deepinfra.baseUrl=https://api.deepinfra.com
+ai.deepinfra.chatEndpoint=/v1/openai/chat/completions
+ai.deepinfra.defaultModel=${DEEPINFRA_MODEL:deepseek-ai/DeepSeek-V4-Flash}
+ai.deepinfra.timeoutMs=120000
+ai.deepinfra.reasoningEffort=${DEEPINFRA_REASONING_EFFORT:none}
+ai.deepinfra.jsonSchemaEnabled=${DEEPINFRA_JSON_SCHEMA_ENABLED:true}
+
 ai.default-model.TEXT_TO_SPEECH=${AI_TTS_DEFAULT_MODEL:gemini-tts}
 app.queue.ai-tts-max-depth=${AI_TTS_MAX_DEPTH:20}
 app.taskpool.narration.n-threads=${NARRATION_THREADS:2}
