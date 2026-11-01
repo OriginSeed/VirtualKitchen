@@ -19,6 +19,8 @@ import java.util.List;
  * @param duration human-readable duration (e.g. "5 minutes"), or blank
  * @param previousExpectedOutput the immediately preceding STEP's expected output, for text-based
  *                               visual continuity — null for the first step of the process
+ * @param actionId the step's catalog action id (e.g. "cut"), used only to choose the image's generation profile
+ *                 ({@link VisualizationImageProfiles}); never part of the prompt. Null when unknown.
  */
 public record RecipeProcessVisualizationInput(
         String action,
@@ -29,8 +31,17 @@ public record RecipeProcessVisualizationInput(
         String temperature,
         String flameLevel,
         String duration,
-        String previousExpectedOutput
+        String previousExpectedOutput,
+        String actionId
 ) {
+    /** An input without an action id; its image uses the default generation profile. */
+    public RecipeProcessVisualizationInput(String action, List<IngredientTarget> ingredients, List<String> subprocessNames,
+                                           String actionDescription, String expectedOutput, String temperature,
+                                           String flameLevel, String duration, String previousExpectedOutput) {
+        this(action, ingredients, subprocessNames, actionDescription, expectedOutput, temperature, flameLevel,
+                duration, previousExpectedOutput, null);
+    }
+
     /**
      * One Action On ingredient target, with its per-ingredient quantity/unit/preparation style —
      * these are never step-level, since the same step can prepare several ingredients differently.

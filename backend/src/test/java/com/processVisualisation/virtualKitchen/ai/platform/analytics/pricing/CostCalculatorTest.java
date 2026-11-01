@@ -52,6 +52,27 @@ class CostCalculatorTest {
     }
 
     @Test
+    void deepInfraTokens_priceCachedAndUncachedInputSeparately() {
+        PricingRateCard card = paidText();
+        card.setInputPerMTok(0.20);
+        card.setCachedInputPerMTok(0.006);
+        card.setOutputPerMTok(0.60);
+
+        Cost partlyCached = CostCalculator.calculate(tokens(12_000L, 10_240L, 800L, null), card, 900L, true, NOW);
+        // 1,760 x $0.20/M + 10,240 x $0.006/M + 800 x $0.60/M
+        assertThat(partlyCached.getInputCost()).isCloseTo(0.000352, within(1e-12));
+        assertThat(partlyCached.getCachedInputCost()).isCloseTo(0.00006144, within(1e-12));
+        assertThat(partlyCached.getOutputCost()).isCloseTo(0.00048, within(1e-12));
+        assertThat(partlyCached.getTotalCost()).isCloseTo(0.00089344, within(1e-12));
+
+        // No cache report: every input token is billed at the uncached rate, never assumed cached.
+        Cost uncached = CostCalculator.calculate(tokens(12_000L, null, 800L, null), card, 900L, true, NOW);
+        assertThat(uncached.getInputCost()).isCloseTo(0.0024, within(1e-12));
+        assertThat(uncached.getCachedInputCost()).isZero();
+        assertThat(uncached.getTotalCost()).isCloseTo(0.00288, within(1e-12));
+    }
+
+    @Test
     void textTokens_arePricedPerMillionWithTheCardRecorded() {
         Cost cost = CostCalculator.calculate(tokens(1_000_000L, null, 200_000L, null), paidText(), 1200L, true, NOW);
 

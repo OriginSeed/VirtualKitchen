@@ -63,6 +63,7 @@ public class RecipeProcessVisualizationService {
     private final GeneratedImageCodec generatedImageCodec;
     private final VisualizationImageArtifactConsumer imageArtifactConsumer;
     private final RecipeStepVocabularyProvider vocabularyProvider;
+    private final VisualizationImageProfiles imageProfiles;
     private final ObjectMapper objectMapper = new ObjectMapper();
 
     public RecipeProcessVisualizationService(
@@ -75,7 +76,8 @@ public class RecipeProcessVisualizationService {
             AiArtifactService artifactService,
             GeneratedImageCodec generatedImageCodec,
             VisualizationImageArtifactConsumer imageArtifactConsumer,
-            RecipeStepVocabularyProvider vocabularyProvider
+            RecipeStepVocabularyProvider vocabularyProvider,
+            VisualizationImageProfiles imageProfiles
     ) {
         this.processRepository = processRepository;
         this.assetRepository = assetRepository;
@@ -87,6 +89,7 @@ public class RecipeProcessVisualizationService {
         this.generatedImageCodec = generatedImageCodec;
         this.imageArtifactConsumer = imageArtifactConsumer;
         this.vocabularyProvider = vocabularyProvider;
+        this.imageProfiles = imageProfiles;
     }
 
     /**
@@ -128,7 +131,8 @@ public class RecipeProcessVisualizationService {
      */
     public VisualizationAsset resolveVisualizationAsset(Long userId, Long recipeId, String stepId, RecipeProcessVisualizationInput input) {
         return resolveAsset(userId, VisualizationKeyBuilder.build(String.valueOf(recipeId), stepId),
-                () -> promptBuilder.buildUserPrompt(input), null);
+                () -> promptBuilder.buildUserPrompt(input), null,
+                imageProfiles.settingsFor(input == null ? null : input.actionId()));
     }
 
     /**
@@ -149,7 +153,20 @@ public class RecipeProcessVisualizationService {
         Supplier<String> userPrompt = target.flow() == null
                 ? () -> promptBuilder.buildUserPrompt(target.step())
                 : () -> promptBuilder.buildFlowUserPrompt(target.flow().outputName(), target.flow().steps());
-        return resolveAsset(userId, visualizationKey(recipeId, target), userPrompt, scene);
+        return resolveAsset(userId, visualizationKey(recipeId, target), userPrompt, scene,
+                imageProfiles.settingsFor(profileActionId(target)));
+    }
+
+    /**
+     * The action that picks a target's image profile: a step's own action; for a preparation flow, its last step's
+     * action, since the flow's image is attached to (and ends at) that output step.
+     */
+    static String profileActionId(VisualTarget target) {
+        if (target.flow() == null) {
+            return target.step() == null ? null : target.step().actionId();
+        }
+        List<RecipeProcessVisualizationInput> steps = target.flow().steps();
+        return steps == null || steps.isEmpty() ? null : steps.get(steps.size() - 1).actionId();
     }
 
     /**
@@ -188,7 +205,8 @@ public class RecipeProcessVisualizationService {
      * Returns the asset with {@code imageUrl} set, or null when generation or upload failed.
      */
     public VisualizationAsset generateSceneImage(Long userId, VisualizationAsset scene) {
-        VisualizationAsset generated = generateImage(userId, scene, null, SCENE_CORRELATION_TYPE);
+        VisualizationAsset generated = generateImage(userId, scene, null, SCENE_CORRELATION_TYPE,
+                ImageGenerationClient.ImageGenerationSettings.NONE);
         return StringUtils.hasText(generated.getImageUrl()) ? generated : null;
     }
 
@@ -239,7 +257,8 @@ public class RecipeProcessVisualizationService {
         return assetRepository.save(asset);
     }
 
-    private VisualizationAsset resolveAsset(Long userId, String visualizationKey, Supplier<String> userPrompt, SceneReference scene) {
+    private VisualizationAsset resolveAsset(Long userId, String visualizationKey, Supplier<String> userPrompt, SceneReference scene,
+                                            ImageGenerationClient.ImageGenerationSettings settings) {
         Optional<VisualizationAsset> existingAsset = assetRepository.findByVisualizationKey(visualizationKey);
         VisualizationAsset asset;
         if (existingAsset.isPresent()) {
@@ -249,12 +268,12 @@ public class RecipeProcessVisualizationService {
             }
             requirePrompted(asset, visualizationKey);
             if (asset.getImageUrl() == null || asset.getImageUrl().isEmpty()) {
-                asset = generateImage(userId, asset, scene, STEP_IMAGE_CORRELATION_TYPE);
+                asset = generateImage(userId, asset, scene, STEP_IMAGE_CORRELATION_TYPE, settings);
             }
         } else {
             asset = generatePrompt(userId, visualizationKey, userPrompt);
             requirePrompted(asset, visualizationKey);
-            asset = generateImage(userId, asset, scene, STEP_IMAGE_CORRELATION_TYPE);
+            asset = generateImage(userId, asset, scene, STEP_IMAGE_CORRELATION_TYPE, settings);
         }
         return asset;
     }
@@ -388,21 +407,31 @@ public class RecipeProcessVisualizationService {
      * of paying for a new one. Reuses {@link VisualizationImageArtifactConsumer} unchanged, since it
      * only depends on the (generic) {@code visualizationKey}, not on which model produced the asset.
      */
-    private VisualizationAsset generateImage(Long userId, VisualizationAsset asset, SceneReference scene, String correlationType) {
+    private VisualizationAsset generateImage(Long userId, VisualizationAsset asset, SceneReference scene, String correlationType,
+                                             ImageGenerationClient.ImageGenerationSettings settings) {
         String visualizationKey = asset.getVisualizationKey();
         String dishContext = scene == null ? null : scene.dishContext();
         ImageGenerationClient.ReferenceImage reference = scene == null ? null : scene.image();
+        ImageGenerationClient.ImageGenerationSettings requested =
+                settings == null ? ImageGenerationClient.ImageGenerationSettings.NONE : settings;
         try {
             // Without a scene the key is exactly as before, so payloads retained before scene anchors stay reusable.
-            String[] keyInputs = scene == null
-                    ? new String[]{asset.getImagePrompt()}
-                    : new String[]{asset.getImagePrompt(), orBlank(dishContext), orBlank(scene.anchorKey())};
+            List<String> keyInputs = new ArrayList<>();
+            keyInputs.add(asset.getImagePrompt());
+            if (scene != null) {
+                keyInputs.add(orBlank(dishContext));
+                keyInputs.add(orBlank(scene.anchorKey()));
+            }
+            // Likewise only profiled images carry their settings, so an image of another size is never reused.
+            if (!requested.isNone()) {
+                keyInputs.add("image:" + requested.width() + "x" + requested.height() + ";steps=" + requested.steps());
+            }
             AiArtifactSpec<ImageGenerationClient.GeneratedImage> artifactSpec = AiArtifactSpec.of(
                     AiArtifactKeyBuilder.build(
                             AiCapability.TEXT_TO_IMAGE,
                             correlationType,
                             visualizationKey,
-                            keyInputs),
+                            keyInputs.toArray(String[]::new)),
                     generatedImageCodec,
                     VisualizationImageArtifactConsumer.CONSUMER_ID
             );
@@ -420,7 +449,7 @@ public class RecipeProcessVisualizationService {
                         // Only a provider that really sends the reference is told about it.
                         boolean withReference = reference != null && client.supportsReferenceImages();
                         String text = promptBuilder.buildImageRequestText(asset.getImagePrompt(), dishContext, withReference);
-                        return client.generate(text, withReference ? List.of(reference) : List.of());
+                        return client.generate(text, withReference ? List.of(reference) : List.of(), requested);
                     }
             );
 
@@ -586,7 +615,8 @@ public class RecipeProcessVisualizationService {
                 temperatureLabel(step),
                 flameLevel,
                 duration,
-                previousExpectedOutput
+                previousExpectedOutput,
+                actionId
         );
     }
 

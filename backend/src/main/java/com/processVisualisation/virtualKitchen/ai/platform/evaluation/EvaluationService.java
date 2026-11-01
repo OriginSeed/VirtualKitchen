@@ -8,6 +8,7 @@ import com.processVisualisation.virtualKitchen.ai.platform.evaluation.Evaluation
 import com.processVisualisation.virtualKitchen.ai.platform.evaluation.model.ImageEvaluation;
 import com.processVisualisation.virtualKitchen.ai.platform.evaluation.model.SetEvaluation;
 import com.processVisualisation.virtualKitchen.ai.platform.evaluation.model.Verdict;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
 import java.time.Clock;
@@ -32,6 +33,8 @@ public class EvaluationService {
     private final EvaluationQueryService queryService;
     private final Clock clock;
 
+    /** Spring's constructor; the package-private one lets tests fix the clock. */
+    @Autowired
     public EvaluationService(EvaluationStore store, EvaluationQueryService queryService) {
         this(store, queryService, Clock.systemUTC());
     }

@@ -4,6 +4,7 @@ import com.processVisualisation.virtualKitchen.ai.asset.VisualizationAsset;
 import com.processVisualisation.virtualKitchen.ai.asset.VisualizationAssetRepository;
 import com.processVisualisation.virtualKitchen.ai.platform.artifact.AiArtifact;
 import com.processVisualisation.virtualKitchen.ai.platform.artifact.AiArtifactHit;
+import com.processVisualisation.virtualKitchen.ai.platform.artifact.AiArtifactKeyBuilder;
 import com.processVisualisation.virtualKitchen.ai.platform.artifact.AiArtifactService;
 import com.processVisualisation.virtualKitchen.ai.platform.artifact.AiArtifactSpec;
 import com.processVisualisation.virtualKitchen.ai.platform.artifact.AiArtifactStatus;
@@ -25,6 +26,7 @@ import com.processVisualisation.virtualKitchen.ai.platform.routing.ModelSelectio
 import com.processVisualisation.virtualKitchen.ai.provider.AiClient;
 import com.processVisualisation.virtualKitchen.ai.provider.ImageGenerationClient;
 import com.processVisualisation.virtualKitchen.ai.provider.ImageGenerationClient.GeneratedImage;
+import com.processVisualisation.virtualKitchen.ai.provider.ImageGenerationClient.ImageGenerationSettings;
 import com.processVisualisation.virtualKitchen.ai.provider.ImageStorageClient;
 import com.processVisualisation.virtualKitchen.ai.provider.dto.AiResponse;
 import com.processVisualisation.virtualKitchen.ai.provider.exception.AiCommunicationException;
@@ -34,6 +36,7 @@ import com.processVisualisation.virtualKitchen.common.persistence.SequenceGenera
 import com.processVisualisation.virtualKitchen.recipe.repository.ProcessRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
 import org.springframework.data.mongodb.core.MongoTemplate;
 
 import java.nio.charset.StandardCharsets;
@@ -50,6 +53,7 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
@@ -74,6 +78,7 @@ class RecipeProcessVisualizationServiceArtifactTest {
     private VisualizationAssetRepository assetRepository;
     private AiArtifactService artifactService;
     private Map<String, VisualizationAsset> assetStore;
+    private VisualizationImageProperties imageProperties;
 
     private final AtomicReference<AiArtifact> stagedArtifact = new AtomicReference<>();
     private final AtomicReference<GeneratedImage> stagedPayload = new AtomicReference<>();
@@ -90,6 +95,7 @@ class RecipeProcessVisualizationServiceArtifactTest {
         imageStorageClient = mock(ImageStorageClient.class);
 
         assetStore = new ConcurrentHashMap<>();
+        imageProperties = new VisualizationImageProperties();
         AtomicLong idCounter = new AtomicLong();
         when(sequenceGeneratorService.generateSequence(anyString())).thenAnswer(inv -> idCounter.incrementAndGet());
         when(assetRepository.findByVisualizationKey(anyString()))
@@ -146,7 +152,81 @@ class RecipeProcessVisualizationServiceArtifactTest {
                 artifactService,
                 new GeneratedImageCodec(),
                 consumer,
-                new RecipeStepVocabularyProvider());
+                new RecipeStepVocabularyProvider(),
+                new VisualizationImageProfiles(imageProperties, new RecipeStepVocabularyProvider()));
+    }
+
+    private RecipeProcessVisualizationInput input(String actionId) {
+        return new RecipeProcessVisualizationInput(
+                "Serve", List.of(), List.of(), "Serve the curry", "Plated curry", "", "", "", null, actionId);
+    }
+
+    private void configureProfiles() {
+        imageProperties.getDefaultProfile().setWidth(512);
+        imageProperties.getDefaultProfile().setHeight(512);
+        VisualizationImageProperties.Profile serving = new VisualizationImageProperties.Profile();
+        serving.setWidth(768);
+        serving.setHeight(768);
+        serving.setSteps(6);
+        imageProperties.getProfiles().put(VisualizationImageProperties.SERVING, serving);
+    }
+
+    @Test
+    void stepImage_reachesTheClientWithItsPurposeProfile() throws Exception {
+        configureProfiles();
+        when(imageGenerationClient.generate(anyString(), anyList(), any(ImageGenerationSettings.class)))
+                .thenReturn(new GeneratedImage("image/png", IMAGE_BYTES));
+        when(imageStorageClient.upload(any(), anyString(), anyString())).thenReturn("https://cdn.example/img.png");
+
+        service.resolveVisualizationAsset(1L, RECIPE_ID, STEP_ID, input("serve"));
+        service.resolveVisualizationAsset(1L, RECIPE_ID, "step-2", input("rest"));
+
+        ArgumentCaptor<ImageGenerationSettings> settings = ArgumentCaptor.forClass(ImageGenerationSettings.class);
+        verify(imageGenerationClient, times(2)).generate(anyString(), anyList(), settings.capture());
+        assertEquals(new ImageGenerationSettings(768, 768, 6), settings.getAllValues().get(0));
+        assertEquals(new ImageGenerationSettings(512, 512, null), settings.getAllValues().get(1),
+                "a purpose without a profile uses the default profile");
+        verify(imageGenerationClient, never()).generate(anyString());
+    }
+
+    @Test
+    void withoutProfiles_theArtifactKeyAndClientCallAreUnchanged() throws Exception {
+        when(imageStorageClient.upload(any(), anyString(), anyString())).thenReturn("https://cdn.example/img.png");
+
+        service.resolveVisualizationAsset(1L, RECIPE_ID, STEP_ID, input("serve"));
+
+        assertEquals(AiArtifactKeyBuilder.build(AiCapability.TEXT_TO_IMAGE, "process-visualization-image",
+                VISUALIZATION_KEY, "a knife"), stagedArtifact.get().getArtifactKey());
+        verify(imageGenerationClient, times(1)).generate(anyString());
+    }
+
+    @Test
+    void profiledImage_hasItsOwnArtifactKey() throws Exception {
+        configureProfiles();
+        when(imageGenerationClient.generate(anyString(), anyList(), any(ImageGenerationSettings.class)))
+                .thenReturn(new GeneratedImage("image/png", IMAGE_BYTES));
+        when(imageStorageClient.upload(any(), anyString(), anyString())).thenReturn("https://cdn.example/img.png");
+
+        service.resolveVisualizationAsset(1L, RECIPE_ID, STEP_ID, input("serve"));
+
+        assertEquals(AiArtifactKeyBuilder.build(AiCapability.TEXT_TO_IMAGE, "process-visualization-image",
+                VISUALIZATION_KEY, "a knife", "image:768x768;steps=6"), stagedArtifact.get().getArtifactKey());
+    }
+
+    @Test
+    void sceneAnchor_neverUsesAProfile() throws Exception {
+        configureProfiles();
+        when(imageStorageClient.upload(any(), anyString(), anyString())).thenReturn("https://cdn.example/scene.png");
+        VisualizationAsset scene = new VisualizationAsset();
+        scene.setId(5L);
+        scene.setVisualizationKey("42::scene");
+        scene.setImagePrompt("empty steel kadai on granite");
+        assetStore.put(scene.getVisualizationKey(), scene);
+
+        service.generateSceneImage(1L, scene);
+
+        verify(imageGenerationClient, times(1)).generate("empty steel kadai on granite");
+        verify(imageGenerationClient, never()).generate(anyString(), anyList(), any(ImageGenerationSettings.class));
     }
 
     private RecipeProcessVisualizationInput input() {

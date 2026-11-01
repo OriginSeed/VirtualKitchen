@@ -12,6 +12,7 @@ import com.processVisualisation.virtualKitchen.ai.platform.evaluation.model.SetE
 import com.processVisualisation.virtualKitchen.ai.platform.evaluation.model.Verdict;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.springframework.context.annotation.AnnotationConfigApplicationContext;
 
 import java.time.Clock;
 import java.time.ZoneOffset;
@@ -45,6 +46,18 @@ class EvaluationServiceTest {
         when(queryService.loadSet(SET)).thenReturn(Optional.of(set));
         store = new InMemoryEvaluationStore();
         service = new EvaluationService(store, queryService, Clock.fixed(T0, ZoneOffset.UTC));
+    }
+
+    @Test
+    void springCanCreateTheService() {
+        try (AnnotationConfigApplicationContext context = new AnnotationConfigApplicationContext()) {
+            context.registerBean(EvaluationStore.class, () -> store);
+            context.registerBean(EvaluationQueryService.class, () -> mock(EvaluationQueryService.class));
+            context.register(EvaluationService.class);
+            context.refresh();
+
+            assertThat(context.getBean(EvaluationService.class)).isNotNull();
+        }
     }
 
     @Test

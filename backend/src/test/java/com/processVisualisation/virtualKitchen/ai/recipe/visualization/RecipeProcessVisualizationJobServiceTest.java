@@ -144,7 +144,8 @@ class RecipeProcessVisualizationJobServiceTest {
                 artifactService,
                 new GeneratedImageCodec(),
                 imageArtifactConsumer,
-                new RecipeStepVocabularyProvider());
+                new RecipeStepVocabularyProvider(),
+                new VisualizationImageProfiles(new VisualizationImageProperties(), new RecipeStepVocabularyProvider()));
 
         visualizationJobRepository = mock(VisualizationJobRepository.class);
         when(visualizationJobRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));

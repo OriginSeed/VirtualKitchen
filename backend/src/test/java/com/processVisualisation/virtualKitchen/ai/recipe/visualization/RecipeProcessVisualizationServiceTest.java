@@ -127,7 +127,8 @@ class RecipeProcessVisualizationServiceTest {
                 artifactService,
                 new GeneratedImageCodec(),
                 consumer,
-                new RecipeStepVocabularyProvider());
+                new RecipeStepVocabularyProvider(),
+                new VisualizationImageProfiles(new VisualizationImageProperties(), new RecipeStepVocabularyProvider()));
     }
 
     @Test

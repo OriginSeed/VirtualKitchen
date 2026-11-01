@@ -18,6 +18,8 @@ import org.springframework.web.client.RestClient;
 import org.springframework.web.client.RestClientResponseException;
 
 import java.util.Base64;
+import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 
 /**
@@ -57,7 +59,7 @@ public class DrawThingsImageClient implements ImageGenerationClient {
      * @throws JsonProcessingException if the response body is not valid JSON
      * @throws AiInvalidResponseException if the response contains no image or an invalid/empty base64 payload
      */
-    private GeneratedImage parseImage(String response) throws JsonProcessingException {
+    private GeneratedImage parseImage(String response, Integer width, Integer height) throws JsonProcessingException {
 
         JsonNode root = objectMapper.readTree(response);
 
@@ -93,7 +95,7 @@ public class DrawThingsImageClient implements ImageGenerationClient {
             return new GeneratedImage(
                     "image/png",
                     imageBytes,
-                    ProviderUsage.NONE.withImage(1, drawThingsProperties.getWidth(), drawThingsProperties.getHeight())
+                    ProviderUsage.NONE.withImage(1, width, height)
             );
 
         } catch (IllegalArgumentException e) {
@@ -123,12 +125,26 @@ public class DrawThingsImageClient implements ImageGenerationClient {
      */
     @Override
     public GeneratedImage generate(String prompt) {
+        return generate(prompt, List.of(), ImageGenerationSettings.NONE);
+    }
 
-        Map<String, Object> request = Map.of(
-                "prompt", prompt,
-                "width", drawThingsProperties.getWidth(),
-                "height", drawThingsProperties.getHeight()
-        );
+    /**
+     * Same as {@link #generate(String)}, with the settings' width, height and step count (A1111 {@code steps})
+     * replacing the configured ones where set. Draw Things takes no reference images, so they are ignored.
+     */
+    @Override
+    public GeneratedImage generate(String prompt, List<ReferenceImage> references, ImageGenerationSettings settings) {
+        ImageGenerationSettings requested = settings == null ? ImageGenerationSettings.NONE : settings;
+        Integer width = requested.width() != null ? requested.width() : drawThingsProperties.getWidth();
+        Integer height = requested.height() != null ? requested.height() : drawThingsProperties.getHeight();
+
+        Map<String, Object> request = new LinkedHashMap<>();
+        request.put("prompt", prompt);
+        request.put("width", width);
+        request.put("height", height);
+        if (requested.steps() != null) {
+            request.put("steps", requested.steps());
+        }
 
         try {
             String response = restClient.post()
@@ -138,7 +154,7 @@ public class DrawThingsImageClient implements ImageGenerationClient {
                     .retrieve()
                     .body(String.class);
 
-            return parseImage(response);
+            return parseImage(response, width, height);
         } catch (RestClientResponseException ex) {
             int status = ex.getStatusCode().value();
             if (status == 401 || status == 403) {

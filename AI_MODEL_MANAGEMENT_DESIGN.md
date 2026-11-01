@@ -963,3 +963,214 @@ Each phase is independently deployable and testable; nothing in phases 1–4 req
 2. Whether a failed structural-validation retry inside `AIRecipeGenerationService` (2 provider calls) should ever cost 2 credits instead of 1 — this design assumes 1 (charge only on final success) as the more user-friendly default.
 3. Whether `OPEN_SOURCE` models should have their *own* separate concurrency/resource cap distinct from credits (e.g., local Ollama/DrawThings GPU contention) — the bounded pool (Section 9) already caps this at the infrastructure level regardless of credits, but a stricter cap (e.g., only 1 concurrent Ollama call regardless of pool size) may be desired if the local model host is single-GPU; this is a one-line config change (`app.taskpool.ai-text.n-threads=1`) if needed, not a design change.
 4. Whether admins should be able to grant credits per-user only, or also adjust the org-wide default allocation live (currently a config property, requiring a restart to change globally).
+
+---
+
+## 24. Provider Setup: DeepInfra (DeepSeek V4 Flash)
+
+DeepInfra is a fourth text-to-text provider next to Gemini, Ollama and OpenAI. `DeepInfraClient` (bean `deepInfraAiClient`, package `ai.provider.deepinfra`) calls DeepInfra's OpenAI-compatible chat completions API. It is non-streaming and plugs into the model registry like every other provider, so recipe-flow generation, fallback, credits, analytics and cost tracking need no changes.
+
+### 24.1 Endpoint and model
+
+| | |
+|---|---|
+| Base URL | `https://api.deepinfra.com` |
+| Chat endpoint | `/v1/openai/chat/completions` |
+| Auth | `Authorization: Bearer $DEEPINFRA_API_KEY` |
+| Model id | `deepseek-ai/DeepSeek-V4-Flash` (override with `DEEPINFRA_MODEL`) |
+| Registry key | `deepinfra-deepseek-v4-flash` (`ai.models[7]`, `PAID`, falls back to `ollama-qwen`) |
+
+DeepInfra also lists `deepseek-ai/DeepSeek-V4-Flash-0731` as the official release that supersedes the preview id, at different prices. To switch, set `DEEPINFRA_MODEL` and update the `ai.models[7].*-usd-per-million` prices.
+
+### 24.2 Configuration
+
+`application.properties` is gitignored, so copy the DeepInfra block from `exampleProps` into your local copy:
+
+```properties
+ai.deepinfra.apiKey=${DEEPINFRA_API_KEY:}
+ai.deepinfra.baseUrl=https://api.deepinfra.com
+ai.deepinfra.chatEndpoint=/v1/openai/chat/completions
+ai.deepinfra.defaultModel=${DEEPINFRA_MODEL:deepseek-ai/DeepSeek-V4-Flash}
+ai.deepinfra.timeoutMs=120000
+ai.deepinfra.reasoningEffort=${DEEPINFRA_REASONING_EFFORT:none}   # sent as reasoning_effort; blank = omitted
+ai.deepinfra.jsonSchemaEnabled=${DEEPINFRA_JSON_SCHEMA_ENABLED:true}
+```
+
+The API key is read only from the environment. There is no fallback key: with the key unset, a DeepInfra call fails with "DeepInfra API key is not configured", and the rest of the app is unaffected. The key is sent only in the `Authorization` header. It never appears in log lines or exception messages.
+
+### 24.3 Enabling DeepInfra and switching providers
+
+The registry chooses the provider, not `ai.provider` (that property only feeds the legacy chat endpoint's default model id). To enable DeepInfra:
+
+```bash
+export DEEPINFRA_API_KEY=...                              # from the DeepInfra dashboard
+export DEEPINFRA_ENABLED=true                             # ai.models[7].enabled
+export AI_TEXT_DEFAULT_MODEL=deepinfra-deepseek-v4-flash  # ai.default-model.TEXT_TO_TEXT
+```
+
+To switch text generation, set `AI_TEXT_DEFAULT_MODEL`. This needs `ai.default-model.TEXT_TO_TEXT=${AI_TEXT_DEFAULT_MODEL:gemini-flash}` in your local `application.properties`; you can also set that property directly.
+
+| Provider | `AI_TEXT_DEFAULT_MODEL` | Also needs |
+|---|---|---|
+| Gemini | `gemini-flash` (default) | `ai.gemini.api-key` |
+| Ollama | `ollama-qwen` | a running Ollama server |
+| DeepInfra | `deepinfra-deepseek-v4-flash` | `DEEPINFRA_API_KEY`, `DEEPINFRA_ENABLED=true` |
+
+If the default points at a disabled model, `AiModelRegistry.defaultFor` fails fast with "missing or disabled".
+
+### 24.4 Request mapping and structured output
+
+- System and user prompts become `messages[{role: system}, {role: user}]`. `temperature` and `max_tokens` are sent only when the request sets them. `stream` is always `false`.
+- When an `AiRequest` carries a `responseSchema` (recipe-flow generation does), the client sends `response_format: {type: json_schema, json_schema: {name, schema, strict: false}}`, the same shape as `OpenAIClient`. DeepInfra documents `json_object` and `json_schema` response formats. It does not say per model whether DeepSeek V4 Flash supports `json_schema`. If the model rejects it, set `DEEPINFRA_JSON_SCHEMA_ENABLED=false` to fall back to `json_object`.
+- Constrained JSON guarantees only syntax. The recipe-flow output still goes through the existing structural validation and one validation retry, and the schema and semantic rules are unchanged.
+- `reasoning_effort=none` keeps a reasoning model from spending the output budget on thinking. A reply with no `content` (for example, all tokens spent reasoning, `finish_reason=length`) raises `AiInvalidResponseException`.
+
+### 24.5 Errors
+
+| DeepInfra response | Exception | Queue behaviour |
+|---|---|---|
+| 401 / 403 | `AiAuthenticationException` | not retried |
+| 429 (concurrency limit / busy model), 503 | `AiRateLimitedException` (carries `Retry-After` when sent) | retried with the rate-limit backoff |
+| other 4xx / 5xx | `AiCommunicationException` (status only; body logged at DEBUG, truncated) | normal retry |
+| timeout / connection failure | `AiTimeoutException` | normal retry |
+| empty body, no content, malformed JSON | `AiInvalidResponseException` | not retried by the queue |
+
+### 24.6 Token usage and cost
+
+`usage.prompt_tokens`, `completion_tokens` and `total_tokens` map to `AiResponse.promptTokens/completionTokens/totalTokens`. `usage.prompt_tokens_details.cached_tokens` maps to `cachedTokens` (a subset of prompt tokens, as for OpenAI) when DeepInfra reports it, and is null otherwise. Reasoning tokens are already inside `completion_tokens`, so `thoughtsTokens` stays null and nothing is billed twice. DeepInfra's own `usage.estimated_cost` is kept only in `rawResponse`.
+
+Cost is estimated by the existing `CostCalculator` from the registry prices (USD per 1M tokens, as supplied for this integration):
+
+| Token type | Price | Property |
+|---|---|---|
+| Uncached input | $0.20 | `ai.models[7].input-usd-per-million` |
+| Cached input | $0.006 | `ai.models[7].cached-input-usd-per-million` |
+| Output | $0.60 | `ai.models[7].output-usd-per-million` |
+
+`cost = (prompt - cached) x 0.20/M + cached x 0.006/M + completion x 0.60/M`. When no cached count is reported, all input is priced at the uncached rate. Example: 12,000 prompt tokens (10,240 cached) and 800 completion tokens cost $0.000893.
+
+DeepInfra's model page may show different rates. When you change a price, bump `vk.ai.pricing.version` so that earlier requests keep the rate card they were priced with.
+
+---
+
+## 25. Provider Setup: DeepInfra Image Generation (FLUX.2 Klein 4B)
+
+`DeepInfraImageClient` (bean `deepInfraImageClient`, package `ai.provider.deepinfra`) is a third `ImageGenerationClient` next to `GeminiImageClient` and `DrawThingsImageClient`. It reuses the DeepInfra API key, base URL, timeout and `deepInfraRestClient` from section 24. Only the `ai.deepinfra.image.*` settings are image-specific.
+
+The visualization pipeline is unchanged: `generate(prompt)` returns `GeneratedImage(mimeType, bytes)`, the artifact consumer uploads the bytes to Supabase with that MIME type as the content type, and only the public URL is saved on `VisualizationAsset`. No base64 is stored in the database.
+
+### 25.1 Endpoint and model
+
+| | |
+|---|---|
+| Endpoint | `POST https://api.deepinfra.com/v1/openai/images/generations` |
+| Auth | `Authorization: Bearer $DEEPINFRA_API_KEY` (the same key as text) |
+| Model id | `black-forest-labs/FLUX-2-klein-4b` (override with `DEEPINFRA_IMAGE_MODEL`) |
+| Registry key | `deepinfra-flux2-klein` (`ai.models[8]`, `PAID`, 2 credits, falls back to `drawthings-sdxl`) |
+| API reference | <https://deepinfra.com/black-forest-labs/FLUX-2-klein-4b/api> |
+
+The request is `{"prompt", "model", "size": "<width>x<height>", "n": <count>, "response_format": "b64_json"}`. The client decodes `data[0].b64_json`. It does not read an `images` array, and it does not use reference images (`supportsReferenceImages()` is false).
+
+### 25.2 Configuration
+
+Copy this from `exampleProps` into your local `application.properties`:
+
+```properties
+ai.deepinfra.image.endpoint=/v1/openai/images/generations
+ai.deepinfra.image.model=${DEEPINFRA_IMAGE_MODEL:black-forest-labs/FLUX-2-klein-4b}
+ai.deepinfra.image.width=1024
+ai.deepinfra.image.height=1024
+ai.deepinfra.image.count=1        # sent as n; only data[0] is used, so extra images are paid for and discarded
+ai.models[8].key=deepinfra-flux2-klein   # plus the rest of the ai.models[8] block
+vk.ai.pricing.per-image-usd.deepinfra-flux2-klein=0.014
+ai.default-model.TEXT_TO_IMAGE=${AI_IMAGE_DEFAULT_MODEL:gemini-image}
+```
+
+### 25.3 Enabling DeepInfra images and switching image providers
+
+As with text, the model registry selects the provider; `ai.image.provider` is not read by any code.
+
+```bash
+export DEEPINFRA_API_KEY=...                         # shared with DeepInfra text
+export DEEPINFRA_IMAGE_ENABLED=true                  # ai.models[8].enabled
+export AI_IMAGE_DEFAULT_MODEL=deepinfra-flux2-klein  # ai.default-model.TEXT_TO_IMAGE
+```
+
+| Image provider | `AI_IMAGE_DEFAULT_MODEL` | Also needs |
+|---|---|---|
+| Gemini | `gemini-image` (default) | `ai.gemini.api-key` |
+| Draw Things | `drawthings-sdxl` | a running Draw Things server |
+| DeepInfra | `deepinfra-flux2-klein` | `DEEPINFRA_API_KEY`, `DEEPINFRA_IMAGE_ENABLED=true` |
+
+Text (`AI_TEXT_DEFAULT_MODEL`, `DEEPINFRA_ENABLED`) and images (`AI_IMAGE_DEFAULT_MODEL`, `DEEPINFRA_IMAGE_ENABLED`) are configured independently. You can use DeepInfra for both, or DeepInfra for images only with Gemini or Ollama for text, or the reverse.
+
+### 25.4 Image format, errors and logging
+
+- **MIME type:** detected from the decoded bytes (PNG, JPEG, WebP or GIF signatures), never assumed. FLUX.2's default output on DeepInfra is JPEG. A `data:image/...;base64,` prefix is stripped, and its declared type is used only when the bytes match no known signature. Unrecognisable data raises `AiInvalidResponseException`.
+- **Errors:** the same mapping as the text client (section 24.5). 401/403 → `AiAuthenticationException`; 429/503 → `AiRateLimitedException` with `Retry-After`; other HTTP errors → `AiCommunicationException`; timeouts → `AiTimeoutException`; a missing `data[0].b64_json`, invalid base64 or malformed JSON → `AiInvalidResponseException`.
+- **Logging:** neither the API key nor the base64 image is logged; `LoggingImageGenerationClient` records only byte count and MIME type.
+- **Storage path:** the visualization consumer names uploads `<uuid>.png` whatever the format. Supabase serves the file with the real content type (for example `image/jpeg`), so browsers render it correctly; only the file extension is misleading.
+
+### 25.5 Pricing
+
+DeepInfra lists FLUX.2 Klein 4B at **$0.014 per image at 1024×1024**, scaled by `(width / 1024) × (height / 1024)` (model page, checked 2026-11-01): about $0.0105 at 1024×768 and $0.0035 at 512×512. The existing `CostCalculator` prices each image at `vk.ai.pricing.per-image-usd.deepinfra-flux2-klein`, a flat rate that does not scale with size. If you change the dimensions, update that rate to match and bump `vk.ai.pricing.version`.
+
+---
+
+## 26. Purpose-Based Step Image Profiles
+
+Each step image's size, and its inference steps where the provider supports them, come from configuration and depend on what the step does. Resting states can then be cheap and the final serving image sharp, with no code change.
+
+### 26.1 How a step gets its settings
+
+1. **Action → purpose.** `VisualizationImageProfiles.purposeOf(actionId)` checks `ai.visualization.image.purpose-by-action.<action>` first, then `purpose-by-category.<category>`, using the action's `category` in the step catalog (`stepCatalogs.data.json`). An action with no purpose gets `default`: `custom`, an unknown id, or a category with no mapping.
+2. **Purpose → profile.** It reads `ai.visualization.image.profiles.<purpose>`. A purpose with no profile uses `default-profile`, and any field a profile leaves unset is taken from `default-profile`.
+3. **Profile → provider.** `RecipeProcessVisualizationService` passes the result to `ImageGenerationClient.generate(prompt, references, ImageGenerationSettings)`. Each client sends only what its API supports. A field that is still null keeps the provider's own setting (`ai.deepinfra.image.*`, `ai.drawthings.*`).
+
+A preparation flow produces one storyboard image, attached to its output step, so it uses that **last step's** action. The scene anchor and global ingredient/equipment images never use a profile, so they are generated exactly as before.
+
+### 26.2 Purposes
+
+All 117 catalog actions are covered by these categories. They are Java defaults in `VisualizationImageProperties`, and entries in configuration are merged over them.
+
+| Purpose | Catalog categories | Example actions |
+|---|---|---|
+| `ingredient-preparation` | cleaning, cutting, coating, dough | wash, peel, chop, dice, marinate, knead |
+| `ingredient-addition` | handling | add, pour, season, transfer, layer |
+| `cooking-process` | heating, moist-heat, frying, dry-heat, sauce (+ action `flip`) | boil, saute, bake, reduce |
+| `mixing` | mixing | stir, whisk, fold, toss |
+| `waiting-resting` | control, preservation | wait, rest, chill, ferment |
+| `serving` | finishing | garnish, plate, serve |
+| `default` | custom, unknown, unmapped | — |
+
+### 26.3 Configuration
+
+```properties
+ai.visualization.image.default-profile.width=512
+ai.visualization.image.default-profile.height=512
+ai.visualization.image.profiles.waiting-resting.width=256
+ai.visualization.image.profiles.waiting-resting.height=256
+ai.visualization.image.profiles.serving.width=768
+ai.visualization.image.profiles.serving.height=768
+ai.visualization.image.profiles.<purpose>.steps=...            # Draw Things only
+ai.visualization.image.purpose-by-action.reduce=waiting-resting # move one action
+ai.visualization.image.purpose-by-category.sauce=mixing         # move a whole category
+```
+
+The full suggested block is in `exampleProps`. To add a purpose, map actions or categories to a new name and add `profiles.<new-name>.*`. No code change is needed. With no profiles configured at all, every provider keeps its current settings.
+
+### 26.4 What each provider honours
+
+| Provider | width / height | steps |
+|---|---|---|
+| DeepInfra FLUX.2 Klein | sent as `size` (`WxH`); the model allows 128–1920 | **not sent**: DeepInfra documents no step parameter for this model (it is distilled; its model card's example uses 4 steps) |
+| Draw Things (A1111 `txt2img`) | `width`, `height` | `steps`, only when set |
+| Gemini image | ignored: the API has no pixel-size parameter | ignored |
+
+With Gemini as the image provider, profiles have no effect on size or cost.
+
+### 26.5 Reuse and cost notes
+
+- **Artifact key.** A profiled image's artifact key also includes `image:WxH;steps=N`, so a retained payload of a different size is never reused for it. Unprofiled images, including the scene anchor and global assets, keep their old keys.
+- **Existing images.** A step whose `VisualizationAsset` already has an image URL is not regenerated, so profile changes apply to new images only.
+- **DeepInfra cost.** DeepInfra bills FLUX.2 Klein at $0.014 × (w/1024) × (h/1024): 512² ≈ $0.0035, 256² ≈ $0.0009, 768² ≈ $0.0079. The `vk.ai.pricing.per-image-usd` estimate is flat, so it overstates smaller images. Quality at each size is a matter for experiment, not an assumption.

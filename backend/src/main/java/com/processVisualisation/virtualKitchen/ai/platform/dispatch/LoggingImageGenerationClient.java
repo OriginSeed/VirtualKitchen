@@ -41,14 +41,27 @@ class LoggingImageGenerationClient implements ImageGenerationClient {
 
     @Override
     public GeneratedImage generate(String prompt, List<ReferenceImage> references) throws JsonProcessingException {
+        return generate(prompt, references, ImageGenerationSettings.NONE);
+    }
+
+    @Override
+    public GeneratedImage generate(String prompt, List<ReferenceImage> references, ImageGenerationSettings settings)
+            throws JsonProcessingException {
         long startedAt = System.nanoTime();
         Instant startedAtInstant = Instant.now();
         int promptChars = prompt == null ? 0 : prompt.length();
+        ImageGenerationSettings requested = settings == null ? ImageGenerationSettings.NONE : settings;
         try {
-            // A call without references stays a plain generate(prompt), which every provider implements itself.
-            GeneratedImage image = references == null || references.isEmpty()
-                    ? delegate.generate(prompt)
-                    : delegate.generate(prompt, references);
+            // Without settings, a call without references stays a plain generate(prompt), which every provider
+            // implements itself; with settings the provider decides which of them it supports.
+            GeneratedImage image;
+            if (!requested.isNone()) {
+                image = delegate.generate(prompt, references == null ? List.of() : references, requested);
+            } else if (references == null || references.isEmpty()) {
+                image = delegate.generate(prompt);
+            } else {
+                image = delegate.generate(prompt, references);
+            }
             AiUsageMeter.record(image == null ? null : image.usage());
             AiUsageMeter.recordCall(AiCallRecords.withUsage(
                             AiCallRecords.started("IMAGE_GENERATION", provider, model, startedAtInstant, startedAt),
@@ -57,9 +70,11 @@ class LoggingImageGenerationClient implements ImageGenerationClient {
                     .inputChars(promptChars)
                     .outputBytes(image == null || image.data() == null ? null : (long) image.data().length)
                     .build());
-            log.debug("event=image_generation_completed provider={} model={} durationMs={} promptChars={} references={} bytes={} mimeType={}",
+            log.debug("event=image_generation_completed provider={} model={} durationMs={} promptChars={} references={} "
+                            + "requestedWidth={} requestedHeight={} requestedSteps={} bytes={} mimeType={}",
                     provider, model, LoggingAiClient.elapsedMs(startedAt), prompt == null ? 0 : prompt.length(),
                     references == null ? 0 : references.size(),
+                    requested.width(), requested.height(), requested.steps(),
                     image == null || image.data() == null ? 0 : image.data().length,
                     image == null ? null : image.mimeType());
             return image;
