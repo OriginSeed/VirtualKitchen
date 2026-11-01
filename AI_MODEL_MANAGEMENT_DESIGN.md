@@ -1114,3 +1114,63 @@ Text (`AI_TEXT_DEFAULT_MODEL`, `DEEPINFRA_ENABLED`) and images (`AI_IMAGE_DEFAUL
 ### 25.5 Pricing
 
 DeepInfra lists FLUX.2 Klein 4B at **$0.014 per image at 1024×1024**, scaled by `(width / 1024) × (height / 1024)` (model page, checked 2026-11-01): about $0.0105 at 1024×768 and $0.0035 at 512×512. The existing `CostCalculator` prices each image at `vk.ai.pricing.per-image-usd.deepinfra-flux2-klein`, a flat rate that does not scale with size. If you change the dimensions, update that rate to match and bump `vk.ai.pricing.version`.
+
+---
+
+## 26. Purpose-Based Step Image Profiles
+
+Each step image's size, and its inference steps where the provider supports them, come from configuration and depend on what the step does. Resting states can then be cheap and the final serving image sharp, with no code change.
+
+### 26.1 How a step gets its settings
+
+1. **Action → purpose.** `VisualizationImageProfiles.purposeOf(actionId)` checks `ai.visualization.image.purpose-by-action.<action>` first, then `purpose-by-category.<category>`, using the action's `category` in the step catalog (`stepCatalogs.data.json`). An action with no purpose gets `default`: `custom`, an unknown id, or a category with no mapping.
+2. **Purpose → profile.** It reads `ai.visualization.image.profiles.<purpose>`. A purpose with no profile uses `default-profile`, and any field a profile leaves unset is taken from `default-profile`.
+3. **Profile → provider.** `RecipeProcessVisualizationService` passes the result to `ImageGenerationClient.generate(prompt, references, ImageGenerationSettings)`. Each client sends only what its API supports. A field that is still null keeps the provider's own setting (`ai.deepinfra.image.*`, `ai.drawthings.*`).
+
+A preparation flow produces one storyboard image, attached to its output step, so it uses that **last step's** action. The scene anchor and global ingredient/equipment images never use a profile, so they are generated exactly as before.
+
+### 26.2 Purposes
+
+All 117 catalog actions are covered by these categories. They are Java defaults in `VisualizationImageProperties`, and entries in configuration are merged over them.
+
+| Purpose | Catalog categories | Example actions |
+|---|---|---|
+| `ingredient-preparation` | cleaning, cutting, coating, dough | wash, peel, chop, dice, marinate, knead |
+| `ingredient-addition` | handling | add, pour, season, transfer, layer |
+| `cooking-process` | heating, moist-heat, frying, dry-heat, sauce (+ action `flip`) | boil, saute, bake, reduce |
+| `mixing` | mixing | stir, whisk, fold, toss |
+| `waiting-resting` | control, preservation | wait, rest, chill, ferment |
+| `serving` | finishing | garnish, plate, serve |
+| `default` | custom, unknown, unmapped | — |
+
+### 26.3 Configuration
+
+```properties
+ai.visualization.image.default-profile.width=512
+ai.visualization.image.default-profile.height=512
+ai.visualization.image.profiles.waiting-resting.width=256
+ai.visualization.image.profiles.waiting-resting.height=256
+ai.visualization.image.profiles.serving.width=768
+ai.visualization.image.profiles.serving.height=768
+ai.visualization.image.profiles.<purpose>.steps=...            # Draw Things only
+ai.visualization.image.purpose-by-action.reduce=waiting-resting # move one action
+ai.visualization.image.purpose-by-category.sauce=mixing         # move a whole category
+```
+
+The full suggested block is in `exampleProps`. To add a purpose, map actions or categories to a new name and add `profiles.<new-name>.*`. No code change is needed. With no profiles configured at all, every provider keeps its current settings.
+
+### 26.4 What each provider honours
+
+| Provider | width / height | steps |
+|---|---|---|
+| DeepInfra FLUX.2 Klein | sent as `size` (`WxH`); the model allows 128–1920 | **not sent**: DeepInfra documents no step parameter for this model (it is distilled; its model card's example uses 4 steps) |
+| Draw Things (A1111 `txt2img`) | `width`, `height` | `steps`, only when set |
+| Gemini image | ignored: the API has no pixel-size parameter | ignored |
+
+With Gemini as the image provider, profiles have no effect on size or cost.
+
+### 26.5 Reuse and cost notes
+
+- **Artifact key.** A profiled image's artifact key also includes `image:WxH;steps=N`, so a retained payload of a different size is never reused for it. Unprofiled images, including the scene anchor and global assets, keep their old keys.
+- **Existing images.** A step whose `VisualizationAsset` already has an image URL is not regenerated, so profile changes apply to new images only.
+- **DeepInfra cost.** DeepInfra bills FLUX.2 Klein at $0.014 × (w/1024) × (h/1024): 512² ≈ $0.0035, 256² ≈ $0.0009, 768² ≈ $0.0079. The `vk.ai.pricing.per-image-usd` estimate is flat, so it overstates smaller images. Quality at each size is a matter for experiment, not an assumption.

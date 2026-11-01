@@ -22,6 +22,7 @@ import org.springframework.web.client.RestClientResponseException;
 
 import java.nio.charset.StandardCharsets;
 import java.util.Base64;
+import java.util.List;
 import java.util.Map;
 
 /**
@@ -69,19 +70,32 @@ public class DeepInfraImageClient implements ImageGenerationClient {
      */
     @Override
     public GeneratedImage generate(String prompt) {
-        validate(prompt);
+        return generate(prompt, List.of(), ImageGenerationSettings.NONE);
+    }
+
+    /**
+     * Same as {@link #generate(String)}, with the settings' width and height replacing the configured size where
+     * set. FLUX.2 Klein on DeepInfra documents no step-count parameter, so {@code settings.steps()} is never sent;
+     * reference images are ignored.
+     */
+    @Override
+    public GeneratedImage generate(String prompt, List<ReferenceImage> references, ImageGenerationSettings settings) {
+        ImageGenerationSettings requested = settings == null ? ImageGenerationSettings.NONE : settings;
         DeepInfraProperties.Image image = properties.getImage();
+        Integer width = requested.width() != null ? requested.width() : image.getWidth();
+        Integer height = requested.height() != null ? requested.height() : image.getHeight();
+        validate(prompt, width, height);
         try {
             String response = restClient.post()
                     .uri(image.getEndpoint())
                     .header(HttpHeaders.AUTHORIZATION, "Bearer " + properties.getApiKey())
                     .contentType(MediaType.APPLICATION_JSON)
                     .accept(MediaType.APPLICATION_JSON)
-                    .body(buildRequestPayload(prompt))
+                    .body(buildRequestPayload(prompt, width, height))
                     .retrieve()
                     .body(String.class);
 
-            return parseImage(response);
+            return parseImage(response, width, height);
         } catch (RestClientResponseException ex) {
             int status = ex.getStatusCode().value();
             if (status == 401 || status == 403) {
@@ -101,18 +115,18 @@ public class DeepInfraImageClient implements ImageGenerationClient {
         }
     }
 
-    Map<String, Object> buildRequestPayload(String prompt) {
+    Map<String, Object> buildRequestPayload(String prompt, int width, int height) {
         DeepInfraProperties.Image image = properties.getImage();
         return Map.of(
                 "prompt", prompt,
                 "model", image.getModel(),
-                "size", image.getWidth() + "x" + image.getHeight(),
+                "size", width + "x" + height,
                 "n", image.getCount(),
                 "response_format", "b64_json"
         );
     }
 
-    private GeneratedImage parseImage(String response) throws JsonProcessingException {
+    private GeneratedImage parseImage(String response, int width, int height) throws JsonProcessingException {
         if (!StringUtils.hasText(response)) {
             throw new AiInvalidResponseException("Received empty response from DeepInfra image generation");
         }
@@ -151,8 +165,7 @@ public class DeepInfraImageClient implements ImageGenerationClient {
             }
             mimeType = declaredMimeType;
         }
-        DeepInfraProperties.Image image = properties.getImage();
-        return new GeneratedImage(mimeType, data, ProviderUsage.NONE.withImage(1, image.getWidth(), image.getHeight()));
+        return new GeneratedImage(mimeType, data, ProviderUsage.NONE.withImage(1, width, height));
     }
 
     /** The image type from the file signature (PNG, JPEG, WebP, GIF), or null when it is none of these. */
@@ -184,7 +197,7 @@ public class DeepInfraImageClient implements ImageGenerationClient {
         return true;
     }
 
-    private void validate(String prompt) {
+    private void validate(String prompt, Integer width, Integer height) {
         if (!StringUtils.hasText(properties.getApiKey())) {
             throw new AiCommunicationException("DeepInfra API key is not configured");
         }
@@ -192,7 +205,7 @@ public class DeepInfraImageClient implements ImageGenerationClient {
         if (!StringUtils.hasText(image.getEndpoint()) || !StringUtils.hasText(image.getModel())) {
             throw new AiCommunicationException("DeepInfra image endpoint or model is not configured");
         }
-        if (image.getWidth() == null || image.getHeight() == null || image.getWidth() < 1 || image.getHeight() < 1) {
+        if (width == null || height == null || width < 1 || height < 1) {
             throw new AiCommunicationException("DeepInfra image width and height must be positive");
         }
         if (image.getCount() == null || image.getCount() < 1) {

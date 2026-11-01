@@ -37,9 +37,38 @@ class LoggingImageGenerationClientTest {
         }
 
         @Override
+        public GeneratedImage generate(String prompt, List<ReferenceImage> references,
+                                       ImageGenerationClient.ImageGenerationSettings settings) {
+            calls.add("settings:" + settings.width() + "x" + settings.height() + ":" + settings.steps() + ":" + prompt);
+            return new GeneratedImage("image/png", new byte[]{1});
+        }
+
+        @Override
         public boolean supportsReferenceImages() {
             return takesReferences;
         }
+    }
+
+    @Test
+    void settingsAreForwardedToTheProvider() throws Exception {
+        RecordingClient provider = new RecordingClient(false);
+
+        new LoggingImageGenerationClient(provider, "deepinfra", "flux").generate("step", List.of(),
+                new ImageGenerationClient.ImageGenerationSettings(512, 256, null));
+
+        assertEquals(List.of("settings:512x256:null:step"), provider.calls);
+    }
+
+    @Test
+    void noSettings_keepsThePlainRouting() throws Exception {
+        RecordingClient provider = new RecordingClient(true);
+        LoggingImageGenerationClient client = new LoggingImageGenerationClient(provider, "gemini", "image-model");
+
+        client.generate("a", List.of(), ImageGenerationClient.ImageGenerationSettings.NONE);
+        client.generate("b", List.of(SCENE), ImageGenerationClient.ImageGenerationSettings.NONE);
+        client.generate("c", List.of(), null);
+
+        assertEquals(List.of("text:a", "refs:1:b", "text:c"), provider.calls);
     }
 
     private static final ReferenceImage SCENE = new ReferenceImage("image/png", new byte[]{9});

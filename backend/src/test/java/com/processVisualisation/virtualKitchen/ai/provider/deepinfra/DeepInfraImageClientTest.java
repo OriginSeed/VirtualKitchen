@@ -2,6 +2,7 @@ package com.processVisualisation.virtualKitchen.ai.provider.deepinfra;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.processVisualisation.virtualKitchen.ai.provider.ImageGenerationClient.GeneratedImage;
+import com.processVisualisation.virtualKitchen.ai.provider.ImageGenerationClient.ImageGenerationSettings;
 import com.processVisualisation.virtualKitchen.ai.provider.ImageGenerationClient.ReferenceImage;
 import com.processVisualisation.virtualKitchen.ai.provider.config.DeepInfraProperties;
 import com.processVisualisation.virtualKitchen.ai.provider.exception.AiAuthenticationException;
@@ -110,6 +111,36 @@ class DeepInfraImageClientTest {
         assertArrayEquals(PNG, image.data(), "the first image is used");
         assertEquals(768, image.usage().imageWidth());
         assertEquals(512, image.usage().imageHeight());
+    }
+
+    @Test
+    void settingsSizeReplacesTheConfiguredSizeAndStepsAreNeverSent() {
+        server.expect(once(), requestTo(IMAGES_URL))
+                .andExpect(jsonPath("$.size").value("768x512"))
+                .andExpect(jsonPath("$.model").value(MODEL))
+                .andExpect(jsonPath("$.steps").doesNotExist())
+                .andExpect(jsonPath("$.num_inference_steps").doesNotExist())
+                .andRespond(imageResponse(JPEG));
+
+        GeneratedImage image = client().generate(PROMPT, List.of(), new ImageGenerationSettings(768, 512, 4));
+
+        server.verify();
+        assertEquals(768, image.usage().imageWidth());
+        assertEquals(512, image.usage().imageHeight());
+    }
+
+    @Test
+    void withoutSettingsOrWithPartialSettings_theConfiguredSizeFillsTheGaps() {
+        server.expect(once(), requestTo(IMAGES_URL))
+                .andExpect(jsonPath("$.size").value("1024x1024"))
+                .andRespond(imageResponse(JPEG));
+        server.expect(once(), requestTo(IMAGES_URL))
+                .andExpect(jsonPath("$.size").value("256x1024"))
+                .andRespond(imageResponse(JPEG));
+
+        client().generate(PROMPT, List.of(), ImageGenerationSettings.NONE);
+        client().generate(PROMPT, List.of(), new ImageGenerationSettings(256, null, null));
+        server.verify();
     }
 
     @Test

@@ -66,6 +66,32 @@ supabase.timeoutMs=300000
 # Scene anchor: one empty-scene image per recipe, sent as a reference image with every step image (default true).
 #ai.visualization.scene-anchor.enabled=true
 
+# Step image profiles (AI_MODEL_MANAGEMENT_DESIGN.md section 26). Each step's action picks a purpose, through its
+# catalog category or a per-action override, and the purpose's profile sets the image size and inference steps. A
+# purpose without a profile uses default-profile; an unset field falls back to default-profile, then to the
+# provider's own setting. Providers send only what their API supports: DeepInfra and Draw Things take
+# width/height, only Draw Things takes steps, and Gemini ignores profiles. The scene anchor and global asset
+# images never use a profile.
+ai.visualization.image.default-profile.width=512
+ai.visualization.image.default-profile.height=512
+ai.visualization.image.profiles.ingredient-preparation.width=512
+ai.visualization.image.profiles.ingredient-preparation.height=512
+ai.visualization.image.profiles.ingredient-addition.width=512
+ai.visualization.image.profiles.ingredient-addition.height=512
+ai.visualization.image.profiles.cooking-process.width=512
+ai.visualization.image.profiles.cooking-process.height=512
+ai.visualization.image.profiles.mixing.width=512
+ai.visualization.image.profiles.mixing.height=512
+ai.visualization.image.profiles.waiting-resting.width=256
+ai.visualization.image.profiles.waiting-resting.height=256
+ai.visualization.image.profiles.serving.width=768
+ai.visualization.image.profiles.serving.height=768
+# Draw Things only. SDXL needs about 20+ steps, unless it is a turbo/lightning model.
+#ai.visualization.image.default-profile.steps=4
+# Reclassify one action, or a whole catalog category (these merge over the built-in mapping):
+#ai.visualization.image.purpose-by-action.reduce=waiting-resting
+#ai.visualization.image.purpose-by-category.sauce=mixing
+
 ai.provider=ollama
 ai.ollama.baseUrl=http://localhost:11434
 ai.ollama.chatEndpoint=/api/chat
