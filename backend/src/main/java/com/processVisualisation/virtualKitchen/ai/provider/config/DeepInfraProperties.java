@@ -33,4 +33,18 @@ public class DeepInfraProperties {
      * degrades to plain JSON mode ({@code json_object}) and the backend's own validation enforces the shape.
      */
     private boolean jsonSchemaEnabled = true;
+
+    /** Image generation ({@code ai.deepinfra.image.*}); shares the API key, base URL and REST client above. */
+    private Image image = new Image();
+
+    @Data
+    public static class Image {
+
+        private String endpoint = "/v1/openai/images/generations";
+        private String model;
+        private Integer width = 1024;
+        private Integer height = 1024;
+        /** Sent as {@code n}. Only the first image is used, so anything above 1 is paid for and discarded. */
+        private Integer count = 1;
+    }
 }

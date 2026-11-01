@@ -4,7 +4,7 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 
 /**
  * Common contract implemented by every image-generation AI provider client
- * (Draw Things, Gemini) used by the Virtual Kitchen application to turn a
+ * (Draw Things, Gemini, DeepInfra) used by the Virtual Kitchen application to turn a
  * text prompt into a generated image.
  */
 public interface ImageGenerationClient {

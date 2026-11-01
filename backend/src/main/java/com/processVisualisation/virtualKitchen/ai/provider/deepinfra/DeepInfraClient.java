@@ -190,7 +190,7 @@ public class DeepInfraClient implements AiClient {
     }
 
     /** The {@code Retry-After} header in whole seconds, or null when absent or not a number. */
-    private static Duration retryAfter(RestClientResponseException ex) {
+    static Duration retryAfter(RestClientResponseException ex) {
         HttpHeaders headers = ex.getResponseHeaders();
         String value = headers == null ? null : headers.getFirst(HttpHeaders.RETRY_AFTER);
         if (value == null) {

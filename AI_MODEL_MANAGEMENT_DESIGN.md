@@ -1050,3 +1050,67 @@ Cost is estimated by the existing `CostCalculator` from the registry prices (USD
 `cost = (prompt - cached) x 0.20/M + cached x 0.006/M + completion x 0.60/M`. When no cached count is reported, all input is priced at the uncached rate. Example: 12,000 prompt tokens (10,240 cached) and 800 completion tokens cost $0.000893.
 
 DeepInfra's model page may show different rates. When you change a price, bump `vk.ai.pricing.version` so that earlier requests keep the rate card they were priced with.
+
+---
+
+## 25. Provider Setup: DeepInfra Image Generation (FLUX.2 Klein 4B)
+
+`DeepInfraImageClient` (bean `deepInfraImageClient`, package `ai.provider.deepinfra`) is a third `ImageGenerationClient` next to `GeminiImageClient` and `DrawThingsImageClient`. It reuses the DeepInfra API key, base URL, timeout and `deepInfraRestClient` from section 24. Only the `ai.deepinfra.image.*` settings are image-specific.
+
+The visualization pipeline is unchanged: `generate(prompt)` returns `GeneratedImage(mimeType, bytes)`, the artifact consumer uploads the bytes to Supabase with that MIME type as the content type, and only the public URL is saved on `VisualizationAsset`. No base64 is stored in the database.
+
+### 25.1 Endpoint and model
+
+| | |
+|---|---|
+| Endpoint | `POST https://api.deepinfra.com/v1/openai/images/generations` |
+| Auth | `Authorization: Bearer $DEEPINFRA_API_KEY` (the same key as text) |
+| Model id | `black-forest-labs/FLUX-2-klein-4b` (override with `DEEPINFRA_IMAGE_MODEL`) |
+| Registry key | `deepinfra-flux2-klein` (`ai.models[8]`, `PAID`, 2 credits, falls back to `drawthings-sdxl`) |
+| API reference | <https://deepinfra.com/black-forest-labs/FLUX-2-klein-4b/api> |
+
+The request is `{"prompt", "model", "size": "<width>x<height>", "n": <count>, "response_format": "b64_json"}`. The client decodes `data[0].b64_json`. It does not read an `images` array, and it does not use reference images (`supportsReferenceImages()` is false).
+
+### 25.2 Configuration
+
+Copy this from `exampleProps` into your local `application.properties`:
+
+```properties
+ai.deepinfra.image.endpoint=/v1/openai/images/generations
+ai.deepinfra.image.model=${DEEPINFRA_IMAGE_MODEL:black-forest-labs/FLUX-2-klein-4b}
+ai.deepinfra.image.width=1024
+ai.deepinfra.image.height=1024
+ai.deepinfra.image.count=1        # sent as n; only data[0] is used, so extra images are paid for and discarded
+ai.models[8].key=deepinfra-flux2-klein   # plus the rest of the ai.models[8] block
+vk.ai.pricing.per-image-usd.deepinfra-flux2-klein=0.014
+ai.default-model.TEXT_TO_IMAGE=${AI_IMAGE_DEFAULT_MODEL:gemini-image}
+```
+
+### 25.3 Enabling DeepInfra images and switching image providers
+
+As with text, the model registry selects the provider; `ai.image.provider` is not read by any code.
+
+```bash
+export DEEPINFRA_API_KEY=...                         # shared with DeepInfra text
+export DEEPINFRA_IMAGE_ENABLED=true                  # ai.models[8].enabled
+export AI_IMAGE_DEFAULT_MODEL=deepinfra-flux2-klein  # ai.default-model.TEXT_TO_IMAGE
+```
+
+| Image provider | `AI_IMAGE_DEFAULT_MODEL` | Also needs |
+|---|---|---|
+| Gemini | `gemini-image` (default) | `ai.gemini.api-key` |
+| Draw Things | `drawthings-sdxl` | a running Draw Things server |
+| DeepInfra | `deepinfra-flux2-klein` | `DEEPINFRA_API_KEY`, `DEEPINFRA_IMAGE_ENABLED=true` |
+
+Text (`AI_TEXT_DEFAULT_MODEL`, `DEEPINFRA_ENABLED`) and images (`AI_IMAGE_DEFAULT_MODEL`, `DEEPINFRA_IMAGE_ENABLED`) are configured independently. You can use DeepInfra for both, or DeepInfra for images only with Gemini or Ollama for text, or the reverse.
+
+### 25.4 Image format, errors and logging
+
+- **MIME type:** detected from the decoded bytes (PNG, JPEG, WebP or GIF signatures), never assumed. FLUX.2's default output on DeepInfra is JPEG. A `data:image/...;base64,` prefix is stripped, and its declared type is used only when the bytes match no known signature. Unrecognisable data raises `AiInvalidResponseException`.
+- **Errors:** the same mapping as the text client (section 24.5). 401/403 → `AiAuthenticationException`; 429/503 → `AiRateLimitedException` with `Retry-After`; other HTTP errors → `AiCommunicationException`; timeouts → `AiTimeoutException`; a missing `data[0].b64_json`, invalid base64 or malformed JSON → `AiInvalidResponseException`.
+- **Logging:** neither the API key nor the base64 image is logged; `LoggingImageGenerationClient` records only byte count and MIME type.
+- **Storage path:** the visualization consumer names uploads `<uuid>.png` whatever the format. Supabase serves the file with the real content type (for example `image/jpeg`), so browsers render it correctly; only the file extension is misleading.
+
+### 25.5 Pricing
+
+DeepInfra lists FLUX.2 Klein 4B at **$0.014 per image at 1024×1024**, scaled by `(width / 1024) × (height / 1024)` (model page, checked 2026-11-01): about $0.0105 at 1024×768 and $0.0035 at 512×512. The existing `CostCalculator` prices each image at `vk.ai.pricing.per-image-usd.deepinfra-flux2-klein`, a flat rate that does not scale with size. If you change the dimensions, update that rate to match and bump `vk.ai.pricing.version`.

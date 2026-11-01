@@ -157,6 +157,26 @@ ai.deepinfra.timeoutMs=120000
 ai.deepinfra.reasoningEffort=${DEEPINFRA_REASONING_EFFORT:none}
 ai.deepinfra.jsonSchemaEnabled=${DEEPINFRA_JSON_SCHEMA_ENABLED:true}
 
+# --- DeepInfra image generation (FLUX.2 Klein 4B): reuses the key, base URL and timeout above ---
+# Off unless DEEPINFRA_IMAGE_ENABLED=true; select it with AI_IMAGE_DEFAULT_MODEL=deepinfra-flux2-klein
+# (and make ai.default-model.TEXT_TO_IMAGE=${AI_IMAGE_DEFAULT_MODEL:gemini-image}).
+ai.models[8].key=deepinfra-flux2-klein
+ai.models[8].capability=TEXT_TO_IMAGE
+ai.models[8].tier=PAID
+ai.models[8].provider-bean=deepInfraImageClient
+ai.models[8].provider-model-id=${ai.deepinfra.image.model}
+ai.models[8].credit-cost=2
+ai.models[8].fallback-model-key=drawthings-sdxl
+ai.models[8].enabled=${DEEPINFRA_IMAGE_ENABLED:false}
+# Billed per image: $0.014 at 1024x1024, scaled by (width/1024) x (height/1024); bump vk.ai.pricing.version on change.
+vk.ai.pricing.per-image-usd.deepinfra-flux2-klein=0.014
+
+ai.deepinfra.image.endpoint=/v1/openai/images/generations
+ai.deepinfra.image.model=${DEEPINFRA_IMAGE_MODEL:black-forest-labs/FLUX-2-klein-4b}
+ai.deepinfra.image.width=1024
+ai.deepinfra.image.height=1024
+ai.deepinfra.image.count=1
+
 ai.default-model.TEXT_TO_SPEECH=${AI_TTS_DEFAULT_MODEL:gemini-tts}
 app.queue.ai-tts-max-depth=${AI_TTS_MAX_DEPTH:20}
 app.taskpool.narration.n-threads=${NARRATION_THREADS:2}
