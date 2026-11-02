@@ -15,4 +15,8 @@ public class ModelDefinitionResponseDTO {
     private String providerModelId;
     private int creditCost;
     private boolean enabled;
+    private String displayName;
+    private boolean userSelectable;
+    /** Whether this is the capability's default model (what runs when the user hasn't chosen one). */
+    private boolean defaultModel;
 }

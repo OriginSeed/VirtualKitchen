@@ -1,0 +1,32 @@
+/* Account settings. Built on the app's --flow-* tokens. */
+.account-settings {
+  max-width: 760px;
+  margin: 0 auto;
+  padding: 1.5rem 1rem 3rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  color: var(--flow-text);
+  font-family: var(--flow-font);
+}
+.account-settings h1 { margin: 0; font-size: 1.5rem; }
+.account-settings h2 { margin: 0 0 0.75rem; font-size: 1rem; font-weight: 600; }
+.account-settings p { margin: 0.25rem 0 0; }
+.account-settings-muted { color: var(--flow-text-muted); }
+.account-settings-error { color: var(--flow-danger); }
+.account-settings-note {
+  margin-bottom: 0.75rem;
+  padding: 0.5rem 0.75rem;
+  border: 1px solid var(--flow-warning-border);
+  background: var(--flow-warning-soft);
+  border-radius: var(--flow-radius-sm);
+}
+.account-settings-card {
+  padding: 1rem 1.25rem;
+  border: 1px solid var(--flow-border);
+  border-radius: var(--flow-radius-md);
+  background: var(--flow-surface);
+}
+.account-settings-field { display: flex; flex-direction: column; gap: 0.35rem; margin-top: 0.85rem; max-width: 28rem; }
+.account-settings-label { font-size: 0.875rem; font-weight: 500; }
+.account-settings-field .is-saving { opacity: 0.6; pointer-events: none; }

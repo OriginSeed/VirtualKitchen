@@ -1,5 +1,6 @@
 package com.processVisualisation.virtualKitchen.ai.recipe.visualization;
 
+import com.processVisualisation.virtualKitchen.ai.platform.config.AiGenerationParamsProperties;
 import com.processVisualisation.virtualKitchen.ai.platform.dispatch.AiClientResolver;
 import com.processVisualisation.virtualKitchen.ai.platform.queue.AiRequestQueueService;
 import com.processVisualisation.virtualKitchen.ai.platform.registry.AiCapability;
@@ -16,6 +17,7 @@ import com.processVisualisation.virtualKitchen.common.logging.FailureLogger;
 import com.processVisualisation.virtualKitchen.recipe.model.ProcessType;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 
@@ -51,9 +53,6 @@ public class VisualizationPromptBatchService {
     /** Existing prompts of the recipe shown to the model so new prompts match them. */
     static final int MAX_STYLE_REFERENCES = 2;
 
-    private static final int BASE_MAX_TOKENS = 800;
-    private static final int MAX_TOKENS_PER_TARGET = 300;
-    private static final int MAX_TOKENS_CAP = 8000;
 
     private final RecipeProcessVisualizationService visualizationService;
     private final RecipeProcessVisualizationPromptBuilder promptBuilder;
@@ -79,6 +78,14 @@ public class VisualizationPromptBatchService {
         this.clientResolver = clientResolver;
         this.responseSupport = responseSupport;
         this.sceneAnchorEnabled = sceneAnchorService.isEnabled();
+    }
+
+    /** Sampling parameters; admin runtime overrides apply to the next request. Defaults when not injected (tests). */
+    private AiGenerationParamsProperties generationParams = new AiGenerationParamsProperties();
+
+    @Autowired
+    void setGenerationParams(AiGenerationParamsProperties generationParams) {
+        this.generationParams = generationParams;
     }
 
     /** The model's answer: the shared style it chose, the scene (when asked for), and one prompt per target id. */
@@ -211,8 +218,8 @@ public class VisualizationPromptBatchService {
                             .model(selection.model().getProviderModelId())
                             .systemPrompt(promptBuilder.buildBatchSystemPrompt())
                             .userPrompt(userPrompt)
-                            .temperature(0.4d)
-                            .maxTokens(Math.min(MAX_TOKENS_CAP, BASE_MAX_TOKENS + MAX_TOKENS_PER_TARGET * chunk.size()))
+                            .temperature(generationParams.getPromptBatch().getTemperature())
+                            .maxTokens(generationParams.getPromptBatch().maxTokensFor(chunk.size()))
                             .responseFormat("json_object")
                             .responseSchema(responseSchema)
                             .responseSchemaName("visualization_prompts")

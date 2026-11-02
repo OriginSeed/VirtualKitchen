@@ -91,7 +91,7 @@ public class DeepInfraImageClient implements ImageGenerationClient {
                     .header(HttpHeaders.AUTHORIZATION, "Bearer " + properties.getApiKey())
                     .contentType(MediaType.APPLICATION_JSON)
                     .accept(MediaType.APPLICATION_JSON)
-                    .body(buildRequestPayload(prompt, width, height))
+                    .body(buildRequestPayload(prompt, width, height, requested.modelId()))
                     .retrieve()
                     .body(String.class);
 
@@ -115,11 +115,12 @@ public class DeepInfraImageClient implements ImageGenerationClient {
         }
     }
 
-    Map<String, Object> buildRequestPayload(String prompt, int width, int height) {
+    /** @param modelId the selected model's provider id; null uses the configured {@code ai.deepinfra.image.model} */
+    Map<String, Object> buildRequestPayload(String prompt, int width, int height, String modelId) {
         DeepInfraProperties.Image image = properties.getImage();
         return Map.of(
                 "prompt", prompt,
-                "model", image.getModel(),
+                "model", StringUtils.hasText(modelId) ? modelId : image.getModel(),
                 "size", width + "x" + height,
                 "n", image.getCount(),
                 "response_format", "b64_json"

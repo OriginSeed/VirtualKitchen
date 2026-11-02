@@ -114,6 +114,17 @@ class DeepInfraImageClientTest {
     }
 
     @Test
+    void selectedModelReplacesTheConfiguredModel() {
+        server.expect(once(), requestTo(IMAGES_URL))
+                .andExpect(jsonPath("$.model").value("black-forest-labs/selected"))
+                .andRespond(imageResponse(JPEG));
+
+        client().generate(PROMPT, List.of(), ImageGenerationSettings.NONE.withModel("black-forest-labs/selected"));
+
+        server.verify();
+    }
+
+    @Test
     void settingsSizeReplacesTheConfiguredSizeAndStepsAreNeverSent() {
         server.expect(once(), requestTo(IMAGES_URL))
                 .andExpect(jsonPath("$.size").value("768x512"))

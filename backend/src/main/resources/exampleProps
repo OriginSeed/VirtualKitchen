@@ -147,6 +147,8 @@ ai.models[5].output-usd-per-million=10.0
 # Used only when the user has no credits left for the paid model.
 ai.models[5].fallback-model-key=local-tts
 ai.models[5].enabled=true
+ai.models[5].display-name=Gemini TTS
+ai.models[5].user-selectable=false
 
 ai.models[6].key=local-tts
 ai.models[6].capability=TEXT_TO_SPEECH
@@ -158,6 +160,8 @@ ai.models[6].credit-cost=0
 ai.models[6].input-usd-per-million=0
 ai.models[6].output-usd-per-million=0
 ai.models[6].enabled=true
+ai.models[6].display-name=Local TTS
+ai.models[6].user-selectable=false
 
 # --- DeepInfra (OpenAI-compatible) text generation: see AI_MODEL_MANAGEMENT_DESIGN.md section 24 ---
 # Off unless DEEPINFRA_ENABLED=true; select it with AI_TEXT_DEFAULT_MODEL=deepinfra-deepseek-v4-flash
@@ -174,6 +178,8 @@ ai.models[7].cached-input-usd-per-million=0.006
 ai.models[7].output-usd-per-million=0.60
 ai.models[7].fallback-model-key=ollama-qwen
 ai.models[7].enabled=${DEEPINFRA_ENABLED:false}
+ai.models[7].display-name=DeepSeek V4 Flash
+ai.models[7].user-selectable=true
 
 ai.deepinfra.apiKey=${DEEPINFRA_API_KEY:}
 ai.deepinfra.baseUrl=https://api.deepinfra.com
@@ -194,6 +200,8 @@ ai.models[8].provider-model-id=${ai.deepinfra.image.model}
 ai.models[8].credit-cost=2
 ai.models[8].fallback-model-key=drawthings-sdxl
 ai.models[8].enabled=${DEEPINFRA_IMAGE_ENABLED:false}
+ai.models[8].display-name=FLUX.2 Klein 4B
+ai.models[8].user-selectable=true
 # Billed per image: $0.014 at 1024x1024, scaled by (width/1024) x (height/1024); bump vk.ai.pricing.version on change.
 vk.ai.pricing.per-image-usd.deepinfra-flux2-klein=0.014
 
@@ -248,3 +256,7 @@ app.ai-workflow.weights.narration=3
 # Step range assumed by the credit estimate before the recipe process has been generated.
 app.ai-workflow.estimate.min-steps=6
 app.ai-workflow.estimate.max-steps=20
+
+# Admin runtime config: the Keys section (replace provider API keys / SMTP password from the admin panel).
+# Temporary, for admin testing. Needs VK_CONFIG_ENC_KEY (any passphrase) so keys are stored encrypted.
+vk.admin.secret-editing.enabled=${VK_ADMIN_SECRET_EDITING:false}

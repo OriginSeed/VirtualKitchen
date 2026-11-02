@@ -9,7 +9,9 @@ import org.springframework.data.mongodb.core.mapping.Document;
 
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 
 /**
  * One "AI Recipe Creation" run: which tasks the user selected, the approval gate, and links to the
@@ -42,6 +44,12 @@ public class RecipeAiWorkflow {
 
     /** The process generation job (PROCESS task); null when PROCESS wasn't selected. */
     private String generationJobId;
+
+    /**
+     * Models chosen for this run only (capability name to model key), applied to every task it starts, retries
+     * included (see {@code AiRunModels}). Empty: the user's saved choices, then the defaults.
+     */
+    private Map<String, String> modelKeys = new LinkedHashMap<>();
 
     /** The latest visualization job per approved process (VISUALS task); a retry replaces the entry. */
     private List<VisualizationJobRef> visualizationJobs = new ArrayList<>();

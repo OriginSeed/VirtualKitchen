@@ -45,4 +45,33 @@ public class ModelDefinition {
 
     /** Operator kill-switch; a disabled model is never selected. */
     private boolean enabled = true;
+
+    /** Name shown to users in the model picker; falls back to {@link #getKey()} when unset. */
+    private String displayName;
+
+    /** Whether users may pick this model themselves (their saved preference or a per-run override). */
+    private boolean userSelectable;
+
+    public String displayNameOrKey() {
+        return displayName != null && !displayName.isBlank() ? displayName : key;
+    }
+
+    /** A detached copy, so runtime overrides never mutate the configured baseline. */
+    public ModelDefinition copy() {
+        ModelDefinition copy = new ModelDefinition();
+        copy.setKey(key);
+        copy.setCapability(capability);
+        copy.setTier(tier);
+        copy.setProviderBean(providerBean);
+        copy.setProviderModelId(providerModelId);
+        copy.setCreditCost(creditCost);
+        copy.setFallbackModelKey(fallbackModelKey);
+        copy.setInputUsdPerMillion(inputUsdPerMillion);
+        copy.setOutputUsdPerMillion(outputUsdPerMillion);
+        copy.setCachedInputUsdPerMillion(cachedInputUsdPerMillion);
+        copy.setEnabled(enabled);
+        copy.setDisplayName(displayName);
+        copy.setUserSelectable(userSelectable);
+        return copy;
+    }
 }

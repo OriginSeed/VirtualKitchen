@@ -1,5 +1,6 @@
 package com.processVisualisation.virtualKitchen.ai.recipe.workflow;
 
+import com.processVisualisation.virtualKitchen.ai.platform.preference.PreferredModelResolver;
 import com.processVisualisation.virtualKitchen.ai.platform.registry.AiCapability;
 import com.processVisualisation.virtualKitchen.ai.platform.registry.AiModelRegistry;
 import com.processVisualisation.virtualKitchen.ai.platform.registry.ModelDefinition;
@@ -8,6 +9,7 @@ import com.processVisualisation.virtualKitchen.ai.recipe.visualization.Visualiza
 import com.processVisualisation.virtualKitchen.ai.recipe.workflow.dto.RecipeAiWorkflowEstimateDTO;
 import com.processVisualisation.virtualKitchen.ai.recipe.workflow.dto.RecipeAiWorkflowEstimateDTO.TaskEstimate;
 import com.processVisualisation.virtualKitchen.ai.recipe.workflow.model.RecipeAiTaskType;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
 import java.util.ArrayList;
@@ -34,10 +36,19 @@ public class RecipeAiWorkflowEstimator {
 
     private final AiModelRegistry modelRegistry;
     private final RecipeAiWorkflowProperties properties;
+    /** Null when user model choices don't apply (tests): every figure then uses the default models. */
+    private final PreferredModelResolver preferences;
 
     public RecipeAiWorkflowEstimator(AiModelRegistry modelRegistry, RecipeAiWorkflowProperties properties) {
+        this(modelRegistry, properties, null);
+    }
+
+    @Autowired
+    public RecipeAiWorkflowEstimator(AiModelRegistry modelRegistry, RecipeAiWorkflowProperties properties,
+                                     PreferredModelResolver preferences) {
         this.modelRegistry = modelRegistry;
         this.properties = properties;
+        this.preferences = preferences;
     }
 
     /**
@@ -66,7 +77,12 @@ public class RecipeAiWorkflowEstimator {
     }
 
     public RecipeAiWorkflowEstimateDTO estimate(List<RecipeAiTaskType> tasks, StepCounts steps) {
-        int textCost = creditCost(AiCapability.TEXT_TO_TEXT);
+        return estimate(null, tasks, steps);
+    }
+
+    /** Priced with the models {@code userId}'s requests will run on: their own choices, else the defaults. */
+    public RecipeAiWorkflowEstimateDTO estimate(Long userId, List<RecipeAiTaskType> tasks, StepCounts steps) {
+        int textCost = creditCost(userId, AiCapability.TEXT_TO_TEXT);
         List<TaskEstimate> estimates = new ArrayList<>();
         for (RecipeAiTaskType task : tasks) {
             estimates.add(switch (task) {
@@ -77,7 +93,7 @@ public class RecipeAiWorkflowEstimator {
                         .basis("1–" + MAX_PROCESS_ATTEMPTS + " text requests × " + credits(textCost))
                         .build();
                 case VISUALS -> {
-                    int imageCost = creditCost(AiCapability.TEXT_TO_IMAGE);
+                    int imageCost = creditCost(userId, AiCapability.TEXT_TO_IMAGE);
                     int maxPromptRequests = promptRequests(steps.maxVisualSteps());
                     // The recipe's one scene anchor image, generated before its first step image.
                     int minScene = steps.sceneImageNeeded() && steps.minVisualSteps() > 0 ? imageCost : 0;
@@ -93,7 +109,7 @@ public class RecipeAiWorkflowEstimator {
                             .build();
                 }
                 case NARRATION -> {
-                    int perStep = creditCost(AiCapability.TEXT_TO_SPEECH);
+                    int perStep = creditCost(userId, AiCapability.TEXT_TO_SPEECH);
                     yield TaskEstimate.builder()
                             .task(task)
                             .minCredits(steps.minNarrationSteps() * perStep)
@@ -118,11 +134,14 @@ public class RecipeAiWorkflowEstimator {
         return images <= 0 ? 0 : (images + perRequest - 1) / perRequest;
     }
 
-    /** Credits one request costs with the capability's default model; 0 for open-source or unconfigured models. */
-    int creditCost(AiCapability capability) {
+    /**
+     * Credits one request costs with the model the user's request will run on (their own choice, else the
+     * capability's default); 0 for open-source or unconfigured models.
+     */
+    int creditCost(Long userId, AiCapability capability) {
         ModelDefinition model;
         try {
-            model = modelRegistry.defaultFor(capability);
+            model = preferences != null ? preferences.resolve(userId, capability) : modelRegistry.defaultFor(capability);
         } catch (IllegalStateException e) {
             return 0; // no default configured: the request itself will fail, so there is nothing to price
         }

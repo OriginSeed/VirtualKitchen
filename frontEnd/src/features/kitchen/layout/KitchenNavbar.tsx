@@ -33,10 +33,12 @@ function getInitials(name?: string) {
 function ProfileMenu({
   user,
   onOrderHistory,
+  onAccountSettings,
   onLogout,
 }: {
   user: User
   onOrderHistory: () => void
+  onAccountSettings: () => void
   onLogout: () => void
 }) {
   return (
@@ -94,7 +96,7 @@ function ProfileMenu({
 
         <button
           className="profile-menu-item"
-          disabled
+          onClick={onAccountSettings}
         >
           <span className="profile-menu-item-icon">
             ⚙️
@@ -102,7 +104,7 @@ function ProfileMenu({
 
           <span>
             <strong>Account Settings</strong>
-            <small>Manage your account</small>
+            <small>AI models and credits</small>
           </span>
         </button>
       </div>
@@ -167,6 +169,11 @@ export default function KitchenNavbar({
   const handleOrderHistory = () => {
     setProfileOpen(false)
     navigate('/kitchen/orders')
+  }
+
+  const handleAccountSettings = () => {
+    setProfileOpen(false)
+    navigate('/kitchen/settings')
   }
 
   const handleLogout = () => {
@@ -244,31 +251,18 @@ export default function KitchenNavbar({
           My Recipes
         </NavLink>
 
+        {/* One entry for the whole admin area; its own sub-navbar lists the admin features. */}
         {user.userType === 'ADMIN' && (
           <NavLink
-            to="/kitchen/admin/ai-analytics"
+            to="/kitchen/admin"
             className={({ isActive }) =>
               `navbar-nav-item ${
                 isActive ? 'active' : ''
               }`
             }
           >
-            <span>📊</span>
-            AI Analytics
-          </NavLink>
-        )}
-
-        {user.userType === 'ADMIN' && (
-          <NavLink
-            to="/kitchen/admin/ai-evaluation"
-            className={({ isActive }) =>
-              `navbar-nav-item ${
-                isActive ? 'active' : ''
-              }`
-            }
-          >
-            <span>🧪</span>
-            AI Evaluation
+            <span>🛠️</span>
+            Admin
           </NavLink>
         )}
       </div>
@@ -326,6 +320,9 @@ export default function KitchenNavbar({
             user={user}
             onOrderHistory={
               handleOrderHistory
+            }
+            onAccountSettings={
+              handleAccountSettings
             }
             onLogout={handleLogout}
           />

@@ -1,5 +1,6 @@
 package com.processVisualisation.virtualKitchen.ai.chat;
 
+import com.processVisualisation.virtualKitchen.ai.platform.config.AiGenerationParamsProperties;
 import com.processVisualisation.virtualKitchen.ai.platform.analytics.AiAnalyticsRecorder;
 import com.processVisualisation.virtualKitchen.ai.platform.analytics.model.AnalyticsStatus;
 import com.processVisualisation.virtualKitchen.ai.platform.analytics.model.OperationContext;
@@ -19,6 +20,7 @@ import com.processVisualisation.virtualKitchen.ai.provider.dto.AiResponse;
 import com.processVisualisation.virtualKitchen.common.logging.MdcKeys;
 
 import org.slf4j.MDC;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
@@ -66,6 +68,14 @@ public class AiChatService {
         this.aiResponseService = aiResponseService;
     }
 
+    /** Sampling parameters; admin runtime overrides apply to the next request. Defaults when not injected (tests). */
+    private AiGenerationParamsProperties generationParams = new AiGenerationParamsProperties();
+
+    @Autowired
+    void setGenerationParams(AiGenerationParamsProperties generationParams) {
+        this.generationParams = generationParams;
+    }
+
     /**
      * Builds a chat request with a fixed system prompt and the configured
      * provider's default model, then sends it via {@link AiClient}.
@@ -84,8 +94,8 @@ public class AiChatService {
                 .systemPrompt("You are a helpful assistant for Virtual Kitchen.")
                 .userPrompt(prompt)
                 .model(defaultModel)
-                .temperature(0.2d)
-                .maxTokens(300)
+                .temperature(generationParams.getChat().getTemperature())
+                .maxTokens(generationParams.getChat().getMaxTokens())
                 .operation("CHAT")
                 .build();
 

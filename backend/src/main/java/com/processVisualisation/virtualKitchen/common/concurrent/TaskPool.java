@@ -54,6 +54,17 @@ public interface TaskPool {
     int nThreads();
 
     /**
+     * Changes the number of worker threads while the pool runs (an admin runtime setting). Running tasks are never
+     * interrupted: when shrinking, surplus threads exit once they finish their current task.
+     *
+     * @throws IllegalArgumentException if {@code nThreads} is less than 1
+     * @throws UnsupportedOperationException if this pool can't be resized
+     */
+    default void resize(int nThreads) {
+        throw new UnsupportedOperationException(getClass().getSimpleName() + " can't be resized");
+    }
+
+    /**
      * Shuts this pool down, releasing its worker threads. Tasks already
      * submitted are allowed to run to completion; no new tasks should be
      * submitted to this pool afterward.

@@ -1,5 +1,7 @@
 package com.processVisualisation.virtualKitchen.ai.recipe.workflow;
 
+import com.processVisualisation.virtualKitchen.ai.platform.preference.AiRunModels;
+import com.processVisualisation.virtualKitchen.ai.platform.registry.AiCapability;
 import com.processVisualisation.virtualKitchen.ai.recipe.generation.RecipeProcessGenerationJobRepository;
 import com.processVisualisation.virtualKitchen.ai.recipe.generation.RecipeProcessGenerationJobService;
 import com.processVisualisation.virtualKitchen.ai.recipe.generation.dto.RecipeProcessGenerationJobResponseDTO;
@@ -186,6 +188,24 @@ class RecipeAiWorkflowServiceTest {
         assertEquals(RecipeAiTaskStatus.PENDING, task(created, VISUALS).getStatus());
         // No downstream work, and no image/TTS credits, before approval.
         verifyNoInteractions(visualizationJobService, narrationService);
+    }
+
+    @Test
+    void theRunsModelChoicesAreStoredAndInScopeWhileItsJobsStart() {
+        java.util.concurrent.atomic.AtomicReference<String> textModelAtStart = new java.util.concurrent.atomic.AtomicReference<>();
+        when(generationJobService.startJob(eq(USER), eq(RECIPE), any(RecipeProcessGenerationRequestDTO.class))).thenAnswer(inv -> {
+            // The pools copy this MDC onto the job's threads, so every AI request of the run sees the choice.
+            textModelAtStart.set(AiRunModels.keyFor(AiCapability.TEXT_TO_TEXT).orElse(null));
+            return RecipeProcessGenerationJobResponseDTO.builder().jobId("gen-1").status("QUEUED").mode("CREATE").build();
+        });
+        RecipeAiWorkflowCreateRequestDTO request = request("Boil 2 eggs", true);
+        request.getSelection().setModelKeys(new LinkedHashMap<>(Map.of("TEXT_TO_TEXT", "premium-text", "TEXT_TO_IMAGE", "")));
+
+        service.create(USER, RECIPE, request);
+
+        assertEquals("premium-text", textModelAtStart.get());
+        assertEquals(Map.of("TEXT_TO_TEXT", "premium-text"), stored.getModelKeys(), "blank choices are dropped");
+        assertTrue(AiRunModels.keyFor(AiCapability.TEXT_TO_TEXT).isEmpty(), "the choice doesn't leak past the start");
     }
 
     @Test

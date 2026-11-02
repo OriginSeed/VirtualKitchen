@@ -1,4 +1,4 @@
-import type { RecipeAiTaskSelection, RecipeAiTaskType } from '../../../../types/recipeAiWorkflow'
+import type { RecipeAiTaskSelection, RecipeAiTaskType, RunModelCapability } from '../../../../types/recipeAiWorkflow'
 
 /**
  * "What would you like AI to create?" — which tasks are ticked. "Complete Recipe Experience" is not a
@@ -38,11 +38,34 @@ export const setCompleteExperience = (_selection: WorkflowTaskSelection, checked
 export const selectedWorkflowTasks = (selection: WorkflowTaskSelection): RecipeAiTaskType[] =>
   WORKFLOW_TASK_ORDER.filter((task) => selection[task])
 
-/** The request shape the backend expects (it normalises again, so duplicates are impossible either way). */
-export const toTaskSelectionRequest = (selection: WorkflowTaskSelection): RecipeAiTaskSelection => ({
-  tasks: selectedWorkflowTasks(selection),
-  completeExperience: isCompleteExperience(selection),
-})
+/** Models picked for one run; '' (or missing) keeps the user's account setting. */
+export type RunModels = Partial<Record<RunModelCapability, string>>
+
+/**
+ * Which run models a selection uses: text for the process and for the step image prompts, images for the visuals.
+ * Narration has no model choice.
+ */
+export const runModelCapabilities = (selection: WorkflowTaskSelection): RunModelCapability[] => [
+  ...(selection.PROCESS || selection.VISUALS ? ['TEXT_TO_TEXT' as const] : []),
+  ...(selection.VISUALS ? ['TEXT_TO_IMAGE' as const] : []),
+]
+
+/**
+ * The request shape the backend expects (it normalises again, so duplicates are impossible either way). Only the run
+ * models the selection uses, and that differ from the account setting, are sent.
+ */
+export const toTaskSelectionRequest = (selection: WorkflowTaskSelection, runModels: RunModels = {}): RecipeAiTaskSelection => {
+  const modelKeys: RunModels = {}
+  for (const capability of runModelCapabilities(selection)) {
+    const key = runModels[capability]
+    if (key) modelKeys[capability] = key
+  }
+  return {
+    tasks: selectedWorkflowTasks(selection),
+    completeExperience: isCompleteExperience(selection),
+    ...(Object.keys(modelKeys).length > 0 ? { modelKeys } : {}),
+  }
+}
 
 /**
  * Why "Create Recipe" can't run yet, or null when it can. Visuals and narration on their own work on

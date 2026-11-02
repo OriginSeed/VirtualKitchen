@@ -1,0 +1,35 @@
+/* Admin area shell: the sub-navbar of admin features. Pages below keep their own aia-* styles. */
+.admin-subnav {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  max-width: 1400px;
+  margin: 0 auto;
+  padding: 0.5rem 1rem 0;
+  border-bottom: 1px solid var(--flow-border);
+  overflow-x: auto;
+  font-family: var(--flow-font);
+}
+.admin-subnav-title {
+  margin-right: 0.75rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--flow-text-muted);
+  white-space: nowrap;
+}
+.admin-subnav-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.55rem 0.85rem;
+  color: var(--flow-text-muted);
+  text-decoration: none;
+  white-space: nowrap;
+  font-weight: 500;
+  font-size: 0.9rem;
+  border-bottom: 2px solid transparent;
+}
+.admin-subnav-item:hover { color: var(--flow-text); }
+.admin-subnav-item.is-active { color: var(--flow-accent-strong); border-bottom-color: var(--flow-accent); }

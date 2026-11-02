@@ -9,14 +9,16 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
+import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.ThreadFactory;
+import java.util.concurrent.ThreadPoolExecutor;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Consumer;
 import java.util.function.Supplier;
 
 /**
- * {@link TaskPool} backed by a fixed-size {@link ExecutorService}. Every task
+ * {@link TaskPool} backed by a fixed-size {@link ExecutorService} (resizable at runtime). Every task
  * body is wrapped so any exception is captured as a {@link TaskResult#failure}
  * rather than being allowed to escape the worker thread.
  * <p>
@@ -29,8 +31,8 @@ public class ThreadPoolTaskPool implements TaskPool {
 
     private static final Logger log = LoggerFactory.getLogger(ThreadPoolTaskPool.class);
 
-    private final int nThreads;
-    private final ExecutorService executor;
+    private volatile int nThreads;
+    private final ThreadPoolExecutor executor;
 
     /**
      * Creates a pool backed by a fixed-size {@link ExecutorService}, whose
@@ -47,7 +49,9 @@ public class ThreadPoolTaskPool implements TaskPool {
             throw new IllegalArgumentException("nThreads must be >= 1, got " + nThreads);
         }
         this.nThreads = nThreads;
-        this.executor = Executors.newFixedThreadPool(nThreads, namedThreadFactory(poolName));
+        // Same as Executors.newFixedThreadPool (core = max, unbounded queue), typed so it can be resized.
+        this.executor = new ThreadPoolExecutor(nThreads, nThreads, 0L, TimeUnit.MILLISECONDS,
+                new LinkedBlockingQueue<>(), namedThreadFactory(poolName));
     }
 
     private static ThreadFactory namedThreadFactory(String poolName) {
@@ -128,6 +132,26 @@ public class ThreadPoolTaskPool implements TaskPool {
     @Override
     public int nThreads() {
         return nThreads;
+    }
+
+    /**
+     * {@inheritDoc}
+     * Core and maximum size move together (a fixed pool). The order matters: the core size may never exceed the
+     * maximum, so growing raises the maximum first and shrinking lowers the core first.
+     */
+    @Override
+    public synchronized void resize(int nThreads) {
+        if (nThreads < 1) {
+            throw new IllegalArgumentException("nThreads must be >= 1, got " + nThreads);
+        }
+        if (nThreads > executor.getMaximumPoolSize()) {
+            executor.setMaximumPoolSize(nThreads);
+            executor.setCorePoolSize(nThreads);
+        } else {
+            executor.setCorePoolSize(nThreads);
+            executor.setMaximumPoolSize(nThreads);
+        }
+        this.nThreads = nThreads;
     }
 
     /**
