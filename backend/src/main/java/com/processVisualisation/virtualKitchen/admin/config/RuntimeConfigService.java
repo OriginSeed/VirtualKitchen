@@ -167,7 +167,7 @@ public class RuntimeConfigService {
     private Map<String, String> storedOverrides(ConfigSection section) {
         Optional<RuntimeConfigOverrides> stored = overridesRepository.findById(section.id());
         Map<String, String> decoded = new LinkedHashMap<>();
-        stored.ifPresent(doc -> doc.getValues().forEach((key, value) -> decoded.put(key, section.fromStored(key, value))));
+        stored.ifPresent(doc -> doc.valueMap().forEach((key, value) -> decoded.put(key, section.fromStored(key, value))));
         return decoded;
     }
 
@@ -183,7 +183,7 @@ public class RuntimeConfigService {
         });
         Map<String, String> encoded = new LinkedHashMap<>();
         overrides.forEach((key, value) -> encoded.put(key, section.toStored(key, value)));
-        doc.setValues(encoded);
+        doc.putValues(encoded);
         doc.setVersion(doc.getVersion() + 1);
         doc.setUpdatedBy(adminId);
         doc.setUpdatedAt(LocalDateTime.now());
@@ -196,8 +196,8 @@ public class RuntimeConfigService {
         entry.setSection(section.id());
         entry.setAction(action);
         entry.setAdminId(adminId);
-        entry.setBefore(before);
-        entry.setAfter(after);
+        entry.setBefore(ConfigEntry.listOf(before));
+        entry.setAfter(ConfigEntry.listOf(after));
         entry.setAt(LocalDateTime.now());
         auditRepository.save(entry);
     }

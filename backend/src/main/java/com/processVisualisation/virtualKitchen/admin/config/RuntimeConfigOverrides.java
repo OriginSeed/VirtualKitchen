@@ -5,7 +5,8 @@ import org.springframework.data.annotation.Id;
 import org.springframework.data.mongodb.core.mapping.Document;
 
 import java.time.LocalDateTime;
-import java.util.LinkedHashMap;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Map;
 
 /**
@@ -20,10 +21,21 @@ public class RuntimeConfigOverrides {
     @Id
     private String section;
 
-    /** Field key to stored value (secrets are encrypted, see {@link ConfigSection#toStored}). */
-    private Map<String, String> values = new LinkedHashMap<>();
+    /**
+     * Field key to stored value (secrets are encrypted, see {@link ConfigSection#toStored}); a list, since the keys
+     * contain dots (see {@link ConfigEntry}).
+     */
+    private List<ConfigEntry> values = new ArrayList<>();
 
     private long version;
     private Long updatedBy;
     private LocalDateTime updatedAt;
+
+    public Map<String, String> valueMap() {
+        return ConfigEntry.mapOf(values);
+    }
+
+    public void putValues(Map<String, String> values) {
+        this.values = ConfigEntry.listOf(values);
+    }
 }

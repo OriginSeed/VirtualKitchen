@@ -56,10 +56,10 @@ class RuntimeConfigServiceTest {
         service.update("fake", Map.of("threads", "8"), 1L);
 
         assertEquals(Map.of("threads", "8"), section.applied);
-        assertEquals("8", store.get("fake").getValues().get("threads"));
+        assertEquals("8", store.get("fake").valueMap().get("threads"));
         assertEquals(1, audits.size());
-        assertEquals("", audits.get(0).getBefore().get("threads"), "no override before: the baseline");
-        assertEquals("8", audits.get(0).getAfter().get("threads"));
+        assertEquals("", ConfigEntry.mapOf(audits.get(0).getBefore()).get("threads"), "no override before: the baseline");
+        assertEquals("8", ConfigEntry.mapOf(audits.get(0).getAfter()).get("threads"));
     }
 
     @Test
@@ -107,7 +107,7 @@ class RuntimeConfigServiceTest {
     void storedOverridesAreReappliedAtStartup() {
         RuntimeConfigOverrides doc = new RuntimeConfigOverrides();
         doc.setSection("fake");
-        doc.getValues().put("threads", "16");
+        doc.putValues(Map.of("threads", "16"));
         store.put("fake", doc);
 
         service.applyStoredOverrides();
