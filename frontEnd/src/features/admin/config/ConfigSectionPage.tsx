@@ -1,12 +1,13 @@
 import { useState } from 'react'
-import { useParams } from 'react-router-dom'
+import { Link, useNavigate, useParams } from 'react-router-dom'
 import { useConfirm } from '../../../shared/components/confirm/confirmContext'
 import { useNotifications } from '../../../shared/components/notifications/notificationContext'
 import { errorMessage } from '../../../shared/errors'
 import { useApiData } from '../../../shared/hooks/useApiData'
-import { AdminConfigApi, type ConfigField } from './api/adminConfigApi'
+import { AdminConfigApi, AdminModelApi, type ConfigField } from './api/adminConfigApi'
 import GrantCreditsCard from './components/GrantCreditsCard'
 import { changedValues, displayValue, groupFields, isDirty, optionLabel, type ConfigDraft } from './model/configForm'
+import { modelKeyOfField } from './models/addModelForm'
 import '../ai-analytics/aiAnalytics.css'
 import './adminConfig.css'
 
@@ -59,6 +60,11 @@ export default function ConfigSectionPage() {
   const [saving, setSaving] = useState(false)
   const confirm = useConfirm()
   const { notifySuccess, notifyError } = useNotifications()
+  const navigate = useNavigate()
+  const isModels = sectionId === 'models'
+  // Which models were added from the admin panel (they can be edited and deleted; configured ones can't).
+  const addedModels = useApiData(isModels ? 'admin-models' : null, () => AdminModelApi.list())
+  const addedKeys = new Set((addedModels.data ?? []).map(model => model.key))
 
   // A different section starts with no pending edits.
   const [draftFor, setDraftFor] = useState(sectionId)
@@ -110,6 +116,28 @@ export default function ConfigSectionPage() {
     }
   }
 
+  const deleteModel = async (key: string, name: string) => {
+    const ok = await confirm({
+      eyebrow: 'Models & Credits',
+      title: `Delete ${name}?`,
+      message: 'It stops being offered at once. A model that is a default, a fallback or a user’s choice can’t be deleted; disable it instead.',
+      confirmLabel: 'Delete',
+    })
+    if (!ok) return
+    setSaving(true)
+    try {
+      await AdminModelApi.remove(key)
+      setDraft({})
+      section.reload()
+      addedModels.reload()
+      notifySuccess(`${name} deleted`)
+    } catch (error) {
+      notifyError(errorMessage(error, 'Could not delete the model'))
+    } finally {
+      setSaving(false)
+    }
+  }
+
   return (
     <div className="aia-root">
       <header className="aia-header acf-header">
@@ -119,6 +147,7 @@ export default function ConfigSectionPage() {
         </div>
         {view?.available && (
           <div className="acf-actions">
+            {isModels && <Link to="/kitchen/admin/config/models/new" className="aia-button">+ Add model</Link>}
             <button type="button" className="aia-button" disabled={!editable || overriddenCount === 0} onClick={reset}>
               Reset to defaults
             </button>
@@ -141,9 +170,26 @@ export default function ConfigSectionPage() {
       {view && (
         <div className="acf-groups">
           {sectionId === 'models' && view.available && <GrantCreditsCard />}
-          {groupFields(fields).map(group => (
+          {groupFields(fields).map(group => {
+            const modelKey = isModels ? modelKeyOfField(group.fields[0]?.key ?? '') : null
+            const added = modelKey != null && addedKeys.has(modelKey)
+            return (
             <section key={group.name} className="aia-card acf-group">
-              <h3>{group.name}</h3>
+              <div className="acf-group-header">
+                <h3>{group.name}</h3>
+                {added && modelKey && (
+                  <div className="acf-inline-actions">
+                    <button type="button" className="aia-link" disabled={saving}
+                      onClick={() => navigate(`/kitchen/admin/config/models/${encodeURIComponent(modelKey)}/edit`)}>
+                      Edit details
+                    </button>
+                    <button type="button" className="aia-link" disabled={saving} onClick={() => void deleteModel(modelKey, group.name.split(' · ')[0])}>
+                      Delete
+                    </button>
+                  </div>
+                )}
+              </div>
+              {modelKey && !added && <small className="aia-muted acf-help">From application properties</small>}
               <div className="acf-fields">
                 {group.fields.map(field => (
                   <div key={field.key} className={`acf-field ${field.key in draft ? 'is-edited' : ''}`}>
@@ -162,7 +208,8 @@ export default function ConfigSectionPage() {
                 ))}
               </div>
             </section>
-          ))}
+            )
+          })}
         </div>
       )}
     </div>

@@ -34,6 +34,67 @@ export interface ConfigSectionView {
   fields: ConfigField[]
 }
 
+export type ModelCapability = 'TEXT_TO_TEXT' | 'TEXT_TO_IMAGE' | 'TEXT_TO_SPEECH'
+export type ModelTier = 'PAID' | 'OPEN_SOURCE'
+
+export interface Choice {
+  value: string
+  label: string
+}
+
+/** What the "add model" form's dropdowns offer. */
+export interface AddModelOptions {
+  capabilities: ModelCapability[]
+  /** Per capability, the providers a new model can use (those whose model id can be chosen). */
+  providers: Record<ModelCapability, Choice[]>
+  tiers: ModelTier[]
+  /** Per capability, the models a new one can fall back to. */
+  fallbacks: Record<ModelCapability, Choice[]>
+  /** Every key in use. */
+  takenKeys: string[]
+}
+
+/** A model added from the admin panel, as stored. */
+export interface AdminModel {
+  key: string
+  capability: ModelCapability
+  tier: ModelTier
+  providerBean: string
+  providerModelId: string
+  displayName: string
+  creditCost: number
+  fallbackModelKey: string | null
+  enabled: boolean
+  userSelectable: boolean
+  inputUsdPerMillion: number | null
+  outputUsdPerMillion: number | null
+  cachedInputUsdPerMillion: number | null
+  perImageUsd: number | null
+}
+
+export type AdminModelRequest = Omit<AdminModel, 'fallbackModelKey'> & { fallbackModelKey: string | null }
+
+/** A provider's model list; `error` says why it couldn't be loaded, `supported` false when it has none at all. */
+export interface ProviderModelListing {
+  models: { id: string; label: string }[]
+  supported: boolean
+  error: string | null
+}
+
+const CATALOG = `${BASE}/models/catalog`
+
+/** Models added from the admin panel: they join the configured ones and work at once. */
+export const AdminModelApi = {
+  options: () => apiGet<AddModelOptions>(`${CATALOG}/options`),
+  list: () => apiGet<AdminModel[]>(CATALOG),
+  providerModels: (providerBean: string, capability: ModelCapability) =>
+    apiGet<ProviderModelListing>(`${CATALOG}/provider-models`, { params: { providerBean, capability } }),
+  add: (model: AdminModelRequest) => apiPost<AdminModel>(CATALOG, model),
+  /** Only the provider model id, display name and prices change on edit. */
+  update: (key: string, model: AdminModelRequest) => apiPut<AdminModel>(`${CATALOG}/${encodeURIComponent(key)}`, model),
+  remove: (key: string) => apiDelete<void>(`${CATALOG}/${encodeURIComponent(key)}`),
+}
+
 export const AdminConfigApi = {
   list: () => apiGet<ConfigSectionView[]>(BASE),
   section: (id: string) => apiGet<ConfigSectionView>(`${BASE}/${encodeURIComponent(id)}`),

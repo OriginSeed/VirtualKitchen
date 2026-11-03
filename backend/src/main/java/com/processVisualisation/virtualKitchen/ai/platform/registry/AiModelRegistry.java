@@ -27,6 +27,8 @@ public class AiModelRegistry {
 
     private final AiModelProperties properties;
     private volatile Snapshot snapshot;
+    /** Models added from the admin panel, as last applied; kept by {@link #apply(Map, Map)}. */
+    private volatile List<ModelDefinition> added = List.of();
 
     public AiModelRegistry(AiModelProperties properties) {
         this.properties = properties;
@@ -104,10 +106,26 @@ public class AiModelRegistry {
      *         registry is left unchanged.
      */
     public void apply(Map<String, Consumer<ModelDefinition>> modelEdits, Map<String, String> defaultOverrides) {
-        List<ModelDefinition> models = baselineModels();
+        apply(added, modelEdits, defaultOverrides);
+    }
+
+    /**
+     * Same as {@link #apply(Map, Map)}, with {@code addedModels} (admin-added, after the configured ones) replacing
+     * the previously added set. Their keys must not clash with any other model.
+     */
+    public void apply(List<ModelDefinition> addedModels, Map<String, Consumer<ModelDefinition>> modelEdits,
+                      Map<String, String> defaultOverrides) {
+        List<ModelDefinition> models = new ArrayList<>(baselineModels());
+        for (ModelDefinition model : addedModels) {
+            ModelDefinition copy = model.copy();
+            copy.setAdminAdded(true);
+            models.add(copy);
+        }
         Set<String> keys = new HashSet<>();
         for (ModelDefinition model : models) {
-            keys.add(model.getKey());
+            if (!keys.add(model.getKey())) {
+                throw new IllegalArgumentException("A model with key '" + model.getKey() + "' already exists");
+            }
             Consumer<ModelDefinition> edit = modelEdits.get(model.getKey());
             if (edit != null) {
                 edit.accept(model);
@@ -124,6 +142,12 @@ public class AiModelRegistry {
         Snapshot candidate = build(models, defaults);
         validate(candidate);
         this.snapshot = candidate;
+        this.added = addedModels.stream().map(ModelDefinition::copy).toList();
+    }
+
+    /** The admin-added models as last applied, before per-model overrides. Copies. */
+    public List<ModelDefinition> addedModels() {
+        return copies(added);
     }
 
     private static void validate(Snapshot candidate) {

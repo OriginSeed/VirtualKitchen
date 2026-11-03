@@ -31,6 +31,11 @@ public interface ConfigSection {
      */
     void apply(Map<String, String> overrides);
 
+    /** Whether to apply at startup even without stored overrides (the section reads other stored state). */
+    default boolean applyAtStartup() {
+        return false;
+    }
+
     /** False when the section can't be edited in this deployment; {@link #unavailableReason()} says why. */
     default boolean available() {
         return true;

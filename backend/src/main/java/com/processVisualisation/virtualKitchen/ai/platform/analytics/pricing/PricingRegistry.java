@@ -115,6 +115,37 @@ public class PricingRegistry {
         }
     }
 
+    /**
+     * Prices a model added (or re-priced) from the admin panel. Configured models are priced from application
+     * properties at startup; admin-added ones get their card here. Unchanged prices keep the active card; changed ones
+     * close it and open a new one (version {@code admin-<epoch millis>}), so stored cards are never rewritten.
+     *
+     * @param perImageUsd the model's price per image, or null (text models price by tokens on {@code model})
+     */
+    public synchronized void publishAdminCard(ModelDefinition model, Double perImageUsd) {
+        ensureLoaded();
+        Instant now = clock.instant();
+        PricingRateCard desired = cardFor(model, pricingProperties, now);
+        String version = "admin-" + now.toEpochMilli();
+        desired.setVersion(version);
+        desired.setId(model.getKey() + "@" + version);
+        desired.setPerImage(perImageUsd);
+        desired.setSource("admin panel");
+        PricingRateCard active = mongoTemplate.findOne(
+                Query.query(where("modelKey").is(model.getKey()).and("active").is(true)), PricingRateCard.class);
+        if (active != null && active.samePrices(desired)) {
+            return;
+        }
+        if (active != null) {
+            active.setActive(false);
+            active.setEffectiveTo(now);
+            mongoTemplate.save(active);
+        }
+        mongoTemplate.save(desired);
+        log.info("event=ai_pricing_admin_card_published modelKey={} version={}", model.getKey(), version);
+        reload();
+    }
+
     private void reload() {
         cardsByModel.clear();
         for (PricingRateCard card : mongoTemplate.find(

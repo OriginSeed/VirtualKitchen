@@ -2,6 +2,8 @@ package com.processVisualisation.virtualKitchen.admin.config.sections;
 
 import com.processVisualisation.virtualKitchen.admin.config.ConfigField;
 import com.processVisualisation.virtualKitchen.admin.config.ConfigSection;
+import com.processVisualisation.virtualKitchen.admin.config.models.AdminModel;
+import com.processVisualisation.virtualKitchen.admin.config.models.AdminModelRepository;
 import com.processVisualisation.virtualKitchen.ai.platform.credit.AiCreditProperties;
 import com.processVisualisation.virtualKitchen.ai.platform.registry.AiCapability;
 import com.processVisualisation.virtualKitchen.ai.platform.registry.AiModelRegistry;
@@ -10,6 +12,7 @@ import org.springframework.core.annotation.Order;
 import org.springframework.stereotype.Component;
 
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -19,6 +22,9 @@ import java.util.stream.IntStream;
 /**
  * Models &amp; credits: per model enabled / user-selectable / credit cost / fallback, the default model per
  * capability, and the monthly credit allocation. Applied to {@link AiModelRegistry} and {@link AiCreditProperties}.
+ * <p>
+ * Covers the configured models and the ones added from the admin panel ({@link AdminModel}); an added model's stored
+ * values are its baseline here, so "reset" brings it back to how it was added.
  */
 @Component
 @Order(10)
@@ -33,12 +39,36 @@ public class ModelsConfigSection implements ConfigSection {
 
     private final AiModelRegistry registry;
     private final AiCreditProperties creditProperties;
+    private final AdminModelRepository adminModels;
     private final int baselineAllocation;
 
-    public ModelsConfigSection(AiModelRegistry registry, AiCreditProperties creditProperties) {
+    public ModelsConfigSection(AiModelRegistry registry, AiCreditProperties creditProperties,
+                               AdminModelRepository adminModels) {
         this.registry = registry;
         this.creditProperties = creditProperties;
+        this.adminModels = adminModels;
         this.baselineAllocation = creditProperties.getDefaultMonthlyAllocation();
+    }
+
+    /** Configured models, then admin-added ones (in the order they were added). */
+    private List<ModelDefinition> allModels(List<ModelDefinition> added) {
+        List<ModelDefinition> all = new ArrayList<>(registry.baselineModels());
+        all.addAll(added);
+        return all;
+    }
+
+    private List<ModelDefinition> addedModels() {
+        return adminModels.findAll().stream()
+                .sorted(Comparator.comparing(AdminModel::getCreatedAt,
+                        Comparator.nullsLast(Comparator.naturalOrder())))
+                .map(AdminModel::toDefinition)
+                .toList();
+    }
+
+    /** Admin-added models live outside the overrides, so they must be applied at startup even without any. */
+    @Override
+    public boolean applyAtStartup() {
+        return adminModels.count() > 0;
     }
 
     @Override
@@ -59,7 +89,7 @@ public class ModelsConfigSection implements ConfigSection {
 
     @Override
     public List<ConfigField> fields(Map<String, String> overrides) {
-        List<ModelDefinition> baseline = registry.baselineModels();
+        List<ModelDefinition> baseline = allModels(addedModels());
         Map<String, String> baselineDefaults = registry.baselineDefaults();
         List<ConfigField> fields = new ArrayList<>();
 
@@ -82,7 +112,7 @@ public class ModelsConfigSection implements ConfigSection {
 
         for (ModelDefinition model : baseline) {
             String group = model.displayNameOrKey() + " · " + capabilityLabel(model.getCapability())
-                    + " · " + model.getTier();
+                    + " · " + model.getTier() + (model.isAdminAdded() ? " · added" : "");
             String prefix = MODEL_PREFIX + model.getKey() + ".";
             fields.add(Fields.toggle(prefix + "enabled", "Enabled", group, model.isEnabled(), overrides,
                     "A disabled model is never selected."));
@@ -125,7 +155,7 @@ public class ModelsConfigSection implements ConfigSection {
             }
         }
 
-        registry.apply(edits, defaults);
+        registry.apply(addedModels(), edits, defaults);
         creditProperties.setDefaultMonthlyAllocation(allocation != null ? allocation : baselineAllocation);
     }
 

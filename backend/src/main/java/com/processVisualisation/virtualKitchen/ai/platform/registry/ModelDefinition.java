@@ -52,6 +52,9 @@ public class ModelDefinition {
     /** Whether users may pick this model themselves (their saved preference or a per-run override). */
     private boolean userSelectable;
 
+    /** Added from the admin panel (stored in Mongo) rather than configured in application properties. */
+    private boolean adminAdded;
+
     public String displayNameOrKey() {
         return displayName != null && !displayName.isBlank() ? displayName : key;
     }
@@ -72,6 +75,7 @@ public class ModelDefinition {
         copy.setEnabled(enabled);
         copy.setDisplayName(displayName);
         copy.setUserSelectable(userSelectable);
+        copy.setAdminAdded(adminAdded);
         return copy;
     }
 }

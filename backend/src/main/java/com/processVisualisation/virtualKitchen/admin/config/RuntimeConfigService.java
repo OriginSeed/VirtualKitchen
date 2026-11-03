@@ -12,6 +12,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.function.Function;
+import java.util.function.Predicate;
 import java.util.stream.Collectors;
 
 /**
@@ -48,7 +49,7 @@ public class RuntimeConfigService {
                 continue;
             }
             Map<String, String> overrides = storedOverrides(section);
-            if (overrides.isEmpty()) {
+            if (overrides.isEmpty() && !section.applyAtStartup()) {
                 continue;
             }
             try {
@@ -127,6 +128,33 @@ public class RuntimeConfigService {
             audit(section, "RESET", adminId, before, Map.of());
         }
         return view(section);
+    }
+
+    /**
+     * Applies the section's stored overrides again, e.g. after something the section reads besides its overrides
+     * changed (admin-added models).
+     *
+     * @throws IllegalArgumentException if they no longer apply; the live config is then unchanged
+     */
+    public void reapply(String sectionId) {
+        ConfigSection section = requireAvailable(sectionId);
+        section.apply(storedOverrides(section));
+    }
+
+    /** Drops the section's overrides whose key matches {@code keyFilter} (e.g. those of a deleted model). */
+    public void dropOverrides(String sectionId, Predicate<String> keyFilter, Long adminId) {
+        ConfigSection section = requireAvailable(sectionId);
+        Map<String, String> current = storedOverrides(section);
+        Map<String, String> next = new LinkedHashMap<>(current);
+        next.keySet().removeIf(keyFilter);
+        if (next.size() != current.size()) {
+            save(section, next, adminId);
+        }
+    }
+
+    /** Records an admin change made outside the field catalog (e.g. a model added or deleted). */
+    public void audit(String sectionId, String action, Long adminId, Map<String, String> before, Map<String, String> after) {
+        audit(require(sectionId), action, adminId, before, after);
     }
 
     private SectionView view(ConfigSection section) {
