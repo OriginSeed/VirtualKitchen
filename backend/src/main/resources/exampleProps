@@ -202,6 +202,20 @@ ai.models[8].fallback-model-key=drawthings-sdxl
 ai.models[8].enabled=${DEEPINFRA_IMAGE_ENABLED:false}
 ai.models[8].display-name=FLUX.2 Klein 4B
 ai.models[8].user-selectable=true
+
+# DeepInfra text-to-speech (XiaomiMiMo/MiMo-V2.5-tts): users can choose it for narration; Gemini TTS stays the default.
+ai.models[9].key=deepinfra-mimo-tts
+ai.models[9].capability=TEXT_TO_SPEECH
+ai.models[9].tier=PAID
+ai.models[9].provider-bean=deepInfraTtsProvider
+ai.models[9].provider-model-id=${ai.deepinfra.tts.model}
+ai.models[9].credit-cost=1
+ai.models[9].fallback-model-key=local-tts
+ai.models[9].enabled=${DEEPINFRA_TTS_ENABLED:false}
+ai.models[9].display-name=MiMo V2.5 TTS
+ai.models[9].user-selectable=true
+# Free on DeepInfra for a limited time; set the real per-second price and bump vk.ai.pricing.version when it changes.
+vk.ai.pricing.per-audio-second-usd.deepinfra-mimo-tts=0
 # Billed per image: $0.014 at 1024x1024, scaled by (width/1024) x (height/1024); bump vk.ai.pricing.version on change.
 vk.ai.pricing.per-image-usd.deepinfra-flux2-klein=0.014
 
@@ -210,6 +224,10 @@ ai.deepinfra.image.model=${DEEPINFRA_IMAGE_MODEL:black-forest-labs/FLUX-2-klein-
 ai.deepinfra.image.width=1024
 ai.deepinfra.image.height=1024
 ai.deepinfra.image.count=1
+ai.deepinfra.tts.endpoint=${DEEPINFRA_TTS_ENDPOINT:/v1/audio/speech}
+ai.deepinfra.tts.model=${DEEPINFRA_TTS_MODEL:XiaomiMiMo/MiMo-V2.5-tts}
+ai.deepinfra.tts.voice=${DEEPINFRA_TTS_VOICE:Mia}
+ai.deepinfra.tts.response-format=${DEEPINFRA_TTS_FORMAT:wav}
 
 ai.default-model.TEXT_TO_SPEECH=${AI_TTS_DEFAULT_MODEL:gemini-tts}
 app.queue.ai-tts-max-depth=${AI_TTS_MAX_DEPTH:20}

@@ -10,15 +10,22 @@ import './AccountSettingsPage.css'
 const CAPABILITIES: { capability: AiCapability; label: string; help: string }[] = [
   { capability: 'TEXT_TO_TEXT', label: 'Text model', help: 'Writes recipe processes, edits and image prompts.' },
   { capability: 'TEXT_TO_IMAGE', label: 'Image model', help: 'Draws the step images.' },
+  {
+    capability: 'TEXT_TO_SPEECH',
+    label: 'Narration voice model',
+    help: 'Reads the steps aloud. Existing narration is kept until a step changes or is regenerated.',
+  },
 ]
 
 async function loadModelChoices() {
-  const [preferences, text, image] = await Promise.all([
+  const [preferences, text, image, speech] = await Promise.all([
     AiApi.getMyPreferences(),
     AiApi.getSelectableModels('TEXT_TO_TEXT'),
     AiApi.getSelectableModels('TEXT_TO_IMAGE'),
+    AiApi.getSelectableModels('TEXT_TO_SPEECH'),
   ])
-  return { preferences, models: { TEXT_TO_TEXT: text, TEXT_TO_IMAGE: image } as Record<AiCapability, typeof text> }
+  const models: Record<AiCapability, typeof text> = { TEXT_TO_TEXT: text, TEXT_TO_IMAGE: image, TEXT_TO_SPEECH: speech }
+  return { preferences, models }
 }
 
 /**

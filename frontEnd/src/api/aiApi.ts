@@ -8,7 +8,7 @@ import { apiGet, apiPut } from './client'
 import { API } from './endpoints'
 
 export type ModelTier = 'PAID' | 'OPEN_SOURCE'
-export type AiCapability = 'TEXT_TO_TEXT' | 'TEXT_TO_IMAGE'
+export type AiCapability = 'TEXT_TO_TEXT' | 'TEXT_TO_IMAGE' | 'TEXT_TO_SPEECH'
 
 export interface ModelDefinition {
   key: string

@@ -352,7 +352,7 @@ public class RecipeAiWorkflowService {
         }
         if (approved.isSelected(RecipeAiTaskType.NARRATION)) {
             for (ApprovedProcess process : approvedProcesses) {
-                startNarration(userId, recipeId, workflow.getId(), process.getProcessId(), process.getStepIds());
+                startNarration(userId, recipeId, workflow.getId(), approved.getModelKeys(), process.getProcessId(), process.getStepIds());
             }
         }
         return toDto(approved, resolve(userId, approved), false, null);
@@ -406,7 +406,7 @@ public class RecipeAiWorkflowService {
                             .filter(stepId -> isFailedNarration(narrations.get(stepId)))
                             .toList();
                     if (!failed.isEmpty()) {
-                        startNarration(userId, recipeId, workflow.getId(), process.getProcessId(), failed);
+                        startNarration(userId, recipeId, workflow.getId(), workflow.getModelKeys(), process.getProcessId(), failed);
                     }
                 }
                 workflow.setStatus(RecipeAiWorkflowStatus.RUNNING_DOWNSTREAM_TASKS);
@@ -520,8 +520,10 @@ public class RecipeAiWorkflowService {
         return new ArrayList<>(refs.values());
     }
 
-    private void startNarration(Long userId, Long recipeId, String workflowId, Long processId, List<String> stepIds) {
-        try (MDC.MDCCloseable ignored = MDC.putCloseable(AiAnalyticsRecorder.WORKFLOW_ID_MDC, workflowId)) {
+    private void startNarration(Long userId, Long recipeId, String workflowId, Map<String, String> modelKeys,
+                                Long processId, List<String> stepIds) {
+        try (MDC.MDCCloseable ignored = MDC.putCloseable(AiAnalyticsRecorder.WORKFLOW_ID_MDC, workflowId);
+             AiRunModels.Scope models = AiRunModels.open(modelKeys)) {
             narrationService.ensureAll(userId, recipeId, processId, stepIds);
         } catch (RuntimeException e) {
             // The steps stay NOT_GENERATED and are reported as failed, so the user can retry them.

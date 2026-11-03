@@ -55,8 +55,12 @@ describe('AI Recipe Creation task selection', () => {
 
   it('sends only the run models the selection uses, and only when they differ from the account setting', () => {
     const narrationOnly = workflowTaskSelectionFrom(['NARRATION'])
-    assert.deepEqual(runModelCapabilities(narrationOnly), [])
+    assert.deepEqual(runModelCapabilities(narrationOnly), ['TEXT_TO_SPEECH'], 'narration chooses its voice model')
     assert.equal(toTaskSelectionRequest(narrationOnly, { TEXT_TO_TEXT: 'premium' }).modelKeys, undefined)
+    assert.deepEqual(toTaskSelectionRequest(narrationOnly, { TEXT_TO_SPEECH: 'deepinfra-mimo-tts' }).modelKeys,
+      { TEXT_TO_SPEECH: 'deepinfra-mimo-tts' })
+    assert.deepEqual(runModelCapabilities(workflowTaskSelectionFrom(['PROCESS', 'VISUALS', 'NARRATION'])),
+      ['TEXT_TO_TEXT', 'TEXT_TO_IMAGE', 'TEXT_TO_SPEECH'])
 
     const processOnly = workflowTaskSelectionFrom(['PROCESS'])
     assert.deepEqual(runModelCapabilities(processOnly), ['TEXT_TO_TEXT'])

@@ -327,6 +327,24 @@ class RecipeAiWorkflowServiceTest {
     }
 
     @Test
+    void theRunsNarrationModelIsInScopeWhileNarrationStarts() {
+        List<String> ttsModelAtStart = new ArrayList<>();
+        when(narrationService.ensureAll(eq(USER), eq(RECIPE), anyLong(), anyList())).thenAnswer(inv -> {
+            ttsModelAtStart.add(AiRunModels.keyFor(AiCapability.TEXT_TO_SPEECH).orElse(null));
+            return List.of();
+        });
+        RecipeAiTaskSelectionDTO selection = new RecipeAiTaskSelectionDTO(List.of(PROCESS, NARRATION), false);
+        selection.setModelKeys(new LinkedHashMap<>(Map.of("TEXT_TO_SPEECH", "deepinfra-mimo-tts")));
+        service.create(USER, RECIPE, new RecipeAiWorkflowCreateRequestDTO(selection, "Boil 2 eggs"));
+        completeGeneration(true);
+
+        service.approve(USER, RECIPE, stored.getId(), 3L);
+
+        assertEquals(List.of("deepinfra-mimo-tts", "deepinfra-mimo-tts"), ttsModelAtStart, "main and preparation process both");
+        assertTrue(AiRunModels.keyFor(AiCapability.TEXT_TO_SPEECH).isEmpty());
+    }
+
+    @Test
     void approvalDoesNotStartUnselectedTasks() {
         service.create(USER, RECIPE, new RecipeAiWorkflowCreateRequestDTO(new RecipeAiTaskSelectionDTO(List.of(PROCESS, NARRATION), false), "Boil 2 eggs"));
         completeGeneration(true);

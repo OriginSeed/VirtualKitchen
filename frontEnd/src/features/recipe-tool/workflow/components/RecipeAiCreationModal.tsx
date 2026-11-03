@@ -69,16 +69,21 @@ const secondaryButton = {
 }
 const subtleText = { fontSize: 11.5, color: 'var(--flow-text-subtle)' }
 
-const RUN_MODEL_LABELS: Record<RunModelCapability, string> = { TEXT_TO_TEXT: 'Text model', TEXT_TO_IMAGE: 'Image model' }
+const RUN_MODEL_LABELS: Record<RunModelCapability, string> = {
+  TEXT_TO_TEXT: 'Text model',
+  TEXT_TO_IMAGE: 'Image model',
+  TEXT_TO_SPEECH: 'Narration model',
+}
 
 /** What the run model picker offers: the models the user may choose, and what their requests run on now. */
 async function loadRunModelChoices() {
-  const [preferences, text, image] = await Promise.all([
+  const [preferences, text, image, speech] = await Promise.all([
     AiApi.getMyPreferences(),
     AiApi.getSelectableModels('TEXT_TO_TEXT'),
     AiApi.getSelectableModels('TEXT_TO_IMAGE'),
+    AiApi.getSelectableModels('TEXT_TO_SPEECH'),
   ])
-  return { effective: preferences.effective, models: { TEXT_TO_TEXT: text, TEXT_TO_IMAGE: image } }
+  return { effective: preferences.effective, models: { TEXT_TO_TEXT: text, TEXT_TO_IMAGE: image, TEXT_TO_SPEECH: speech } }
 }
 
 /**

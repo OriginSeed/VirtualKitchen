@@ -42,12 +42,13 @@ export const selectedWorkflowTasks = (selection: WorkflowTaskSelection): RecipeA
 export type RunModels = Partial<Record<RunModelCapability, string>>
 
 /**
- * Which run models a selection uses: text for the process and for the step image prompts, images for the visuals.
- * Narration has no model choice.
+ * Which run models a selection uses: text for the process and for the step image prompts, images for the visuals,
+ * speech for the narration.
  */
 export const runModelCapabilities = (selection: WorkflowTaskSelection): RunModelCapability[] => [
   ...(selection.PROCESS || selection.VISUALS ? ['TEXT_TO_TEXT' as const] : []),
   ...(selection.VISUALS ? ['TEXT_TO_IMAGE' as const] : []),
+  ...(selection.NARRATION ? ['TEXT_TO_SPEECH' as const] : []),
 ]
 
 /**

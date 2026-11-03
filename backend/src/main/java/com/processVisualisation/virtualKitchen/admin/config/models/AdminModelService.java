@@ -50,7 +50,8 @@ public class AdminModelService {
             "geminiImageClient", "Gemini",
             "deepInfraImageClient", "DeepInfra",
             "geminiTtsProvider", "Gemini",
-            "localTtsProvider", "Local TTS server");
+            "localTtsProvider", "Local TTS server",
+            "deepInfraTtsProvider", "DeepInfra");
 
     private final AdminModelRepository repository;
     private final AiModelRegistry registry;

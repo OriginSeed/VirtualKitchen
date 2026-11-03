@@ -29,6 +29,14 @@ public class GenerationConfigSection implements ConfigSection {
 
     static final String REASONING_EFFORT = "deepinfra.reasoningEffort";
     static final String JSON_SCHEMA = "deepinfra.jsonSchemaEnabled";
+    static final String TTS_VOICE = "deepinfra.tts.voice";
+    static final String TTS_FORMAT = "deepinfra.tts.responseFormat";
+
+    /** MiMo-V2.5-TTS built-in voices (English, then Chinese); a configured custom voice id is offered too. */
+    private static final List<String> TTS_VOICES = List.of("Mia", "Chloe", "Milo", "Dean", "mimo_default",
+            "冰糖", "茉莉", "苏打", "白桦");
+    /** Only formats narration can store and play. */
+    private static final List<String> TTS_FORMATS = List.of("wav", "mp3", "opus");
     static final String BATCH_TEMPERATURE = "promptBatch.temperature";
     static final String BATCH_BASE = "promptBatch.baseMaxTokens";
     static final String BATCH_PER_TARGET = "promptBatch.maxTokensPerTarget";
@@ -43,6 +51,8 @@ public class GenerationConfigSection implements ConfigSection {
     private final AiGenerationParamsProperties.PromptBatch baseBatch = new AiGenerationParamsProperties.PromptBatch();
     private final String baseReasoning;
     private final boolean baseJsonSchema;
+    private final String baseTtsVoice;
+    private final String baseTtsFormat;
 
     public GenerationConfigSection(AiGenerationParamsProperties params, DeepInfraProperties deepInfra) {
         this.params = params;
@@ -62,6 +72,8 @@ public class GenerationConfigSection implements ConfigSection {
         baseBatch.setMaxTokensCap(batch.getMaxTokensCap());
         this.baseReasoning = deepInfra.getReasoningEffort() == null ? "none" : deepInfra.getReasoningEffort();
         this.baseJsonSchema = deepInfra.isJsonSchemaEnabled();
+        this.baseTtsVoice = deepInfra.getTts().getVoice();
+        this.baseTtsFormat = deepInfra.getTts().getResponseFormat();
     }
 
     @Override
@@ -104,6 +116,10 @@ public class GenerationConfigSection implements ConfigSection {
                 overrides, "More reasoning is slower and uses more tokens."));
         fields.add(Fields.toggle(JSON_SCHEMA, "Strict JSON schema output", "DeepInfra", baseJsonSchema, overrides,
                 "Ask the model to follow the response schema exactly."));
+        fields.add(Fields.select(TTS_VOICE, "Narration voice (MiMo TTS)", "DeepInfra speech", TTS_VOICES, baseTtsVoice,
+                overrides, "Voice of DeepInfra narration models. English: Mia, Chloe, Milo, Dean."));
+        fields.add(Fields.select(TTS_FORMAT, "Audio format", "DeepInfra speech", TTS_FORMATS, baseTtsFormat,
+                overrides, "WAV gives exact durations; MP3 and Opus are smaller."));
         return fields;
     }
 
@@ -135,6 +151,8 @@ public class GenerationConfigSection implements ConfigSection {
         deepInfra.setReasoningEffort(overrides.getOrDefault(REASONING_EFFORT, baseReasoning));
         deepInfra.setJsonSchemaEnabled(overrides.containsKey(JSON_SCHEMA)
                 ? Boolean.parseBoolean(overrides.get(JSON_SCHEMA)) : baseJsonSchema);
+        deepInfra.getTts().setVoice(overrides.getOrDefault(TTS_VOICE, baseTtsVoice));
+        deepInfra.getTts().setResponseFormat(overrides.getOrDefault(TTS_FORMAT, baseTtsFormat));
     }
 
     private Call call(String site) {

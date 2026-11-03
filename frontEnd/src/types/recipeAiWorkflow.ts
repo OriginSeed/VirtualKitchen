@@ -35,7 +35,7 @@ export interface RecipeAiTaskSelection {
 }
 
 /** The capabilities a run can pick a model for. */
-export type RunModelCapability = 'TEXT_TO_TEXT' | 'TEXT_TO_IMAGE'
+export type RunModelCapability = 'TEXT_TO_TEXT' | 'TEXT_TO_IMAGE' | 'TEXT_TO_SPEECH'
 
 export interface RecipeAiWorkflowCreateRequest {
   selection: RecipeAiTaskSelection

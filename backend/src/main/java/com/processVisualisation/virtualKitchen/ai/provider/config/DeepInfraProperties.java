@@ -37,6 +37,26 @@ public class DeepInfraProperties {
     /** Image generation ({@code ai.deepinfra.image.*}); shares the API key, base URL and REST client above. */
     private Image image = new Image();
 
+    /** Text-to-speech ({@code ai.deepinfra.tts.*}); shares the API key, base URL and REST client above. */
+    private Tts tts = new Tts();
+
+    @Data
+    public static class Tts {
+
+        /** DeepInfra's OpenAI-style speech endpoint; the native {@code /v1/inference/<model>} route also answers here. */
+        private volatile String endpoint = "/v1/audio/speech";
+        /** Used when the registry model names none. */
+        private volatile String model = "XiaomiMiMo/MiMo-V2.5-tts";
+        /** Built-in voice (MiMo: Mia, Chloe, Milo, Dean, mimo_default, …) or a custom voice id. */
+        private volatile String voice = "Mia";
+        /** wav, mp3 or opus: the formats narration can store and play. */
+        private volatile String responseFormat = "wav";
+        /** Only used if the provider answers with raw PCM, which is then wrapped as WAV. */
+        private volatile int pcmSampleRateHz = 24000;
+        /** Optional speaking-style instruction, sent as {@code extra_body.instructions} only when set. */
+        private volatile String stylePrompt;
+    }
+
     @Data
     public static class Image {
 

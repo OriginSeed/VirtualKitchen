@@ -16,14 +16,15 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * The current user's own AI model choices (Account Settings). Credits are charged at the chosen model's cost.
- * Only text and image models can be chosen; narration always uses the admin's default.
+ * The current user's own AI model choices (Account Settings): text, image and narration (speech) models. Credits are
+ * charged at the chosen model's cost.
  */
 @RestController
 @RequestMapping("/api/v1/users/me/ai-preferences")
 public class AiPreferenceController {
 
-    static final List<AiCapability> CHOOSABLE = List.of(AiCapability.TEXT_TO_TEXT, AiCapability.TEXT_TO_IMAGE);
+    static final List<AiCapability> CHOOSABLE =
+            List.of(AiCapability.TEXT_TO_TEXT, AiCapability.TEXT_TO_IMAGE, AiCapability.TEXT_TO_SPEECH);
 
     private final PreferredModelResolver resolver;
 
