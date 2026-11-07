@@ -1,6 +1,8 @@
 package com.processVisualisation.virtualKitchen.ai.recipe.workflow;
 
 import com.processVisualisation.virtualKitchen.ai.platform.analytics.AiAnalyticsRecorder;
+import com.processVisualisation.virtualKitchen.ai.platform.preference.AiRunModels;
+import com.processVisualisation.virtualKitchen.ai.platform.preference.PreferredModelResolver;
 import com.processVisualisation.virtualKitchen.ai.recipe.generation.RecipeProcessGenerationJobRepository;
 import com.processVisualisation.virtualKitchen.ai.recipe.generation.RecipeProcessGenerationJobService;
 import com.processVisualisation.virtualKitchen.ai.recipe.generation.dto.RecipeProcessGenerationJobResponseDTO;
@@ -152,6 +154,28 @@ public class RecipeAiWorkflowService {
         this.clock = clock;
     }
 
+    /** Checks per-run model choices; null when not injected (tests), and choices then pass through unchecked. */
+    private PreferredModelResolver modelChoices;
+
+    @Autowired
+    void setModelChoices(PreferredModelResolver modelChoices) {
+        this.modelChoices = modelChoices;
+    }
+
+    /** The run's model choices without blanks, checked against what users may choose. */
+    private Map<String, String> runChoices(Map<String, String> modelKeys) {
+        if (modelChoices != null) {
+            return modelChoices.validateRunChoices(modelKeys);
+        }
+        Map<String, String> choices = new LinkedHashMap<>();
+        if (modelKeys != null) {
+            modelKeys.forEach((capability, key) -> {
+                if (key != null && !key.isBlank()) choices.put(capability, key);
+            });
+        }
+        return choices;
+    }
+
     // --- estimate ------------------------------------------------------------------------------
 
     /**
@@ -164,7 +188,10 @@ public class RecipeAiWorkflowService {
         RecipeAiWorkflowEstimator.StepCounts steps = tasks.contains(RecipeAiTaskType.PROCESS)
                 ? estimator.assumedStepCounts()
                 : remainingStepCounts(userId, recipeId, savedSteps(recipeId));
-        return estimator.estimate(tasks, steps);
+        // Priced with the models this run would use.
+        try (AiRunModels.Scope ignored = AiRunModels.open(runChoices(selection.getModelKeys()))) {
+            return estimator.estimate(userId, tasks, steps);
+        }
     }
 
     /**
@@ -174,7 +201,9 @@ public class RecipeAiWorkflowService {
     public RecipeAiWorkflowEstimateDTO estimateApproval(Long userId, Long recipeId, String workflowId) {
         RecipeAiWorkflow workflow = findOwned(userId, recipeId, workflowId);
         List<RecipeAiTaskType> downstream = workflow.getSelectedTasks().stream().filter(RecipeAiTaskType::isDownstream).toList();
-        return estimator.estimate(downstream, remainingStepCounts(userId, recipeId, savedSteps(recipeId)));
+        try (AiRunModels.Scope ignored = AiRunModels.open(workflow.getModelKeys())) {
+            return estimator.estimate(userId, downstream, remainingStepCounts(userId, recipeId, savedSteps(recipeId)));
+        }
     }
 
     // --- create --------------------------------------------------------------------------------
@@ -189,6 +218,7 @@ public class RecipeAiWorkflowService {
     public RecipeAiWorkflowResponseDTO create(Long userId, Long recipeId, RecipeAiWorkflowCreateRequestDTO request) {
         requireOwned(recipeId, userId);
         List<RecipeAiTaskType> tasks = RecipeAiTaskSelection.normalize(request.getSelection());
+        Map<String, String> models = runChoices(request.getSelection().getModelKeys());
 
         Optional<RecipeAiWorkflow> open = findOpen(userId, recipeId);
         if (open.isPresent()) {
@@ -206,6 +236,7 @@ public class RecipeAiWorkflowService {
         workflow.setRecipeId(recipeId);
         workflow.setUserId(userId);
         workflow.setSelectedTasks(new ArrayList<>(tasks));
+        workflow.setModelKeys(models);
         workflow.setRecipeText(tasks.contains(RecipeAiTaskType.PROCESS) ? request.getRecipeText().trim() : null);
         workflow.setStatus(RecipeAiWorkflowStatus.CREATED);
         workflow.setActiveKey(activeKey(recipeId));
@@ -313,7 +344,7 @@ public class RecipeAiWorkflowService {
 
         // Both only submit work to their own pools and return: neither waits for the other.
         if (approved.isSelected(RecipeAiTaskType.VISUALS)) {
-            approved.setVisualizationJobs(startVisuals(userId, recipeId, workflow.getId(), approvedProcesses.stream()
+            approved.setVisualizationJobs(startVisuals(userId, recipeId, workflow.getId(), approved.getModelKeys(), approvedProcesses.stream()
                     .map(ApprovedProcess::getProcessId).toList(), approved.getVisualizationJobs()));
             mongoTemplate.updateFirst(query(where("_id").is(workflowId)),
                     new Update().set("visualizationJobs", approved.getVisualizationJobs()).set("updatedAt", now()),
@@ -321,7 +352,7 @@ public class RecipeAiWorkflowService {
         }
         if (approved.isSelected(RecipeAiTaskType.NARRATION)) {
             for (ApprovedProcess process : approvedProcesses) {
-                startNarration(userId, recipeId, workflow.getId(), process.getProcessId(), process.getStepIds());
+                startNarration(userId, recipeId, workflow.getId(), approved.getModelKeys(), process.getProcessId(), process.getStepIds());
             }
         }
         return toDto(approved, resolve(userId, approved), false, null);
@@ -363,7 +394,8 @@ public class RecipeAiWorkflowService {
                         .filter(ref -> needsVisualsRetry(jobs.get(ref.getJobId())))
                         .map(VisualizationJobRef::getProcessId)
                         .toList();
-                workflow.setVisualizationJobs(startVisuals(userId, recipeId, workflow.getId(), toRestart, workflow.getVisualizationJobs()));
+                workflow.setVisualizationJobs(startVisuals(userId, recipeId, workflow.getId(), workflow.getModelKeys(), toRestart,
+                        workflow.getVisualizationJobs()));
                 workflow.setStatus(RecipeAiWorkflowStatus.RUNNING_DOWNSTREAM_TASKS);
                 update.set("visualizationJobs", workflow.getVisualizationJobs()).set("status", workflow.getStatus());
             }
@@ -374,7 +406,7 @@ public class RecipeAiWorkflowService {
                             .filter(stepId -> isFailedNarration(narrations.get(stepId)))
                             .toList();
                     if (!failed.isEmpty()) {
-                        startNarration(userId, recipeId, workflow.getId(), process.getProcessId(), failed);
+                        startNarration(userId, recipeId, workflow.getId(), workflow.getModelKeys(), process.getProcessId(), failed);
                     }
                 }
                 workflow.setStatus(RecipeAiWorkflowStatus.RUNNING_DOWNSTREAM_TASKS);
@@ -450,7 +482,8 @@ public class RecipeAiWorkflowService {
         String clientRequestId = "wf-" + workflow.getId() + "-" + UUID.randomUUID();
         RecipeProcessGenerationJobResponseDTO job;
         // Tags the job's AI requests with this workflow (the MDC travels with the job onto its pool threads).
-        try (MDC.MDCCloseable ignored = MDC.putCloseable(AiAnalyticsRecorder.WORKFLOW_ID_MDC, workflow.getId())) {
+        try (MDC.MDCCloseable ignored = MDC.putCloseable(AiAnalyticsRecorder.WORKFLOW_ID_MDC, workflow.getId());
+             AiRunModels.Scope models = AiRunModels.open(workflow.getModelKeys())) {
             job = generationJobService.startJob(userId, workflow.getRecipeId(),
                     new RecipeProcessGenerationRequestDTO(workflow.getRecipeText(), clientRequestId));
         }
@@ -464,8 +497,8 @@ public class RecipeAiWorkflowService {
      * Starts (or joins) a visualization job per process. A process whose job can't be started is
      * recorded without a job id, so its steps count as failed and a retry starts it again.
      */
-    private List<VisualizationJobRef> startVisuals(Long userId, Long recipeId, String workflowId, List<Long> processIds,
-                                                   List<VisualizationJobRef> existing) {
+    private List<VisualizationJobRef> startVisuals(Long userId, Long recipeId, String workflowId, Map<String, String> modelKeys,
+                                                   List<Long> processIds, List<VisualizationJobRef> existing) {
         Map<Long, VisualizationJobRef> refs = new LinkedHashMap<>();
         for (VisualizationJobRef ref : existing) {
             refs.put(ref.getProcessId(), ref);
@@ -473,7 +506,8 @@ public class RecipeAiWorkflowService {
         for (Long processId : processIds) {
             String jobId = null;
             try {
-                try (MDC.MDCCloseable ignored = MDC.putCloseable(AiAnalyticsRecorder.WORKFLOW_ID_MDC, workflowId)) {
+                try (MDC.MDCCloseable ignored = MDC.putCloseable(AiAnalyticsRecorder.WORKFLOW_ID_MDC, workflowId);
+                     AiRunModels.Scope models = AiRunModels.open(modelKeys)) {
                     // Same prompt scope for every process started here: their image prompts are written in one call.
                     jobId = visualizationJobService.startJob(userId, recipeId, processId, processIds).getJobId();
                 }
@@ -486,8 +520,10 @@ public class RecipeAiWorkflowService {
         return new ArrayList<>(refs.values());
     }
 
-    private void startNarration(Long userId, Long recipeId, String workflowId, Long processId, List<String> stepIds) {
-        try (MDC.MDCCloseable ignored = MDC.putCloseable(AiAnalyticsRecorder.WORKFLOW_ID_MDC, workflowId)) {
+    private void startNarration(Long userId, Long recipeId, String workflowId, Map<String, String> modelKeys,
+                                Long processId, List<String> stepIds) {
+        try (MDC.MDCCloseable ignored = MDC.putCloseable(AiAnalyticsRecorder.WORKFLOW_ID_MDC, workflowId);
+             AiRunModels.Scope models = AiRunModels.open(modelKeys)) {
             narrationService.ensureAll(userId, recipeId, processId, stepIds);
         } catch (RuntimeException e) {
             // The steps stay NOT_GENERATED and are reported as failed, so the user can retry them.

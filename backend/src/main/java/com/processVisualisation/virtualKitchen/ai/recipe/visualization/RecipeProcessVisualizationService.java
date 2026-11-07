@@ -2,6 +2,7 @@ package com.processVisualisation.virtualKitchen.ai.recipe.visualization;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.processVisualisation.virtualKitchen.ai.platform.config.AiGenerationParamsProperties;
 import com.processVisualisation.virtualKitchen.ai.asset.VisualizationAsset;
 import com.processVisualisation.virtualKitchen.ai.asset.VisualizationAssetRepository;
 import com.processVisualisation.virtualKitchen.ai.asset.VisualizationAssetType;
@@ -31,6 +32,7 @@ import com.processVisualisation.virtualKitchen.recipe.repository.ProcessReposito
 import com.processVisualisation.virtualKitchen.recipe.service.ProcessStepOrder;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 
@@ -90,6 +92,14 @@ public class RecipeProcessVisualizationService {
         this.imageArtifactConsumer = imageArtifactConsumer;
         this.vocabularyProvider = vocabularyProvider;
         this.imageProfiles = imageProfiles;
+    }
+
+    /** Sampling parameters; admin runtime overrides apply to the next request. Defaults when not injected (tests). */
+    private AiGenerationParamsProperties generationParams = new AiGenerationParamsProperties();
+
+    @Autowired
+    void setGenerationParams(AiGenerationParamsProperties generationParams) {
+        this.generationParams = generationParams;
     }
 
     /**
@@ -376,8 +386,8 @@ public class RecipeProcessVisualizationService {
                                 .model(selection.model().getProviderModelId())
                                 .systemPrompt(promptBuilder.buildSystemPrompt())
                                 .userPrompt(userPrompt.get())
-                                .temperature(0.4d)
-                                .maxTokens(2000)
+                                .temperature(generationParams.getVisualization().getTemperature())
+                                .maxTokens(generationParams.getVisualization().getMaxTokens())
                                 .operation("VISUALIZATION_PROMPT")
                                 .build();
                         AiResponse response = client.chat(request);
@@ -449,7 +459,8 @@ public class RecipeProcessVisualizationService {
                         // Only a provider that really sends the reference is told about it.
                         boolean withReference = reference != null && client.supportsReferenceImages();
                         String text = promptBuilder.buildImageRequestText(asset.getImagePrompt(), dishContext, withReference);
-                        return client.generate(text, withReference ? List.of(reference) : List.of(), requested);
+                        return client.generate(text, withReference ? List.of(reference) : List.of(),
+                                requested.withModel(selection.model().getProviderModelId()));
                     }
             );
 

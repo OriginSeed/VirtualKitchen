@@ -133,6 +133,8 @@ export const API = {
   // AI model management / credits
   ai: {
     models: '/api/v1/ai/models',
+    selectableModels: '/api/v1/ai/models/selectable',
+    myPreferences: '/api/v1/users/me/ai-preferences',
     myCredits: '/api/v1/users/me/ai-credits',
     myCreditHistory: '/api/v1/users/me/ai-credits/history',
   },

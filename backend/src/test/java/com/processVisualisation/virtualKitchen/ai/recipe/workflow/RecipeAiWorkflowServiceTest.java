@@ -1,5 +1,7 @@
 package com.processVisualisation.virtualKitchen.ai.recipe.workflow;
 
+import com.processVisualisation.virtualKitchen.ai.platform.preference.AiRunModels;
+import com.processVisualisation.virtualKitchen.ai.platform.registry.AiCapability;
 import com.processVisualisation.virtualKitchen.ai.recipe.generation.RecipeProcessGenerationJobRepository;
 import com.processVisualisation.virtualKitchen.ai.recipe.generation.RecipeProcessGenerationJobService;
 import com.processVisualisation.virtualKitchen.ai.recipe.generation.dto.RecipeProcessGenerationJobResponseDTO;
@@ -189,6 +191,24 @@ class RecipeAiWorkflowServiceTest {
     }
 
     @Test
+    void theRunsModelChoicesAreStoredAndInScopeWhileItsJobsStart() {
+        java.util.concurrent.atomic.AtomicReference<String> textModelAtStart = new java.util.concurrent.atomic.AtomicReference<>();
+        when(generationJobService.startJob(eq(USER), eq(RECIPE), any(RecipeProcessGenerationRequestDTO.class))).thenAnswer(inv -> {
+            // The pools copy this MDC onto the job's threads, so every AI request of the run sees the choice.
+            textModelAtStart.set(AiRunModels.keyFor(AiCapability.TEXT_TO_TEXT).orElse(null));
+            return RecipeProcessGenerationJobResponseDTO.builder().jobId("gen-1").status("QUEUED").mode("CREATE").build();
+        });
+        RecipeAiWorkflowCreateRequestDTO request = request("Boil 2 eggs", true);
+        request.getSelection().setModelKeys(new LinkedHashMap<>(Map.of("TEXT_TO_TEXT", "premium-text", "TEXT_TO_IMAGE", "")));
+
+        service.create(USER, RECIPE, request);
+
+        assertEquals("premium-text", textModelAtStart.get());
+        assertEquals(Map.of("TEXT_TO_TEXT", "premium-text"), stored.getModelKeys(), "blank choices are dropped");
+        assertTrue(AiRunModels.keyFor(AiCapability.TEXT_TO_TEXT).isEmpty(), "the choice doesn't leak past the start");
+    }
+
+    @Test
     void creatingWithoutProcessWaitsForApprovalOfTheExistingProcess() {
         RecipeAiWorkflowResponseDTO created = service.create(USER, RECIPE,
                 new RecipeAiWorkflowCreateRequestDTO(new RecipeAiTaskSelectionDTO(List.of(VISUALS), false), null));
@@ -304,6 +324,24 @@ class RecipeAiWorkflowServiceTest {
         verify(narrationService).ensureAll(USER, RECIPE, MAIN, List.of("s1", "s2-edited", "s4-new"));
         verify(narrationService).ensureAll(USER, RECIPE, SUB, List.of("s3"));
         assertEquals(List.of("viz-10", "viz-11"), stored.getVisualizationJobs().stream().map(RecipeAiWorkflow.VisualizationJobRef::getJobId).toList());
+    }
+
+    @Test
+    void theRunsNarrationModelIsInScopeWhileNarrationStarts() {
+        List<String> ttsModelAtStart = new ArrayList<>();
+        when(narrationService.ensureAll(eq(USER), eq(RECIPE), anyLong(), anyList())).thenAnswer(inv -> {
+            ttsModelAtStart.add(AiRunModels.keyFor(AiCapability.TEXT_TO_SPEECH).orElse(null));
+            return List.of();
+        });
+        RecipeAiTaskSelectionDTO selection = new RecipeAiTaskSelectionDTO(List.of(PROCESS, NARRATION), false);
+        selection.setModelKeys(new LinkedHashMap<>(Map.of("TEXT_TO_SPEECH", "deepinfra-mimo-tts")));
+        service.create(USER, RECIPE, new RecipeAiWorkflowCreateRequestDTO(selection, "Boil 2 eggs"));
+        completeGeneration(true);
+
+        service.approve(USER, RECIPE, stored.getId(), 3L);
+
+        assertEquals(List.of("deepinfra-mimo-tts", "deepinfra-mimo-tts"), ttsModelAtStart, "main and preparation process both");
+        assertTrue(AiRunModels.keyFor(AiCapability.TEXT_TO_SPEECH).isEmpty());
     }
 
     @Test

@@ -52,6 +52,20 @@ public class AiModelController {
                 .build();
     }
 
+    /** The models users may choose for {@code capability} (enabled and user-selectable), for the model picker. */
+    @GetMapping("/selectable")
+    public ApiResponse<List<ModelDefinitionResponseDTO>> selectable(@RequestParam AiCapability capability) {
+        List<ModelDefinitionResponseDTO> response = registry.userSelectable(capability).stream()
+                .map(this::toDto)
+                .toList();
+        return ApiResponse.<List<ModelDefinitionResponseDTO>>builder()
+                .success(true)
+                .message("Selectable AI models")
+                .data(response)
+                .timestamp(LocalDateTime.now())
+                .build();
+    }
+
     private ModelDefinitionResponseDTO toDto(ModelDefinition model) {
         return ModelDefinitionResponseDTO.builder()
                 .key(model.getKey())
@@ -60,6 +74,9 @@ public class AiModelController {
                 .providerModelId(model.getProviderModelId())
                 .creditCost(model.getCreditCost())
                 .enabled(model.isEnabled())
+                .displayName(model.displayNameOrKey())
+                .userSelectable(model.isUserSelectable())
+                .defaultModel(model.getKey().equals(registry.defaultKeyFor(model.getCapability())))
                 .build();
     }
 }

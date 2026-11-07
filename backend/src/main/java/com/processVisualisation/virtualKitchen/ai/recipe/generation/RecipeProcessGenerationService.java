@@ -1,5 +1,6 @@
 package com.processVisualisation.virtualKitchen.ai.recipe.generation;
 
+import com.processVisualisation.virtualKitchen.ai.platform.config.AiGenerationParamsProperties;
 import com.processVisualisation.virtualKitchen.ai.platform.dispatch.AiClientResolver;
 import com.processVisualisation.virtualKitchen.ai.platform.queue.AiRequestOutcome;
 import com.processVisualisation.virtualKitchen.ai.platform.queue.AiRequestQueueService;
@@ -18,6 +19,7 @@ import com.processVisualisation.virtualKitchen.ai.recipe.generation.model.Recipe
 import com.processVisualisation.virtualKitchen.recipe.validation.ProcessValidationResult;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 
@@ -62,6 +64,14 @@ public class RecipeProcessGenerationService {
         this.responseSupport = responseSupport;
         this.outputSchema = outputSchema;
         this.outputNormalizer = outputNormalizer;
+    }
+
+    /** Sampling parameters; admin runtime overrides apply to the next request. Defaults when not injected (tests). */
+    private AiGenerationParamsProperties generationParams = new AiGenerationParamsProperties();
+
+    @Autowired
+    void setGenerationParams(AiGenerationParamsProperties generationParams) {
+        this.generationParams = generationParams;
     }
 
     public RecipeProcessGenerationResultDTO generate(Long userId, String recipeText, String clientRequestId) {
@@ -135,8 +145,8 @@ public class RecipeProcessGenerationService {
                 .systemPrompt(promptBuilder.buildSystemPrompt())
                 .cacheSystemPrompt(true)
                 .userPrompt(refinedPrompt)
-                .temperature(0.1d)
-                .maxTokens(10000)
+                .temperature(generationParams.getProcessGeneration().getTemperature())
+                .maxTokens(generationParams.getProcessGeneration().getMaxTokens())
                 .responseFormat("json_object")
                 .responseSchema(outputSchema.jsonSchema())
                 .responseSchemaName(RecipeProcessOutputSchema.SCHEMA_NAME)

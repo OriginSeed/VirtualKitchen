@@ -4,7 +4,6 @@ import com.processVisualisation.virtualKitchen.auth.exception.AuthException;
 import com.processVisualisation.virtualKitchen.auth.model.OtpPurpose;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
 import org.springframework.mail.MailException;
 import org.springframework.mail.SimpleMailMessage;
@@ -24,11 +23,11 @@ public class EmailService {
 
     private final JavaMailSender mailSender;
 
-    @Value("${app.mail.from}")
-    private String fromAddress;
+    private final AppMailProperties mailProperties;
 
-    public EmailService(JavaMailSender mailSender) {
+    public EmailService(JavaMailSender mailSender, AppMailProperties mailProperties) {
         this.mailSender = mailSender;
+        this.mailProperties = mailProperties;
     }
 
     /**
@@ -42,7 +41,7 @@ public class EmailService {
      */
     public void sendOtpEmail(String to, String otp, OtpPurpose purpose) {
         SimpleMailMessage message = new SimpleMailMessage();
-        message.setFrom(fromAddress);
+        message.setFrom(mailProperties.getFrom());
         message.setTo(to);
         message.setSubject(subjectFor(purpose));
         message.setText(bodyFor(otp, purpose));

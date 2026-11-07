@@ -69,11 +69,27 @@ public interface ImageGenerationClient {
      * @param height output height in pixels, or null
      * @param steps inference steps, or null; only providers whose API takes a step count send it
      */
-    record ImageGenerationSettings(Integer width, Integer height, Integer steps) {
+    record ImageGenerationSettings(Integer width, Integer height, Integer steps, String modelId) {
 
         /** No overrides: every provider uses its own configured settings, exactly as before settings existed. */
         public static final ImageGenerationSettings NONE = new ImageGenerationSettings(null, null, null);
 
+        public ImageGenerationSettings(Integer width, Integer height, Integer steps) {
+            this(width, height, steps, null);
+        }
+
+        /**
+         * The same settings for the selected registry model's provider model id, so the model that runs is the one
+         * that was selected (and charged for), not only the provider's configured one.
+         */
+        public ImageGenerationSettings withModel(String providerModelId) {
+            return new ImageGenerationSettings(width, height, steps, providerModelId);
+        }
+
+        /**
+         * No size or steps requested. The model id doesn't count: without a size the call stays a plain
+         * {@code generate(prompt)}, and the provider runs its configured model.
+         */
         public boolean isNone() {
             return width == null && height == null && steps == null;
         }

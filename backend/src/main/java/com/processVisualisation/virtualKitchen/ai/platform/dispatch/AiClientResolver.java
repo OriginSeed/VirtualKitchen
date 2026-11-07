@@ -1,5 +1,6 @@
 package com.processVisualisation.virtualKitchen.ai.platform.dispatch;
 
+import com.processVisualisation.virtualKitchen.ai.platform.registry.AiCapability;
 import com.processVisualisation.virtualKitchen.ai.platform.registry.ModelDefinition;
 import com.processVisualisation.virtualKitchen.ai.provider.AiClient;
 import com.processVisualisation.virtualKitchen.ai.provider.ImageGenerationClient;
@@ -7,6 +8,7 @@ import com.processVisualisation.virtualKitchen.ai.provider.tts.TtsProvider;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
+import java.util.List;
 import java.util.Map;
 
 /**
@@ -38,6 +40,16 @@ public class AiClientResolver {
     /** For callers (mostly tests) that never resolve a speech model. */
     public AiClientResolver(Map<String, AiClient> textClients, Map<String, ImageGenerationClient> imageClients) {
         this(textClients, imageClients, Map.of());
+    }
+
+    /** Names of the provider beans that can serve {@code capability}, for the admin "add model" form. */
+    public List<String> providerBeans(AiCapability capability) {
+        Map<String, ?> beans = switch (capability) {
+            case TEXT_TO_TEXT -> textClients;
+            case TEXT_TO_IMAGE -> imageClients;
+            case TEXT_TO_SPEECH -> ttsProviders;
+        };
+        return beans.keySet().stream().sorted().toList();
     }
 
     public AiClient resolveTextClient(ModelDefinition model) {

@@ -30,7 +30,12 @@ export type RecipeAiWorkflowStatus =
 export interface RecipeAiTaskSelection {
   tasks: RecipeAiTaskType[]
   completeExperience: boolean
+  /** Models for this run only, by capability; a missing entry uses the user's account setting. */
+  modelKeys?: Partial<Record<RunModelCapability, string>>
 }
+
+/** The capabilities a run can pick a model for. */
+export type RunModelCapability = 'TEXT_TO_TEXT' | 'TEXT_TO_IMAGE' | 'TEXT_TO_SPEECH'
 
 export interface RecipeAiWorkflowCreateRequest {
   selection: RecipeAiTaskSelection

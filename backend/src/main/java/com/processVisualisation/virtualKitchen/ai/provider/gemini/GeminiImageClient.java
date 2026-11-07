@@ -9,6 +9,7 @@ import com.processVisualisation.virtualKitchen.ai.provider.exception.AiAuthentic
 import com.processVisualisation.virtualKitchen.ai.provider.exception.AiCommunicationException;
 import com.processVisualisation.virtualKitchen.ai.provider.exception.AiInvalidResponseException;
 import com.processVisualisation.virtualKitchen.ai.provider.exception.AiTimeoutException;
+import org.springframework.util.StringUtils;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.http.MediaType;
 import org.springframework.stereotype.Component;
@@ -106,11 +107,25 @@ public class GeminiImageClient implements ImageGenerationClient {
      */
     @Override
     public GeneratedImage generate(String prompt, List<ReferenceImage> references) {
+        return generate(prompt, references, (String) null);
+    }
+
+    /**
+     * Gemini has no size or steps setting, so only the selected model is taken from {@code settings}: a second
+     * Gemini image model in the registry then runs as itself, not as {@code ai.gemini.imageModel}.
+     */
+    @Override
+    public GeneratedImage generate(String prompt, List<ReferenceImage> references, ImageGenerationSettings settings) {
+        return generate(prompt, references, settings == null ? null : settings.modelId());
+    }
+
+    private GeneratedImage generate(String prompt, List<ReferenceImage> references, String modelId) {
+        String model = StringUtils.hasText(modelId) ? modelId : properties.getImageModel();
         try {
             String response = restClient.post()
                     .uri(uriBuilder -> uriBuilder
                             .path(properties.getChatEndpoint())
-                            .build(properties.getImageModel()))
+                            .build(model))
                     .header("x-goog-api-key", properties.getApiKey())
                     .contentType(MediaType.APPLICATION_JSON)
                     .body(buildRequestPayload(prompt, references))

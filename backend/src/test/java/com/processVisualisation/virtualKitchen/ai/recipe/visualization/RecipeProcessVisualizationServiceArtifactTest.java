@@ -183,8 +183,9 @@ class RecipeProcessVisualizationServiceArtifactTest {
 
         ArgumentCaptor<ImageGenerationSettings> settings = ArgumentCaptor.forClass(ImageGenerationSettings.class);
         verify(imageGenerationClient, times(2)).generate(anyString(), anyList(), settings.capture());
-        assertEquals(new ImageGenerationSettings(768, 768, 6), settings.getAllValues().get(0));
-        assertEquals(new ImageGenerationSettings(512, 512, null), settings.getAllValues().get(1),
+        // The selected registry model's provider id travels with the settings, so that model is the one that runs.
+        assertEquals(new ImageGenerationSettings(768, 768, 6, "test-image-model"), settings.getAllValues().get(0));
+        assertEquals(new ImageGenerationSettings(512, 512, null, "test-image-model"), settings.getAllValues().get(1),
                 "a purpose without a profile uses the default profile");
         verify(imageGenerationClient, never()).generate(anyString());
     }

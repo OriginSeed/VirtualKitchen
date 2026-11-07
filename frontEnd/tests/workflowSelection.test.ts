@@ -6,6 +6,7 @@ import {
   selectedWorkflowTasks,
   setCompleteExperience,
   toggleWorkflowTask,
+  runModelCapabilities,
   toTaskSelectionRequest,
   workflowSelectionProblem,
   workflowTaskSelectionFrom,
@@ -50,6 +51,26 @@ describe('AI Recipe Creation task selection', () => {
     const all = setCompleteExperience(toggleWorkflowTask(cleared, 'VISUALS'), true)
     assert.deepEqual(toTaskSelectionRequest(all), { tasks: ['PROCESS', 'VISUALS', 'NARRATION'], completeExperience: true })
     assert.equal(new Set(toTaskSelectionRequest(all).tasks).size, 3, 'no duplicate tasks')
+  })
+
+  it('sends only the run models the selection uses, and only when they differ from the account setting', () => {
+    const narrationOnly = workflowTaskSelectionFrom(['NARRATION'])
+    assert.deepEqual(runModelCapabilities(narrationOnly), ['TEXT_TO_SPEECH'], 'narration chooses its voice model')
+    assert.equal(toTaskSelectionRequest(narrationOnly, { TEXT_TO_TEXT: 'premium' }).modelKeys, undefined)
+    assert.deepEqual(toTaskSelectionRequest(narrationOnly, { TEXT_TO_SPEECH: 'deepinfra-mimo-tts' }).modelKeys,
+      { TEXT_TO_SPEECH: 'deepinfra-mimo-tts' })
+    assert.deepEqual(runModelCapabilities(workflowTaskSelectionFrom(['PROCESS', 'VISUALS', 'NARRATION'])),
+      ['TEXT_TO_TEXT', 'TEXT_TO_IMAGE', 'TEXT_TO_SPEECH'])
+
+    const processOnly = workflowTaskSelectionFrom(['PROCESS'])
+    assert.deepEqual(runModelCapabilities(processOnly), ['TEXT_TO_TEXT'])
+    assert.deepEqual(toTaskSelectionRequest(processOnly, { TEXT_TO_TEXT: 'premium', TEXT_TO_IMAGE: 'flux' }).modelKeys,
+      { TEXT_TO_TEXT: 'premium' })
+
+    const visuals = workflowTaskSelectionFrom(['VISUALS'])
+    assert.deepEqual(runModelCapabilities(visuals), ['TEXT_TO_TEXT', 'TEXT_TO_IMAGE'], 'visuals write prompts with text')
+    assert.deepEqual(toTaskSelectionRequest(visuals, { TEXT_TO_TEXT: '', TEXT_TO_IMAGE: 'flux' }).modelKeys,
+      { TEXT_TO_IMAGE: 'flux' })
   })
 
   it('explains what is missing before Create Recipe can run', () => {

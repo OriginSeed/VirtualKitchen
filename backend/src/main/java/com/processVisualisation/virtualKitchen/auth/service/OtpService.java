@@ -4,7 +4,6 @@ import com.processVisualisation.virtualKitchen.auth.exception.AuthException;
 import com.processVisualisation.virtualKitchen.auth.model.Otp;
 import com.processVisualisation.virtualKitchen.auth.model.OtpPurpose;
 import com.processVisualisation.virtualKitchen.auth.repository.OtpRepository;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
@@ -33,22 +32,14 @@ public class OtpService {
     private final EmailService emailService;
     private final PasswordEncoder passwordEncoder;
 
-    @Value("${app.otp.expiration-minutes}")
-    private long expirationMinutes;
+    private final OtpProperties limits;
 
-    @Value("${app.otp.max-attempts}")
-    private int maxAttempts;
-
-    @Value("${app.otp.resend-window-minutes}")
-    private long resendWindowMinutes;
-
-    @Value("${app.otp.max-per-window}")
-    private int maxPerWindow;
-
-    public OtpService(OtpRepository otpRepository, EmailService emailService, PasswordEncoder passwordEncoder) {
+    public OtpService(OtpRepository otpRepository, EmailService emailService, PasswordEncoder passwordEncoder,
+                      OtpProperties limits) {
         this.otpRepository = otpRepository;
         this.emailService = emailService;
         this.passwordEncoder = passwordEncoder;
+        this.limits = limits;
     }
 
     /**
@@ -63,9 +54,9 @@ public class OtpService {
      */
     public void generateAndSendOtp(String email, OtpPurpose purpose) {
         long recentCount = otpRepository.countByEmailAndPurposeAndCreatedAtAfter(
-                email, purpose, LocalDateTime.now().minusMinutes(resendWindowMinutes));
+                email, purpose, LocalDateTime.now().minusMinutes(limits.getResendWindowMinutes()));
 
-        if (recentCount >= maxPerWindow) {
+        if (recentCount >= limits.getMaxPerWindow()) {
             throw new AuthException(
                     "Too many verification codes requested. Please try again later.",
                     HttpStatus.TOO_MANY_REQUESTS);
@@ -77,7 +68,7 @@ public class OtpService {
         otp.setEmail(email);
         otp.setPurpose(purpose);
         otp.setCodeHash(passwordEncoder.encode(code));
-        otp.setExpiresAt(LocalDateTime.now().plusMinutes(expirationMinutes));
+        otp.setExpiresAt(LocalDateTime.now().plusMinutes(limits.getExpirationMinutes()));
 
         otpRepository.save(otp);
 
@@ -170,7 +161,7 @@ public class OtpService {
             throw new AuthException("This code has expired. Please request a new one.", HttpStatus.BAD_REQUEST);
         }
 
-        if (otp.getAttempts() >= maxAttempts) {
+        if (otp.getAttempts() >= limits.getMaxAttempts()) {
             throw new AuthException("Too many incorrect attempts. Please request a new code.", HttpStatus.TOO_MANY_REQUESTS);
         }
 

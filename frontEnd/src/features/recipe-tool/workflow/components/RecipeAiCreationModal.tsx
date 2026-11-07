@@ -1,11 +1,13 @@
 import { useEffect, useMemo, useState } from 'react'
+import { AiApi } from '../../../../api/aiApi'
 import { RecipeAiWorkflowApi } from '../../../../api/recipeAiWorkflowApi'
-import type { RecipeAiTaskType, RecipeAiWorkflowEstimate, RecipeAiWorkflowResponse } from '../../../../types/recipeAiWorkflow'
+import type { RecipeAiTaskType, RecipeAiWorkflowEstimate, RecipeAiWorkflowResponse, RunModelCapability } from '../../../../types/recipeAiWorkflow'
 import { isWorkflowOpen } from '../../jobs/jobTracker'
 import { useRecipeSession } from '../../session/sessionContext'
 import {
   createWorkflowTaskSelection,
   isCompleteExperience,
+  runModelCapabilities,
   selectedWorkflowTasks,
   setCompleteExperience,
   toggleWorkflowTask,
@@ -13,6 +15,7 @@ import {
   WORKFLOW_TASK_ORDER,
   workflowSelectionProblem,
   workflowTaskSelectionFrom,
+  type RunModels,
   type WorkflowTaskSelection,
 } from '../model/workflowSelection'
 import {
@@ -32,6 +35,8 @@ import { useDraft } from '../../../../shared/drafts/useDraft'
 import DraftRestoredNote from '../../../../shared/drafts/DraftRestoredNote'
 import { useConfirm } from '../../../../shared/components/confirm/confirmContext'
 import { useConfirmDiscard } from '../../../../shared/components/confirm/useConfirmDiscard'
+import { runModelOptions } from '../../../../shared/format/modelOptions'
+import { useApiData } from '../../../../shared/hooks/useApiData'
 import '../../styles/modals.css'
 
 type AiRecipeCreationDraft = { selection: WorkflowTaskSelection; recipeText: string }
@@ -63,6 +68,23 @@ const secondaryButton = {
   color: 'var(--flow-text-muted)', fontSize: 12.5, fontWeight: 700, cursor: 'pointer',
 }
 const subtleText = { fontSize: 11.5, color: 'var(--flow-text-subtle)' }
+
+const RUN_MODEL_LABELS: Record<RunModelCapability, string> = {
+  TEXT_TO_TEXT: 'Text model',
+  TEXT_TO_IMAGE: 'Image model',
+  TEXT_TO_SPEECH: 'Narration model',
+}
+
+/** What the run model picker offers: the models the user may choose, and what their requests run on now. */
+async function loadRunModelChoices() {
+  const [preferences, text, image, speech] = await Promise.all([
+    AiApi.getMyPreferences(),
+    AiApi.getSelectableModels('TEXT_TO_TEXT'),
+    AiApi.getSelectableModels('TEXT_TO_IMAGE'),
+    AiApi.getSelectableModels('TEXT_TO_SPEECH'),
+  ])
+  return { effective: preferences.effective, models: { TEXT_TO_TEXT: text, TEXT_TO_IMAGE: image, TEXT_TO_SPEECH: speech } }
+}
 
 /**
  * AI Recipe Creation: the user picks what AI should create, AI builds the recipe process first, the
@@ -164,6 +186,9 @@ function TaskSelectionStep({ recipeId, willReplaceMain, initialTasks, busy, erro
   const [estimateError, setEstimateError] = useState(false)
   const [touched, setTouched] = useState(false)
   const confirmDiscard = useConfirmDiscard()
+  // Models for this run only; '' keeps the account setting. Priced in the estimate, charged when the run goes.
+  const [runModels, setRunModels] = useState<RunModels>({})
+  const modelChoices = useApiData('run-model-choices', loadRunModelChoices)
 
   const existingStepCount = useMemo(
     () => summarizeProcesses(session?.getProcesses() ?? []).steps,
@@ -172,13 +197,16 @@ function TaskSelectionStep({ recipeId, willReplaceMain, initialTasks, busy, erro
   )
   const problem = workflowSelectionProblem(selection, { recipeText, existingStepCount })
   const selectionKey = selectedWorkflowTasks(selection).join(',')
+  const runCapabilities = runModelCapabilities(selection)
+  const runModelsKey = runCapabilities.map((capability) => runModels[capability] ?? '').join(',')
+  const choices = modelChoices.data
 
   // The estimate follows the selection (debounced, so ticking several boxes asks once).
   useEffect(() => {
     if (!selectionKey) return undefined // nothing selected: no estimate is shown
     const controller = new AbortController()
     const timer = window.setTimeout(() => {
-      RecipeAiWorkflowApi.estimate(recipeId, toTaskSelectionRequest(selection), controller.signal)
+      RecipeAiWorkflowApi.estimate(recipeId, toTaskSelectionRequest(selection, runModels), controller.signal)
         .then((result) => {
           setEstimate(result)
           setEstimateError(false)
@@ -191,14 +219,14 @@ function TaskSelectionStep({ recipeId, willReplaceMain, initialTasks, busy, erro
       window.clearTimeout(timer)
       controller.abort()
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- selectionKey captures the selection
-  }, [recipeId, selectionKey])
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- selectionKey and runModelsKey capture the request
+  }, [recipeId, selectionKey, runModelsKey])
 
   const handleCreate = async () => {
     setTouched(true)
     if (problem) return
     const started = await onCreate({
-      selection: toTaskSelectionRequest(selection),
+      selection: toTaskSelectionRequest(selection, runModels),
       recipeText: selection.PROCESS ? recipeText.trim() : undefined,
     })
     // Without a process to generate there is no text to keep: the selection has done its job.
@@ -252,6 +280,26 @@ function TaskSelectionStep({ recipeId, willReplaceMain, initialTasks, busy, erro
           AI will use your current recipe process ({existingStepCount} step{existingStepCount === 1 ? '' : 's'}). You will confirm it before anything is created.
         </div>
       ) : null}
+
+      {choices && runCapabilities.length > 0 && (
+        <div className="recipe-ai-run-models" role="group" aria-label="AI models for this run">
+          {runCapabilities.map((capability) => (
+            <label key={capability} className="recipe-ai-run-model">
+              <span>{RUN_MODEL_LABELS[capability]}</span>
+              <select
+                value={runModels[capability] ?? ''}
+                disabled={busy}
+                onChange={(event) => setRunModels((current) => ({ ...current, [capability]: event.target.value }))}
+              >
+                {runModelOptions(choices.models[capability], choices.effective[capability]).map((option) => (
+                  <option key={option.value} value={option.value}>{option.label}</option>
+                ))}
+              </select>
+            </label>
+          ))}
+          <div style={subtleText}>For this run only. Change the account setting in Account Settings.</div>
+        </div>
+      )}
 
       {selectionKey && <EstimatePanel estimate={estimate} failed={estimateError} />}
 

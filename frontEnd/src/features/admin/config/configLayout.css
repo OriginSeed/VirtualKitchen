@@ -1,0 +1,68 @@
+/* Admin → Config: side nav of the config sections; a horizontal tab row on narrow screens. */
+.cfl-root {
+  display: grid;
+  grid-template-columns: 220px minmax(0, 1fr);
+  gap: 0.5rem;
+  max-width: 1400px;
+  margin: 0 auto;
+  font-family: var(--flow-font);
+}
+.cfl-nav {
+  position: sticky;
+  top: 0;
+  align-self: start;
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  padding: 1.25rem 0 1rem 1rem;
+}
+.cfl-title {
+  margin: 0 0 0.4rem 0.6rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--flow-text-muted);
+}
+.cfl-item { display: contents; }
+.cfl-link {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  padding: 0.45rem 0.6rem;
+  border-left: 2px solid transparent;
+  border-radius: 0 var(--flow-radius-sm) var(--flow-radius-sm) 0;
+  color: var(--flow-text-muted);
+  text-decoration: none;
+  font-size: 0.9rem;
+  font-weight: 500;
+  white-space: nowrap;
+}
+.cfl-link:hover { color: var(--flow-text); background: var(--flow-surface-muted); }
+.cfl-link.is-active { color: var(--flow-accent-strong); border-left-color: var(--flow-accent); background: var(--flow-accent-soft); }
+.cfl-sub { padding-left: 1.4rem; font-size: 0.82rem; }
+.cfl-off {
+  font-size: 0.68rem;
+  padding: 0 0.35rem;
+  border: 1px solid var(--flow-border-strong);
+  border-radius: 999px;
+  color: var(--flow-text-muted);
+}
+.cfl-note { padding: 0.45rem 0.6rem; font-size: 0.85rem; color: var(--flow-text-muted); }
+.cfl-content { min-width: 0; }
+
+@media (max-width: 767px) {
+  .cfl-root { grid-template-columns: minmax(0, 1fr); gap: 0; }
+  .cfl-nav {
+    position: static;
+    flex-direction: row;
+    overflow-x: auto;
+    padding: 0.5rem 1rem 0;
+    border-bottom: 1px solid var(--flow-border);
+  }
+  .cfl-title { display: none; }
+  .cfl-link { border-left: none; border-bottom: 2px solid transparent; border-radius: 0; }
+  .cfl-link.is-active { border-bottom-color: var(--flow-accent); background: none; }
+  .cfl-sub { padding-left: 0.6rem; }
+}

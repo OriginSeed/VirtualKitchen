@@ -1,5 +1,6 @@
 package com.processVisualisation.virtualKitchen.ai.recipe.edit;
 
+import com.processVisualisation.virtualKitchen.ai.platform.config.AiGenerationParamsProperties;
 import com.processVisualisation.virtualKitchen.ai.platform.dispatch.AiClientResolver;
 import com.processVisualisation.virtualKitchen.ai.platform.queue.AiRequestOutcome;
 import com.processVisualisation.virtualKitchen.ai.platform.queue.AiRequestQueueService;
@@ -19,6 +20,7 @@ import com.processVisualisation.virtualKitchen.ai.recipe.generation.dto.RecipePr
 import com.processVisualisation.virtualKitchen.ai.recipe.generation.model.RecipeProcessGenerationStage;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 
@@ -59,6 +61,14 @@ public class RecipeProcessEditService {
         this.validator = validator;
         this.outputSchema = outputSchema;
         this.responseSupport = responseSupport;
+    }
+
+    /** Sampling parameters; admin runtime overrides apply to the next request. Defaults when not injected (tests). */
+    private AiGenerationParamsProperties generationParams = new AiGenerationParamsProperties();
+
+    @Autowired
+    void setGenerationParams(AiGenerationParamsProperties generationParams) {
+        this.generationParams = generationParams;
     }
 
     /**
@@ -133,8 +143,8 @@ public class RecipeProcessEditService {
                 .systemPrompt(promptBuilder.buildSystemPrompt())
                 .cacheSystemPrompt(true)
                 .userPrompt(userPrompt)
-                .temperature(0.1d)
-                .maxTokens(4000)
+                .temperature(generationParams.getProcessEdit().getTemperature())
+                .maxTokens(generationParams.getProcessEdit().getMaxTokens())
                 .responseFormat("json_object")
                 .responseSchema(outputSchema.jsonSchema())
                 .responseSchemaName(RecipeProcessEditOutputSchema.SCHEMA_NAME)

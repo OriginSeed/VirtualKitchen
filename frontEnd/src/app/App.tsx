@@ -2,10 +2,16 @@ import { useState, type ReactNode } from 'react'
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom'
 import AiAnalyticsPage from '../features/admin/ai-analytics/AiAnalyticsPage'
 import AiEvaluationPage from '../features/admin/ai-evaluation/AiEvaluationPage'
+import ConfigLayout from '../features/admin/config/ConfigLayout'
+import ConfigSectionPage from '../features/admin/config/ConfigSectionPage'
+import AddModelPage from '../features/admin/config/models/AddModelPage'
+import AdminLayout from '../features/admin/layout/AdminLayout'
+import { ADMIN_SECTIONS } from '../features/admin/layout/adminSections'
 import Auth from '../features/auth/Auth'
 import InventoryView from '../features/kitchen/inventory/InventoryView'
 import KitchenLayout from '../features/kitchen/layout/KitchenLayout'
 import OrderHistoryView from '../features/kitchen/orders/OrderHistoryView'
+import AccountSettingsPage from '../features/settings/AccountSettingsPage'
 import IngredientCatalogGate from '../shared/catalog/IngredientCatalogGate'
 import HomeRoute from './routes/HomeRoute'
 import RecipeOrderRoute from './routes/RecipeOrderRoute'
@@ -62,6 +68,7 @@ function App() {
           <Route path="inventory" element={<InventoryRoute filter={inventoryFilter} onFilterChange={setInventoryFilter} />} />
           <Route path="shop" element={<ShopRoute />} />
           <Route path="orders" element={<OrdersRoute />} />
+          <Route path="settings" element={<AccountSettingsPage />} />
 
           <Route path="recipes" element={<RecipesRoute />} />
           {/* Old links to a recipe (this path used to open a separate editor) land in the Recipe Tool. */}
@@ -73,9 +80,20 @@ function App() {
           {/* Recipe orders: confirm -> ingredients -> payment -> receipt -> track (see features/recipe-order). */}
           <Route path="recipe-orders/:orderId/:view?" element={<IngredientCatalogGate><RecipeOrderRoute /></IngredientCatalogGate>} />
 
-          <Route path="admin/ai-analytics/:tab?" element={<AdminOnly><AiAnalyticsPage /></AdminOnly>} />
-          <Route path="admin/ai-evaluation/sets/:setKey" element={<AdminOnly><AiEvaluationPage /></AdminOnly>} />
-          <Route path="admin/ai-evaluation/:tab?" element={<AdminOnly><AiEvaluationPage /></AdminOnly>} />
+          {/* Admin area: one guard and the admin sub-navbar around every admin feature. */}
+          <Route path="admin" element={<AdminOnly><AdminLayout /></AdminOnly>}>
+            <Route index element={<Navigate to={ADMIN_SECTIONS[0].path} replace />} />
+            <Route path="ai-analytics/:tab?" element={<AiAnalyticsPage />} />
+            <Route path="ai-evaluation/sets/:setKey" element={<AiEvaluationPage />} />
+            <Route path="ai-evaluation/:tab?" element={<AiEvaluationPage />} />
+            {/* Runtime config: a side nav of every section around the selected one. */}
+            <Route path="config" element={<ConfigLayout />}>
+              <Route index element={<Navigate to="models" replace />} />
+              <Route path="models/new" element={<AddModelPage />} />
+              <Route path="models/:modelKey/edit" element={<AddModelPage />} />
+              <Route path=":sectionId" element={<ConfigSectionPage />} />
+            </Route>
+          </Route>
         </Route>
 
         <Route path="*" element={<Navigate to={session ? '/kitchen/inventory' : '/auth'} replace />} />

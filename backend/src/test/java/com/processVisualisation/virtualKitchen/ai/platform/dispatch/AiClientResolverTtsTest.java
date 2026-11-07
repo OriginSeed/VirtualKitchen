@@ -24,12 +24,14 @@ class AiClientResolverTtsTest {
     private final TtsProvider gemini = provider("gemini", false);
     private final TtsProvider local = provider("local", false);
     private final AiClientResolver resolver = new AiClientResolver(
-            Map.of(), Map.of(), Map.of("geminiTtsProvider", gemini, "localTtsProvider", local, "failingTtsProvider", provider("x", true)));
+            Map.of(), Map.of(), Map.of("geminiTtsProvider", gemini, "localTtsProvider", local, "failingTtsProvider", provider("x", true),
+                    "deepInfraTtsProvider", provider("deepinfra", false)));
 
     @Test
     void resolvesTheProviderBeanTheModelNames() {
         assertEquals("gemini", resolver.resolveTtsProvider(model("gemini-tts", "geminiTtsProvider")).providerName());
         assertEquals("local", resolver.resolveTtsProvider(model("local-tts", "localTtsProvider")).providerName());
+        assertEquals("deepinfra", resolver.resolveTtsProvider(model("deepinfra-mimo-tts", "deepInfraTtsProvider")).providerName());
     }
 
     @Test

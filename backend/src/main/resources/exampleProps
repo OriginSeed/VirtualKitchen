@@ -2,25 +2,33 @@
 # Anything using ${ENV_VAR:default} can instead be supplied as an environment variable
 # at runtime (recommended for secrets) without touching this file at all.
 
+# ====================================================================================================
+# MongoDB
+# ====================================================================================================
 # Required. Contains the DB password, so it is never logged; can also be supplied as the
 # SPRING_DATA_MONGODB_URI environment variable. Without it the app falls back to a local, credential-free MongoDB.
 spring.data.mongodb.uri=REPLACE_WITH_YOUR_MONGODB_CONNECTION_STRING
 spring.data.mongodb.database=REPLACE_WITH_YOUR_DATABASE_NAME
+
 management.health.mongo.enabled=false
 
-# --- Logging (see logback-spring.xml and the Logging section of README.md) ---
-# No profile = development logging. Use "prod" in deployed environments (plain console, INFO-level files).
-#spring.profiles.active=prod
-# Directory for application.log / application-error.log (default: ./logs).
-#logging.file.path=logs
-# Local debugging only: log truncated AI user prompts/responses to the log file.
-#logging.level.virtualKitchen.ai.payload=DEBUG
+# GridFS bucket backing artifact binary payloads (collections ai_artifacts.files / .chunks).
+spring.data.mongodb.gridfs.bucket=${MONGODB_GRIDFS_BUCKET:ai_artifacts}
 
-# --- Authentication ---
+# ====================================================================================================
+# Security: JWT, Google sign-in, admins
+# ====================================================================================================
 # JWT signing secret. MUST be overridden (32+ chars) in any shared/production environment.
 app.jwt.secret=${JWT_SECRET:REPLACE_WITH_A_LONG_RANDOM_SECRET}
 app.jwt.expiration-ms=${JWT_EXPIRATION_MS:86400000}
 
+# OAuth client ID from Google Cloud Console (Credentials > OAuth 2.0 Client IDs > Web application).
+# Must match the frontend's VITE_GOOGLE_CLIENT_ID.
+google.oauth.client-id=${GOOGLE_CLIENT_ID:REPLACE_WITH_GOOGLE_OAUTH_CLIENT_ID}
+
+# ====================================================================================================
+# OTP and mail
+# ====================================================================================================
 app.otp.expiration-minutes=${OTP_EXPIRATION_MINUTES:10}
 app.otp.max-attempts=${OTP_MAX_ATTEMPTS:5}
 app.otp.resend-window-minutes=${OTP_RESEND_WINDOW_MINUTES:15}
@@ -28,6 +36,7 @@ app.otp.max-per-window=${OTP_MAX_PER_WINDOW:5}
 
 # SMTP account used to send OTP/verification/reset emails.
 app.mail.from=${MAIL_FROM:REPLACE_WITH_SENDER_EMAIL}
+
 spring.mail.host=${MAIL_HOST:smtp.gmail.com}
 spring.mail.port=${MAIL_PORT:587}
 spring.mail.username=${MAIL_USERNAME:REPLACE_WITH_SMTP_USERNAME}
@@ -35,10 +44,25 @@ spring.mail.password=${MAIL_PASSWORD:REPLACE_WITH_SMTP_APP_PASSWORD}
 spring.mail.properties.mail.smtp.auth=true
 spring.mail.properties.mail.smtp.starttls.enable=true
 
-# OAuth client ID from Google Cloud Console (Credentials > OAuth 2.0 Client IDs > Web application).
-# Must match the frontend's VITE_GOOGLE_CLIENT_ID.
-google.oauth.client-id=${GOOGLE_CLIENT_ID:REPLACE_WITH_GOOGLE_OAUTH_CLIENT_ID}
+# ====================================================================================================
+# Logging
+# ====================================================================================================
+# --- Logging (see logback-spring.xml and the Logging section of README.md) ---
+# No profile = development logging. Use "prod" in deployed environments (plain console, INFO-level files).
+#spring.profiles.active=prod
 
+# Directory for application.log / application-error.log (default: ./logs).
+#logging.file.path=logs
+
+# Local debugging only: log truncated AI user prompts/responses to the log file.
+#logging.level.virtualKitchen.ai.payload=DEBUG
+
+# HTTP requests at least this slow are also written to application.log (all requests go to logs/access.log).
+app.logging.slow-request-ms=${SLOW_REQUEST_MS:3000}
+
+# ====================================================================================================
+# File storage (Supabase)
+# ====================================================================================================
 # Supabase storage for generated images and narration audio. The service key is a server-side secret: supply it
 # as an environment variable rather than writing it here.
 supabase.url=${SUPABASE_URL:REPLACE_WITH_YOUR_SUPABASE_URL}
@@ -46,7 +70,48 @@ supabase.serviceKey=${SUPABASE_SERVICE_KEY:REPLACE_WITH_YOUR_SUPABASE_SERVICE_KE
 supabase.bucket=recipe-images
 supabase.timeoutMs=300000
 
+# ====================================================================================================
+# Task pools, threads, queues and scheduled jobs
+# ====================================================================================================
+# Thread pool for the scheduled jobs (credit cycle reset, AI artifact recovery).
+spring.task.scheduling.pool.size=${SCHEDULING_POOL_SIZE:2}
+
+app.queue.ai-tts-max-depth=${AI_TTS_MAX_DEPTH:20}
+
+app.taskpool.narration.n-threads=${NARRATION_THREADS:2}
+
+# ====================================================================================================
+# AI request timeouts, retries and credits
+# ====================================================================================================
+# Gemini TTS is rate limited per minute; a throttled (429/503) request waits Retry-After (else 5s, doubling,
+# capped at 45s) and retries up to 4 times instead of failing the step.
+ai.request.rate-limit-max-retries=4
+ai.request.rate-limit-backoff-ms=5000
+ai.request.rate-limit-max-backoff-ms=45000
+
+# ====================================================================================================
+# AI artifact store
+# ====================================================================================================
+# AI artifact store — keeps a paid AI payload durable between the provider call that produced it
+# and the dependent work that consumes it (e.g. the image upload), so a failure in that work never
+# costs a second generation. See AI_ARTIFACT_STORE_DESIGN.md.
+ai.artifact.enabled=${AI_ARTIFACT_ENABLED:true}
+ai.artifact.max-inline-bytes=${AI_ARTIFACT_MAX_INLINE_BYTES:16000}
+ai.artifact.lease-ttl-ms=${AI_ARTIFACT_LEASE_TTL_MS:120000}
+ai.artifact.consumed-retention=${AI_ARTIFACT_CONSUMED_RETENTION:7d}
+ai.artifact.abandoned-retention=${AI_ARTIFACT_ABANDONED_RETENTION:30d}
+ai.artifact.sweeper.enabled=${AI_ARTIFACT_SWEEPER_ENABLED:true}
+ai.artifact.sweeper.fixed-delay-ms=${AI_ARTIFACT_SWEEPER_FIXED_DELAY_MS:300000}
+ai.artifact.sweeper.initial-delay-ms=${AI_ARTIFACT_SWEEPER_INITIAL_DELAY_MS:60000}
+ai.artifact.sweeper.orphan-age-ms=${AI_ARTIFACT_SWEEPER_ORPHAN_AGE_MS:120000}
+ai.artifact.sweeper.batch-size=${AI_ARTIFACT_SWEEPER_BATCH_SIZE:25}
+ai.artifact.sweeper.max-recovery-attempts=${AI_ARTIFACT_SWEEPER_MAX_RECOVERY_ATTEMPTS:3}
+
+# ====================================================================================================
+# Text models (registry entries and provider settings)
+# ====================================================================================================
 #ai.provider=openai
+
 #ai.openai.api-key=${AI_OPENAI_API_KEY:REPLACE_WITH_OPENAI_API_KEY}
 #ai.openai.base-url=https://api.openai.com
 #ai.openai.chat-endpoint=/v1/chat/completions
@@ -54,14 +119,58 @@ supabase.timeoutMs=300000
 #ai.openai.timeout-ms=30000
 
 #ai.provider=gemini
+
 #ai.gemini.apiKey=${AI_GEMINI_API_KEY:REPLACE_WITH_GEMINI_API_KEY}
 #ai.gemini.baseUrl=https://generativelanguage.googleapis.com
 #ai.gemini.chatEndpoint=/v1beta/models/{model}:generateContent
 #ai.gemini.defaultModel=gemini-3.1-flash-lite
-#ai.gemini.imageModel=gemini-2.5-flash-image
 #ai.gemini.timeoutMs=120000
 #ai.gemini.cache.enabled=true
 #ai.gemini.cache.ttlSeconds=3600
+
+ai.provider=ollama
+
+ai.ollama.baseUrl=http://localhost:11434
+ai.ollama.chatEndpoint=/api/chat
+ai.ollama.defaultModel=qwen3:8b
+ai.ollama.timeoutMs=300000
+
+# Context window: the process-generation system prompt alone is ~12K tokens. Keep this constant so the prompt cache survives.
+ai.ollama.numCtx=32768
+
+# Keeps the model (and its cached system prompt) loaded between requests.
+ai.ollama.keepAlive=30m
+
+# --- DeepInfra (OpenAI-compatible) text generation: see AI_MODEL_MANAGEMENT_DESIGN.md section 24 ---
+# Off unless DEEPINFRA_ENABLED=true; select it with AI_TEXT_DEFAULT_MODEL=deepinfra-deepseek-v4-flash
+# (and make ai.default-model.TEXT_TO_TEXT=${AI_TEXT_DEFAULT_MODEL:gemini-flash}). The key comes only from the environment.
+ai.models[7].key=deepinfra-deepseek-v4-flash
+ai.models[7].capability=TEXT_TO_TEXT
+ai.models[7].tier=PAID
+ai.models[7].provider-bean=deepInfraAiClient
+ai.models[7].provider-model-id=${ai.deepinfra.defaultModel}
+ai.models[7].credit-cost=1
+# USD per 1M tokens, as supplied for this integration; bump vk.ai.pricing.version when changing them.
+ai.models[7].input-usd-per-million=0.20
+ai.models[7].cached-input-usd-per-million=0.006
+ai.models[7].output-usd-per-million=0.60
+ai.models[7].fallback-model-key=ollama-qwen
+ai.models[7].enabled=${DEEPINFRA_ENABLED:false}
+ai.models[7].display-name=DeepSeek V4 Flash
+ai.models[7].user-selectable=true
+
+ai.deepinfra.apiKey=${DEEPINFRA_API_KEY:}
+ai.deepinfra.baseUrl=https://api.deepinfra.com
+ai.deepinfra.chatEndpoint=/v1/openai/chat/completions
+ai.deepinfra.defaultModel=${DEEPINFRA_MODEL:deepseek-ai/DeepSeek-V4-Flash}
+ai.deepinfra.timeoutMs=120000
+ai.deepinfra.reasoningEffort=${DEEPINFRA_REASONING_EFFORT:none}
+ai.deepinfra.jsonSchemaEnabled=${DEEPINFRA_JSON_SCHEMA_ENABLED:true}
+
+# ====================================================================================================
+# Image models (registry entries, provider settings, image profiles)
+# ====================================================================================================
+#ai.gemini.imageModel=gemini-2.5-flash-image
 
 # Scene anchor: one empty-scene image per recipe, sent as a reference image with every step image (default true).
 #ai.visualization.scene-anchor.enabled=true
@@ -86,51 +195,48 @@ ai.visualization.image.profiles.waiting-resting.width=256
 ai.visualization.image.profiles.waiting-resting.height=256
 ai.visualization.image.profiles.serving.width=768
 ai.visualization.image.profiles.serving.height=768
+
 # Draw Things only. SDXL needs about 20+ steps, unless it is a turbo/lightning model.
 #ai.visualization.image.default-profile.steps=4
+
 # Reclassify one action, or a whole catalog category (these merge over the built-in mapping):
 #ai.visualization.image.purpose-by-action.reduce=waiting-resting
 #ai.visualization.image.purpose-by-category.sauce=mixing
 
-ai.provider=ollama
-ai.ollama.baseUrl=http://localhost:11434
-ai.ollama.chatEndpoint=/api/chat
-ai.ollama.defaultModel=qwen3:8b
-ai.ollama.timeoutMs=300000
-# Context window: the process-generation system prompt alone is ~12K tokens. Keep this constant so the prompt cache survives.
-ai.ollama.numCtx=32768
-# Keeps the model (and its cached system prompt) loaded between requests.
-ai.ollama.keepAlive=30m
-
 ai.image.provider=drawthings
+
 ai.drawthings.baseUrl=http://localhost:7860
 ai.drawthings.endpoint=/sdapi/v1/txt2img
 ai.drawthings.width=512
 ai.drawthings.height=512
 ai.drawthings.timeoutMs=300000
 
-# AI artifact store — keeps a paid AI payload durable between the provider call that produced it
-# and the dependent work that consumes it (e.g. the image upload), so a failure in that work never
-# costs a second generation. See AI_ARTIFACT_STORE_DESIGN.md.
-ai.artifact.enabled=${AI_ARTIFACT_ENABLED:true}
-ai.artifact.max-inline-bytes=${AI_ARTIFACT_MAX_INLINE_BYTES:16000}
-ai.artifact.lease-ttl-ms=${AI_ARTIFACT_LEASE_TTL_MS:120000}
-ai.artifact.consumed-retention=${AI_ARTIFACT_CONSUMED_RETENTION:7d}
-ai.artifact.abandoned-retention=${AI_ARTIFACT_ABANDONED_RETENTION:30d}
-ai.artifact.sweeper.enabled=${AI_ARTIFACT_SWEEPER_ENABLED:true}
-ai.artifact.sweeper.fixed-delay-ms=${AI_ARTIFACT_SWEEPER_FIXED_DELAY_MS:300000}
-ai.artifact.sweeper.initial-delay-ms=${AI_ARTIFACT_SWEEPER_INITIAL_DELAY_MS:60000}
-ai.artifact.sweeper.orphan-age-ms=${AI_ARTIFACT_SWEEPER_ORPHAN_AGE_MS:120000}
-ai.artifact.sweeper.batch-size=${AI_ARTIFACT_SWEEPER_BATCH_SIZE:25}
-ai.artifact.sweeper.max-recovery-attempts=${AI_ARTIFACT_SWEEPER_MAX_RECOVERY_ATTEMPTS:3}
+# --- DeepInfra image generation (FLUX.2 Klein 4B): reuses the key, base URL and timeout above ---
+# Off unless DEEPINFRA_IMAGE_ENABLED=true; select it with AI_IMAGE_DEFAULT_MODEL=deepinfra-flux2-klein
+# (and make ai.default-model.TEXT_TO_IMAGE=${AI_IMAGE_DEFAULT_MODEL:gemini-image}).
+ai.models[8].key=deepinfra-flux2-klein
+ai.models[8].capability=TEXT_TO_IMAGE
+ai.models[8].tier=PAID
+ai.models[8].provider-bean=deepInfraImageClient
+ai.models[8].provider-model-id=${ai.deepinfra.image.model}
+ai.models[8].credit-cost=2
+ai.models[8].fallback-model-key=drawthings-sdxl
+ai.models[8].enabled=${DEEPINFRA_IMAGE_ENABLED:false}
+ai.models[8].display-name=FLUX.2 Klein 4B
+ai.models[8].user-selectable=true
 
-# GridFS bucket backing artifact binary payloads (collections ai_artifacts.files / .chunks).
-spring.data.mongodb.gridfs.bucket=${MONGODB_GRIDFS_BUCKET:ai_artifacts}
+# Billed per image: $0.014 at 1024x1024, scaled by (width/1024) x (height/1024); bump vk.ai.pricing.version on change.
+vk.ai.pricing.per-image-usd.deepinfra-flux2-klein=0.014
 
-# Thread pool for the scheduled jobs (credit cycle reset, AI artifact recovery).
-spring.task.scheduling.pool.size=${SCHEDULING_POOL_SIZE:2}
+ai.deepinfra.image.endpoint=/v1/openai/images/generations
+ai.deepinfra.image.model=${DEEPINFRA_IMAGE_MODEL:black-forest-labs/FLUX-2-klein-4b}
+ai.deepinfra.image.width=1024
+ai.deepinfra.image.height=1024
+ai.deepinfra.image.count=1
 
-# --- Text-to-speech (step narration) ---
+# ====================================================================================================
+# Speech models and narration (registry entries, provider settings)
+# ====================================================================================================
 # Requires the ai.models[0..4] registry entries from application.properties; indexes 5 and 6 follow them.
 # Provider selection follows the model registry: point ai.default-model.TEXT_TO_SPEECH at gemini-tts or
 # local-tts (or set AI_TTS_DEFAULT_MODEL). Adding a provider = a TtsProvider bean + one ai.models[n] entry.
@@ -147,6 +253,8 @@ ai.models[5].output-usd-per-million=10.0
 # Used only when the user has no credits left for the paid model.
 ai.models[5].fallback-model-key=local-tts
 ai.models[5].enabled=true
+ai.models[5].display-name=Gemini TTS
+ai.models[5].user-selectable=false
 
 ai.models[6].key=local-tts
 ai.models[6].capability=TEXT_TO_SPEECH
@@ -158,59 +266,28 @@ ai.models[6].credit-cost=0
 ai.models[6].input-usd-per-million=0
 ai.models[6].output-usd-per-million=0
 ai.models[6].enabled=true
+ai.models[6].display-name=Local TTS
+ai.models[6].user-selectable=false
 
-# --- DeepInfra (OpenAI-compatible) text generation: see AI_MODEL_MANAGEMENT_DESIGN.md section 24 ---
-# Off unless DEEPINFRA_ENABLED=true; select it with AI_TEXT_DEFAULT_MODEL=deepinfra-deepseek-v4-flash
-# (and make ai.default-model.TEXT_TO_TEXT=${AI_TEXT_DEFAULT_MODEL:gemini-flash}). The key comes only from the environment.
-ai.models[7].key=deepinfra-deepseek-v4-flash
-ai.models[7].capability=TEXT_TO_TEXT
-ai.models[7].tier=PAID
-ai.models[7].provider-bean=deepInfraAiClient
-ai.models[7].provider-model-id=${ai.deepinfra.defaultModel}
-ai.models[7].credit-cost=1
-# USD per 1M tokens, as supplied for this integration; bump vk.ai.pricing.version when changing them.
-ai.models[7].input-usd-per-million=0.20
-ai.models[7].cached-input-usd-per-million=0.006
-ai.models[7].output-usd-per-million=0.60
-ai.models[7].fallback-model-key=ollama-qwen
-ai.models[7].enabled=${DEEPINFRA_ENABLED:false}
+# DeepInfra text-to-speech (XiaomiMiMo/MiMo-V2.5-tts): users can choose it for narration; Gemini TTS stays the default.
+ai.models[9].key=deepinfra-mimo-tts
+ai.models[9].capability=TEXT_TO_SPEECH
+ai.models[9].tier=PAID
+ai.models[9].provider-bean=deepInfraTtsProvider
+ai.models[9].provider-model-id=${ai.deepinfra.tts.model}
+ai.models[9].credit-cost=1
+ai.models[9].fallback-model-key=local-tts
+ai.models[9].enabled=${DEEPINFRA_TTS_ENABLED:false}
+ai.models[9].display-name=MiMo V2.5 TTS
+ai.models[9].user-selectable=true
 
-ai.deepinfra.apiKey=${DEEPINFRA_API_KEY:}
-ai.deepinfra.baseUrl=https://api.deepinfra.com
-ai.deepinfra.chatEndpoint=/v1/openai/chat/completions
-ai.deepinfra.defaultModel=${DEEPINFRA_MODEL:deepseek-ai/DeepSeek-V4-Flash}
-ai.deepinfra.timeoutMs=120000
-ai.deepinfra.reasoningEffort=${DEEPINFRA_REASONING_EFFORT:none}
-ai.deepinfra.jsonSchemaEnabled=${DEEPINFRA_JSON_SCHEMA_ENABLED:true}
+# Free on DeepInfra for a limited time; set the real per-second price and bump vk.ai.pricing.version when it changes.
+vk.ai.pricing.per-audio-second-usd.deepinfra-mimo-tts=0
 
-# --- DeepInfra image generation (FLUX.2 Klein 4B): reuses the key, base URL and timeout above ---
-# Off unless DEEPINFRA_IMAGE_ENABLED=true; select it with AI_IMAGE_DEFAULT_MODEL=deepinfra-flux2-klein
-# (and make ai.default-model.TEXT_TO_IMAGE=${AI_IMAGE_DEFAULT_MODEL:gemini-image}).
-ai.models[8].key=deepinfra-flux2-klein
-ai.models[8].capability=TEXT_TO_IMAGE
-ai.models[8].tier=PAID
-ai.models[8].provider-bean=deepInfraImageClient
-ai.models[8].provider-model-id=${ai.deepinfra.image.model}
-ai.models[8].credit-cost=2
-ai.models[8].fallback-model-key=drawthings-sdxl
-ai.models[8].enabled=${DEEPINFRA_IMAGE_ENABLED:false}
-# Billed per image: $0.014 at 1024x1024, scaled by (width/1024) x (height/1024); bump vk.ai.pricing.version on change.
-vk.ai.pricing.per-image-usd.deepinfra-flux2-klein=0.014
-
-ai.deepinfra.image.endpoint=/v1/openai/images/generations
-ai.deepinfra.image.model=${DEEPINFRA_IMAGE_MODEL:black-forest-labs/FLUX-2-klein-4b}
-ai.deepinfra.image.width=1024
-ai.deepinfra.image.height=1024
-ai.deepinfra.image.count=1
-
-ai.default-model.TEXT_TO_SPEECH=${AI_TTS_DEFAULT_MODEL:gemini-tts}
-app.queue.ai-tts-max-depth=${AI_TTS_MAX_DEPTH:20}
-app.taskpool.narration.n-threads=${NARRATION_THREADS:2}
-# Gemini TTS is rate limited per minute; a throttled (429/503) request waits Retry-After (else 5s, doubling,
-# capped at 45s) and retries up to 4 times instead of failing the step.
-ai.request.rate-limit-max-retries=4
-ai.request.rate-limit-backoff-ms=5000
-ai.request.rate-limit-max-backoff-ms=45000
+ai.deepinfra.tts.endpoint=${DEEPINFRA_TTS_ENDPOINT:/v1/audio/speech}
+ai.deepinfra.tts.model=${DEEPINFRA_TTS_MODEL:XiaomiMiMo/MiMo-V2.5-tts}
+ai.deepinfra.tts.voice=${DEEPINFRA_TTS_VOICE:Mia}
+ai.deepinfra.tts.response-format=${DEEPINFRA_TTS_FORMAT:wav}
 
 # Gemini speech reuses ai.gemini.api-key / base-url / chat-endpoint; only the model and voice are TTS-specific.
 ai.gemini.tts.model=${AI_GEMINI_TTS_MODEL:gemini-2.5-flash-preview-tts}
@@ -236,15 +313,26 @@ ai.narration.storage.filesystem.root=${NARRATION_FS_ROOT:./data/narrations}
 ai.narration.storage.filesystem.public-base-url=${NARRATION_PUBLIC_BASE_URL:http://localhost:8080}
 ai.narration.storage.supabase.path-prefix=narrations
 
-# --- Logging ---
-# HTTP requests at least this slow are also written to application.log (all requests go to logs/access.log).
-app.logging.slow-request-ms=${SLOW_REQUEST_MS:3000}
+# ====================================================================================================
+# Default model per capability
+# ====================================================================================================
+ai.default-model.TEXT_TO_SPEECH=${AI_TTS_DEFAULT_MODEL:gemini-tts}
 
-# --- AI Recipe Creation (RecipeAiWorkflow) ---
+# ====================================================================================================
+# AI Recipe Creation (progress weights and credit estimate)
+# ====================================================================================================
 # Relative weight of each task in the overall progress percentage (normalised over the selected tasks).
 app.ai-workflow.weights.process=2
 app.ai-workflow.weights.visuals=5
 app.ai-workflow.weights.narration=3
+
 # Step range assumed by the credit estimate before the recipe process has been generated.
 app.ai-workflow.estimate.min-steps=6
 app.ai-workflow.estimate.max-steps=20
+
+# ====================================================================================================
+# Admin runtime config
+# ====================================================================================================
+# Admin runtime config: the Keys section (replace provider API keys / SMTP password from the admin panel).
+# Temporary, for admin testing. Needs VK_CONFIG_ENC_KEY (any passphrase) so keys are stored encrypted.
+vk.admin.secret-editing.enabled=${VK_ADMIN_SECRET_EDITING:false}

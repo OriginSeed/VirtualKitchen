@@ -4,6 +4,7 @@ import jakarta.annotation.PreDestroy;
 import org.springframework.stereotype.Component;
 
 import java.util.Map;
+import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
@@ -35,6 +36,11 @@ public class TaskPoolFactory {
      */
     public TaskPool getOrCreate(String name, int nThreads) {
         return pools.computeIfAbsent(name, poolName -> new ThreadPoolTaskPool(nThreads, poolName));
+    }
+
+    /** The named pool, if it has been created. */
+    public Optional<TaskPool> find(String name) {
+        return Optional.ofNullable(pools.get(name));
     }
 
     /**
