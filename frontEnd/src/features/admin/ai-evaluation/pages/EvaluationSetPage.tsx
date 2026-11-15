@@ -1,5 +1,6 @@
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
+import ImageLightbox from '../../../../shared/components/image-viewer/ImageLightbox'
 import { useApiData } from '../../../../shared/hooks/useApiData'
 import { errorMessage } from '../../../../shared/errors'
 import { useNotifications } from '../../../../shared/components/notifications/notificationContext'
@@ -101,7 +102,7 @@ export default function EvaluationSetPage({ setKey, rubric, params }: Props) {
             )}
         </>
       )}
-      {enlarged && <ImageModal {...enlarged} onClose={() => setEnlarged(null)} />}
+      {enlarged && <ImageLightbox src={enlarged.url} alt={enlarged.caption} caption={enlarged.caption} onClose={() => setEnlarged(null)} />}
     </section>
   )
 }
@@ -126,21 +127,3 @@ function withSet(data: SetDetail, evaluation: SetEvaluation): SetDetail {
   }
 }
 
-function ImageModal({ url, caption, onClose }: { url: string; caption: string; onClose: () => void }) {
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose() }
-    window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
-  }, [onClose])
-  return (
-    <div className="aia-modal-backdrop" onClick={onClose}>
-      <div className="aia-modal" role="dialog" aria-modal="true" aria-label={caption} onClick={(e) => e.stopPropagation()}>
-        <div className="aia-modal-header">
-          <h2>{caption}</h2>
-          <button type="button" className="aia-button" onClick={onClose}>Close</button>
-        </div>
-        <figure className="aia-media aie-media-full"><img src={url} alt={caption} /></figure>
-      </div>
-    </div>
-  )
-}

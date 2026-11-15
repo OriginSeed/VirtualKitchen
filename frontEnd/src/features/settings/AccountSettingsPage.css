@@ -30,3 +30,11 @@
 .account-settings-field { display: flex; flex-direction: column; gap: 0.35rem; margin-top: 0.85rem; max-width: 28rem; }
 .account-settings-label { font-size: 0.875rem; font-weight: 500; }
 .account-settings-field .is-saving { opacity: 0.6; pointer-events: none; }
+
+.account-settings-profile { display: flex; align-items: center; gap: 0.85rem; }
+.account-settings-profile > span:last-child { display: flex; min-width: 0; flex-direction: column; gap: 0.1rem; }
+.account-settings-profile strong { font-size: 0.95rem; }
+.account-settings-avatar {
+  display: grid; width: 2.6rem; height: 2.6rem; flex-shrink: 0; place-items: center; border-radius: 50%;
+  background: linear-gradient(135deg, var(--flow-accent), var(--flow-accent-secondary)); color: #fff; font-weight: 800;
+}

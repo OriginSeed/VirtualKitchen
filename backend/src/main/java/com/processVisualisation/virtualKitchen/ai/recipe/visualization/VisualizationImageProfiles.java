@@ -54,6 +54,45 @@ public class VisualizationImageProfiles {
         return settings.isNone() ? ImageGenerationSettings.NONE : settings;
     }
 
+    /**
+     * What a focused image of a step with this action centres on: its category's configured focus, else its
+     * purpose's, else the default focus. A misconfigured name falls back to the cooking vessel.
+     */
+    public VisualFocus focusFor(String actionId) {
+        String byCategory = actionId == null ? null : vocabularyProvider.action(actionId)
+                .map(action -> properties.getFocusByCategory().get(action.category()))
+                .orElse(null);
+        return VisualFocus.parse(byCategory)
+                .or(() -> VisualFocus.parse(properties.getFocusByPurpose().get(purposeOf(actionId))))
+                .or(() -> VisualFocus.parse(properties.getDefaultFocus()))
+                .orElse(VisualFocus.COOKING_VESSEL);
+    }
+
+    /** Whether new step images use the Focused Cooking View (see {@link VisualizationImageProperties}). */
+    public boolean focusedViewEnabled() {
+        return properties.isFocusedViewEnabled();
+    }
+
+    /** Whether focused main steps are drawn against the previous image of the same focus. */
+    public boolean referenceChainEnabled() {
+        return properties.isFocusedViewEnabled() && properties.isReferenceChainEnabled();
+    }
+
+    /** How many Preparation steps share one generated image (1, 2 or 4); only with the focused view on. */
+    public int preparationStepsPerImage() {
+        return properties.effectivePreparationStepsPerImage();
+    }
+
+    /** Whether steps marked as looking like the previous one reuse its image instead of getting their own. */
+    public boolean skipLookAlikeSteps() {
+        return properties.isSkipLookAlikeSteps();
+    }
+
+    /** The camera, lighting, style and default equipment of focused images. */
+    public VisualizationImageProperties.Scene scene() {
+        return properties.getScene();
+    }
+
     private static Integer firstSet(Integer value, Integer fallback) {
         return value != null ? value : fallback;
     }

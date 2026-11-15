@@ -10,6 +10,8 @@ import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
+import java.util.Map;
+
 /**
  * Request payload for AI process generation. In CREATE mode (the default) {@code recipeText} is free-form recipe
  * text converted into a semantic Process structure (MAIN process plus subprocesses); in EDIT mode it is a
@@ -39,6 +41,12 @@ public class RecipeProcessGenerationRequestDTO {
 
     /** EDIT only, optional: the node selected in the editor, so "this step" / "the previous step" can be resolved. */
     private String selectedNodeId;
+
+    /**
+     * Models the user picked for this run (capability name to model key; blank = the account setting). Applied by
+     * the controller around the job start (see {@code AiRunModels}); null keeps the account setting.
+     */
+    private Map<String, String> modelKeys;
 
     public RecipeProcessGenerationRequestDTO(String recipeText, String clientRequestId) {
         this.recipeText = recipeText;

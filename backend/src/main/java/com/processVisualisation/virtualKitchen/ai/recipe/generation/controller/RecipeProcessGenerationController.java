@@ -1,5 +1,8 @@
 package com.processVisualisation.virtualKitchen.ai.recipe.generation.controller;
 
+import com.processVisualisation.virtualKitchen.common.logging.LogAction;
+
+import com.processVisualisation.virtualKitchen.ai.platform.preference.RunModelChoices;
 import com.processVisualisation.virtualKitchen.ai.recipe.generation.RecipeProcessGenerationJobService;
 import com.processVisualisation.virtualKitchen.ai.recipe.generation.dto.RecipeProcessGenerationJobResponseDTO;
 import com.processVisualisation.virtualKitchen.ai.recipe.generation.dto.RecipeProcessGenerationRequestDTO;
@@ -27,13 +30,17 @@ import java.time.LocalDateTime;
  * the current Recipe working session and the user Saves explicitly.
  */
 @RestController
+@LogAction("generation")
 @RequestMapping("/api/v1/recipes/{recipeId}/processes/generate")
 public class RecipeProcessGenerationController {
 
     private final RecipeProcessGenerationJobService recipeProcessGenerationJobService;
+    private final RunModelChoices runModelChoices;
 
-    public RecipeProcessGenerationController(RecipeProcessGenerationJobService recipeProcessGenerationJobService) {
+    public RecipeProcessGenerationController(RecipeProcessGenerationJobService recipeProcessGenerationJobService,
+                                             RunModelChoices runModelChoices) {
         this.recipeProcessGenerationJobService = recipeProcessGenerationJobService;
+        this.runModelChoices = runModelChoices;
     }
 
     /**
@@ -53,7 +60,9 @@ public class RecipeProcessGenerationController {
             @PathVariable Long recipeId, @Valid @RequestBody RecipeProcessGenerationRequestDTO request
     ) {
         Long userId = currentUserId();
-        RecipeProcessGenerationJobResponseDTO data = recipeProcessGenerationJobService.startJob(userId, recipeId, request);
+        // The models picked in the UI for this run (none: the account setting).
+        RecipeProcessGenerationJobResponseDTO data = runModelChoices.startWith(request.getModelKeys(),
+                () -> recipeProcessGenerationJobService.startJob(userId, recipeId, request));
         return build(data, "Process generation job started");
     }
 

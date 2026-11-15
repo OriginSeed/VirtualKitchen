@@ -12,9 +12,13 @@ import com.processVisualisation.virtualKitchen.ai.provider.exception.AiInvalidRe
 import com.processVisualisation.virtualKitchen.ai.provider.exception.AiRateLimitedException;
 import com.processVisualisation.virtualKitchen.ai.provider.exception.AiTimeoutException;
 import org.springframework.beans.factory.annotation.Qualifier;
+import org.springframework.core.io.ByteArrayResource;
+import org.springframework.http.HttpEntity;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.stereotype.Component;
+import org.springframework.util.LinkedMultiValueMap;
+import org.springframework.util.MultiValueMap;
 import org.springframework.util.StringUtils;
 import org.springframework.web.client.ResourceAccessException;
 import org.springframework.web.client.RestClient;
@@ -22,6 +26,7 @@ import org.springframework.web.client.RestClientResponseException;
 
 import java.nio.charset.StandardCharsets;
 import java.util.Base64;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -31,8 +36,9 @@ import java.util.Map;
  * DeepInfra API key, base URL and REST client of the text client; only the
  * {@code ai.deepinfra.image.*} settings are image-specific. Registered under
  * the bean name {@code deepInfraImageClient} so the model registry can route
- * to it alongside every other image provider bean. Prompt-only: reference
- * images are ignored.
+ * to it alongside every other image provider bean. Prompt-only unless
+ * {@code ai.deepinfra.image.edit-endpoint} is set: then a request with
+ * reference images is sent to that edit endpoint with the images attached.
  */
 @Component("deepInfraImageClient")
 public class DeepInfraImageClient implements ImageGenerationClient {
@@ -75,8 +81,9 @@ public class DeepInfraImageClient implements ImageGenerationClient {
 
     /**
      * Same as {@link #generate(String)}, with the settings' width and height replacing the configured size where
-     * set. FLUX.2 Klein on DeepInfra documents no step-count parameter, so {@code settings.steps()} is never sent;
-     * reference images are ignored.
+     * set. FLUX.2 Klein on DeepInfra documents no step-count parameter, so {@code settings.steps()} is never sent.
+     * Reference images are sent only when an edit endpoint is configured ({@link #supportsReferenceImages()});
+     * otherwise they are ignored.
      */
     @Override
     public GeneratedImage generate(String prompt, List<ReferenceImage> references, ImageGenerationSettings settings) {
@@ -85,13 +92,23 @@ public class DeepInfraImageClient implements ImageGenerationClient {
         Integer width = requested.width() != null ? requested.width() : image.getWidth();
         Integer height = requested.height() != null ? requested.height() : image.getHeight();
         validate(prompt, width, height);
+        boolean edit = supportsReferenceImages() && references != null && !references.isEmpty();
         try {
-            String response = restClient.post()
+            String response = edit
+                    ? restClient.post()
+                    .uri(image.getEditEndpoint())
+                    .header(HttpHeaders.AUTHORIZATION, "Bearer " + properties.getApiKey())
+                    .contentType(MediaType.MULTIPART_FORM_DATA)
+                    .accept(MediaType.APPLICATION_JSON)
+                    .body(buildEditRequest(prompt, references, width, height, requested.modelId()))
+                    .retrieve()
+                    .body(String.class)
+                    : restClient.post()
                     .uri(image.getEndpoint())
                     .header(HttpHeaders.AUTHORIZATION, "Bearer " + properties.getApiKey())
                     .contentType(MediaType.APPLICATION_JSON)
                     .accept(MediaType.APPLICATION_JSON)
-                    .body(buildRequestPayload(prompt, width, height, requested.modelId()))
+                    .body(buildRequestPayload(prompt, width, height, requested.modelId(), requested.seed()))
                     .retrieve()
                     .body(String.class);
 
@@ -117,14 +134,65 @@ public class DeepInfraImageClient implements ImageGenerationClient {
 
     /** @param modelId the selected model's provider id; null uses the configured {@code ai.deepinfra.image.model} */
     Map<String, Object> buildRequestPayload(String prompt, int width, int height, String modelId) {
+        return buildRequestPayload(prompt, width, height, modelId, null);
+    }
+
+    /** @param seed sent as {@code seed} only when {@code ai.deepinfra.image.send-seed} is on; null sends none */
+    Map<String, Object> buildRequestPayload(String prompt, int width, int height, String modelId, Long seed) {
         DeepInfraProperties.Image image = properties.getImage();
-        return Map.of(
-                "prompt", prompt,
-                "model", StringUtils.hasText(modelId) ? modelId : image.getModel(),
-                "size", width + "x" + height,
-                "n", image.getCount(),
-                "response_format", "b64_json"
-        );
+        Map<String, Object> payload = new LinkedHashMap<>();
+        payload.put("prompt", prompt);
+        payload.put("model", StringUtils.hasText(modelId) ? modelId : image.getModel());
+        payload.put("size", width + "x" + height);
+        payload.put("n", image.getCount());
+        payload.put("response_format", "b64_json");
+        if (seed != null && image.isSendSeed()) {
+            payload.put("seed", seed);
+        }
+        return payload;
+    }
+
+    /**
+     * The multipart body of an edit request: the same fields as a generation, with each reference image as an
+     * {@code image} file part (at most {@link #maxReferenceImages()} of them, in the order given).
+     */
+    MultiValueMap<String, Object> buildEditRequest(String prompt, List<ReferenceImage> references, int width,
+                                                          int height, String modelId) {
+        DeepInfraProperties.Image image = properties.getImage();
+        MultiValueMap<String, Object> body = new LinkedMultiValueMap<>();
+        body.add("prompt", prompt);
+        body.add("model", StringUtils.hasText(modelId) ? modelId : image.getModel());
+        body.add("size", width + "x" + height);
+        body.add("n", String.valueOf(image.getCount()));
+        body.add("response_format", "b64_json");
+        int index = 0;
+        for (ReferenceImage reference : references.subList(0, Math.min(references.size(), maxReferenceImages()))) {
+            String mimeType = StringUtils.hasText(reference.mimeType()) ? reference.mimeType() : MediaType.IMAGE_PNG_VALUE;
+            String extension = mimeType.substring(mimeType.indexOf('/') + 1);
+            String filename = "reference-" + (++index) + "." + extension;
+            HttpHeaders partHeaders = new HttpHeaders();
+            partHeaders.setContentType(MediaType.parseMediaType(mimeType));
+            // The filename makes it a file part; the form converter writes it into Content-Disposition.
+            body.add("image", new HttpEntity<>(new ByteArrayResource(reference.data()) {
+                @Override
+                public String getFilename() {
+                    return filename;
+                }
+            }, partHeaders));
+        }
+        return body;
+    }
+
+    /** True only when an edit endpoint is configured; without one the client stays prompt-only. */
+    @Override
+    public boolean supportsReferenceImages() {
+        return StringUtils.hasText(properties.getImage().getEditEndpoint());
+    }
+
+    @Override
+    public int maxReferenceImages() {
+        Integer configured = properties.getImage().getMaxReferenceImages();
+        return configured == null || configured < 1 ? 1 : configured;
     }
 
     private GeneratedImage parseImage(String response, int width, int height) throws JsonProcessingException {

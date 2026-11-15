@@ -26,7 +26,7 @@ export const RecipeOrderApi = {
 
   /** Starts a DRAFT order; the recipe is snapshotted now and the saved default address prefilled. */
   async create(data: RecipeOrderCreateRequest): Promise<RecipeOrder> {
-    return apiPost<RecipeOrder>(API.recipeOrders.list, data)
+    return apiPost<RecipeOrder>(API.recipeOrders.list, data, { uiAction: 'order.place' })
   },
 
   /** One order in full, including the recipe's process snapshot. */

@@ -104,7 +104,6 @@ export const clearRecipeDrafts = (recipeId: number, storage: DraftStorage | null
 export const draftKeys = {
   aiRecipeCreation: (recipeId: number) => `recipe.${recipeId}.aiRecipeCreation`,
   aiEdit: (recipeId: number) => `recipe.${recipeId}.aiEdit`,
-  newSubprocess: (recipeId: number) => `recipe.${recipeId}.newSubprocess`,
   nutrition: (recipeId: number) => `recipe.${recipeId}.nutrition`,
   stepIngredient: (stepId: string) => `step.${stepId}.newIngredient`,
   newRecipe: () => 'newRecipe',

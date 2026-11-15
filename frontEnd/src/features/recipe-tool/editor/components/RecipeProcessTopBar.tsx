@@ -3,8 +3,6 @@ import '../styles/RecipeEditorToolbar.css'
 import type { ProcessType } from '../../../../types/process'
 import type { RecipeProcessBreadcrumbEntry } from '../../../../types/recipe'
 import RecipeProcessBreadcrumb from './RecipeProcessBreadcrumb'
-import type { SaveState } from '../../session/persistence/saveCoordinator'
-import RecipeSaveStatus from './RecipeSaveStatus'
 import AiActionsMenu, { type RecipeAiActions } from './AiActionsMenu'
 import AddNodeMenu from './AddNodeMenu'
 
@@ -22,8 +20,10 @@ type RecipeProcessTopBarProps = {
   onBack?: () => void
   /** "Save everything now" — flushes the pending autosave. */
   onSave: () => void
-  saveState: SaveState
-  onResolveConflict: (choice: 'reload' | 'keepMine') => void
+  /** A save is in flight (the save status itself is shown in the Recipe Tool's header). */
+  isSaving?: boolean
+  /** Opens the keyboard shortcuts help. */
+  onShowShortcuts?: () => void
   onUndo?: () => void
   onRedo?: () => void
   canUndo?: boolean
@@ -36,7 +36,7 @@ type RecipeProcessTopBarProps = {
   /** Re-lays the whole graph out (positions only, one undo step); disabled without nodes. */
   onAutoArrange?: () => void
   canAutoArrange?: boolean
-  /** Opens the slideshow player (visuals + narration) of this process. */
+  /** Opens the slideshow player (visuals + narration) of this process only (Cook mode plays the whole recipe). */
   onPreview?: () => void
   onExport?: () => void
   /** Starts the AI visualization job for this process's own steps (see RecipeProcessCanvas's generateVisuals). */
@@ -66,8 +66,9 @@ const STATUS_COLORS = { success: 'var(--flow-success)', info: 'var(--flow-magic)
 /**
  * The Process Editor's top bar, grouped by what the user is doing:
  * - left — context only: Back, then Recipe / Process / Node (the node selector);
- * - right — canvas controls (Auto Arrange, Fit, Zoom, Undo/Redo), then output: ✨ AI, Preview,
- *   Export, and finally the save status with Save as the one high-emphasis action.
+ * - right — canvas controls (Auto Arrange, Fit, Zoom, Undo/Redo), then output: ✨ AI, Preview process,
+ *   Export, and finally shortcuts help and Save as the one high-emphasis action (the save status itself is in
+ *   the Recipe Tool's header, visible from both tabs).
  * Secondary labels collapse to icons as the bar narrows (container queries on the bar's own width,
  * since the editor shares the window with panels), keeping tooltips and accessible names.
  */
@@ -80,8 +81,8 @@ export default function RecipeProcessTopBar({
   onNavigateToAncestor,
   onBack,
   onSave,
-  saveState,
-  onResolveConflict,
+  isSaving = false,
+  onShowShortcuts,
   onUndo,
   onRedo,
   canUndo = false,
@@ -106,7 +107,6 @@ export default function RecipeProcessTopBar({
   currentNodeId,
   onSelectNode,
 }: RecipeProcessTopBarProps) {
-  const isSaving = saveState.status === 'saving'
   const steps = nodeOptions.filter((option) => option.kind === 'STEP')
   const conditions = nodeOptions.filter((option) => option.kind === 'CONDITION')
   const currentNode = nodeOptions.find((option) => option.id === currentNodeId) ?? null
@@ -205,7 +205,7 @@ export default function RecipeProcessTopBar({
             {onUndo && onRedo && (
               <>
                 <button type="button" onClick={onUndo} disabled={!canUndo} className="recipe-topbar-button" aria-label="Undo" title="Undo (Ctrl+Z)">↩</button>
-                <button type="button" onClick={onRedo} disabled={!canRedo} className="recipe-topbar-button" aria-label="Redo" title="Redo (Ctrl+Y)">↪</button>
+                <button type="button" onClick={onRedo} disabled={!canRedo} className="recipe-topbar-button" aria-label="Redo" title="Redo (Ctrl+Y or Ctrl+Shift+Z)">↪</button>
               </>
             )}
 
@@ -238,13 +238,13 @@ export default function RecipeProcessTopBar({
             />
 
             {onPreview && (
-              <button type="button" onClick={onPreview} className="recipe-topbar-button" aria-label="Preview" title="Preview: play this process as a slideshow with its visuals and narration">
-                ▶ <span className="hidden @3xl:inline">Preview</span>
+              <button type="button" onClick={onPreview} className="recipe-topbar-button" aria-label="Preview this process" title="Preview this process as a slideshow with its visuals and narration (Cook mode, in the header, plays the whole recipe)">
+                ▶ <span className="hidden @3xl:inline">Preview process</span>
               </button>
             )}
 
             {onExport && (
-              <button type="button" onClick={onExport} className="recipe-topbar-button" aria-label="Export" title="Export this process as JSON">
+              <button type="button" onClick={onExport} className="recipe-topbar-button" aria-label="Export recipe" title="Export the whole recipe as a file that can be imported from New recipe">
                 ⤓ <span className="hidden @6xl:inline">Export</span>
               </button>
             )}
@@ -253,16 +253,16 @@ export default function RecipeProcessTopBar({
           <span className="recipe-topbar-divider" aria-hidden />
 
           <div className="recipe-topbar-save">
-            {/* A fixed slot, so Saving… / Saved / Unsaved changes never shift the rest of the bar;
-                only a conflict (which needs its buttons) takes the room it needs. */}
-            <span className={`recipe-topbar-save-status${saveState.status === 'conflict' ? ' is-conflict' : ''}`}>
-              <RecipeSaveStatus saveState={saveState} onResolveConflict={onResolveConflict} />
-            </span>
+            {onShowShortcuts && (
+              <button type="button" onClick={onShowShortcuts} className="recipe-topbar-button" aria-label="Keyboard shortcuts" title="Keyboard shortcuts (?)">
+                ⌨
+              </button>
+            )}
             <button
               type="button"
               onClick={onSave}
               disabled={isSaving}
-              title="Changes are saved automatically — this saves everything right now"
+              title="Changes are saved automatically — this saves everything right now (Ctrl+S)"
               className="recipe-topbar-button is-primary"
             >
               {isSaving ? 'Saving…' : 'Save'}

@@ -51,6 +51,12 @@ public class RecipeAiWorkflow {
      */
     private Map<String, String> modelKeys = new LinkedHashMap<>();
 
+    /**
+     * Whether the run regenerates and replaces images and narration the steps already have (false: keeps them and
+     * only fills what is missing). Chosen at creation, can be changed at approval; retries never overwrite.
+     */
+    private boolean overwriteExisting;
+
     /** The latest visualization job per approved process (VISUALS task); a retry replaces the entry. */
     private List<VisualizationJobRef> visualizationJobs = new ArrayList<>();
 

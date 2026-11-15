@@ -32,6 +32,8 @@ export interface RecipeAiTaskSelection {
   completeExperience: boolean
   /** Models for this run only, by capability; a missing entry uses the user's account setting. */
   modelKeys?: Partial<Record<RunModelCapability, string>>
+  /** Steps that already have an image or narration: false (default) keeps them, true regenerates and replaces them. */
+  overwriteExisting?: boolean
 }
 
 /** The capabilities a run can pick a model for. */
@@ -58,6 +60,10 @@ export interface RecipeAiWorkflowEstimate {
   approximate: boolean
   /** False while the number of steps is an assumed range (the process isn't generated yet). */
   stepCountKnown: boolean
+  /** Saved steps that already have an image (what "keep or replace" applies to); 0 for a new process. */
+  existingImages?: number
+  /** Saved steps that already have ready narration; 0 for a new process. */
+  existingNarrations?: number
 }
 
 export interface RecipeAiWorkflowTask {
@@ -95,4 +101,8 @@ export interface RecipeAiWorkflowResponse {
   createdAt?: string | null
   completedAt?: string | null
   reused: boolean
+  /** The models this run uses where it overrides the account setting (what approval and retry pickers start from). */
+  modelKeys?: Partial<Record<RunModelCapability, string>>
+  /** Whether the run regenerates and replaces images and narration the steps already have. */
+  overwriteExisting?: boolean
 }

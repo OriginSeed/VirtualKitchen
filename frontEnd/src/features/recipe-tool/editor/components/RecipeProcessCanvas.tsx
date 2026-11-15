@@ -81,12 +81,17 @@ import type { RecipeAiActions } from './AiActionsMenu'
 import { ProcessSidebarActionsProvider, type ProcessSidebarActions } from '../context/ProcessSidebarActionsContext'
 import RecipeVisualizationSlideshow from '../../walkthrough/RecipeVisualizationSlideshow'
 import ExportProcessModal from './ExportProcessModal'
+import { exportRecipeFile, type ExportedRecipeFile } from '../../session/recipeFile'
+import { errorMessage } from '../../../../shared/errors'
 import { startPanelResize } from './panelResize'
 import { useCanvasShortcuts } from '../hooks/useCanvasShortcuts'
+import EmptyCanvasPrompt from './EmptyCanvasPrompt'
+import ShortcutHelpDialog from './ShortcutHelpDialog'
 import { useProcessVisuals } from '../hooks/useProcessVisuals'
+import { ModelChoiceDialog } from '../../workflow/components/RunModelPicker'
+import type { RunModelCapability } from '../../../../types/recipeAiWorkflow'
 import { buildCanvasSlideshowSteps } from '../model/canvasSlideshow'
 import { describeNodeDeletion } from '../model/nodeDeletion'
-import { errorMessage } from '../../../../shared/errors'
 import '../../../../styles/flow-ui.css'
 import '../../styles/RecipePropertiesPanel.css'
 import '../styles/RecipeProcessCanvas.css'
@@ -124,6 +129,8 @@ type RecipeProcessCanvasProps = {
 
 // Default sizes of a new node (see createRecipeStepNode/createConditionNode).
 const NEW_STEP_SIZE = DEFAULT_NODE_SIZE.step
+/** Generate Visuals: the text model writes the image prompts, the image model draws them. */
+const VISUALS_MODELS: RunModelCapability[] = ['TEXT_TO_TEXT', 'TEXT_TO_IMAGE']
 /** Size of the step popup (see .flow-step-popup) and its gap to the node — for placing it where it fits. */
 const STEP_POPUP_WIDTH = 420
 const STEP_POPUP_HEIGHT = 540
@@ -285,7 +292,7 @@ function RecipeProcessCanvasContent({
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null)
   const [selectedEdgeId, setSelectedEdgeId] = useState<string | null>(null)
   const [zoomPercent, setZoomPercent] = useState(Math.round((initialFlowData.viewport?.zoom ?? 1) * 100))
-  const [exportJson, setExportJson] = useState<string | null>(null)
+  const [exportedFile, setExportedFile] = useState<ExportedRecipeFile | null>(null)
   const [showSlideshow, setShowSlideshow] = useState(false)
   // Narration is generated from the *saved* step text, so opening the slideshow first flushes any
   // pending autosave; the slideshow waits on this before asking the backend for narration.
@@ -697,8 +704,6 @@ function RecipeProcessCanvasContent({
     else if (selectedEdgeId) deleteEdge(selectedEdgeId)
   }, [selectedNodeId, selectedEdgeId, requestDeleteNode, deleteEdge])
 
-  useCanvasShortcuts({ onDelete: deleteSelected, onUndo: undo, onRedo: redo })
-
   const duplicateNode = useCallback((id: string) => {
     pushHistorySnapshot()
     setNodes((nds) => {
@@ -824,12 +829,16 @@ function RecipeProcessCanvasContent({
     session.updateProcess(processId, { viewport: { x: viewport.x, y: viewport.y, zoom: viewport.zoom } })
   }, [session, processId])
 
-  const handleExport = useCallback(() => {
-    const viewport = currentViewportRef.current ?? reactFlowInstance.current?.getViewport()
-    const flowData = createFlowDataPayload(nodes, edges, viewport ?? undefined)
-    const payload = buildProcessUpdateRequest(process.name, process.description, flowData)
-    setExportJson(JSON.stringify({ recipeId, processId, type: process.type, ...payload }, null, 2))
-  }, [nodes, edges, process, recipeId, processId])
+  // The whole recipe as a file another user can import: saved first, so the file holds what is on screen
+  // and the narration listed for it belongs to the saved steps.
+  const handleExport = useCallback(async () => {
+    try {
+      await session.saveNow()
+      setExportedFile(await exportRecipeFile(recipeId, session.getProcesses()))
+    } catch (error) {
+      notifyError(errorMessage(error, 'Unable to export this recipe right now'))
+    }
+  }, [session, recipeId, notifyError])
 
   const buildSlideshowSteps = () => buildCanvasSlideshowSteps(process, nodes, edges, recipeProcesses, stepOutputGraph)
 
@@ -859,6 +868,11 @@ function RecipeProcessCanvasContent({
     unit: isPreparationProcess ? 'flows' : 'steps',
     applyStep: applyStepVisualization,
   })
+  // Generating visuals spends image credits: the user picks the models first (ModelChoiceDialog below).
+  const [visualsModelsOpen, setVisualsModelsOpen] = useState(false)
+  const askForVisualsModels = useCallback(() => {
+    if (!visuals.generating) setVisualsModelsOpen(true)
+  }, [visuals.generating])
 
   /**
    * Guards actually leaving via onBack. Pending edits are simply saved on the way out (autosave
@@ -883,17 +897,17 @@ function RecipeProcessCanvasContent({
     else notifyError(error ?? 'Unable to save this recipe right now')
   }, [session, notifySuccess, notifyError])
 
-  const handleResolveConflict = useCallback(async (choice: 'reload' | 'keepMine') => {
-    if (choice === 'reload' && !(await confirm({
-      eyebrow: 'Discard changes',
-      title: 'Discard your unsaved changes?',
-      message: 'Every change made here since the last save will be lost, and the latest saved version of this recipe is loaded instead. This can\'t be undone.',
-      confirmLabel: 'Discard & reload',
-    }))) return
-    session.resolveConflict(choice).catch((error) => {
-      notifyError(errorMessage(error, 'Unable to resolve the conflict right now'))
-    })
-  }, [session, notifyError, confirm])
+  // Shortcuts only while this canvas is on screen: it stays mounted (hidden) while the Recipe Process tab shows.
+  const [showShortcuts, setShowShortcuts] = useState(false)
+  const isCanvasVisible = useCallback(() => bodyRef.current?.offsetParent != null, [])
+  useCanvasShortcuts({
+    onDelete: deleteSelected,
+    onUndo: undo,
+    onRedo: redo,
+    onSave: () => void handleSave(),
+    onShowHelp: () => setShowShortcuts(true),
+    isActive: isCanvasVisible,
+  })
 
   const handleBack = useCallback(() => {
     if (!confirmNavigatingAway()) return
@@ -1062,8 +1076,8 @@ function RecipeProcessCanvasContent({
         onNavigateToAncestor={handleNavigateToAncestor}
         onBack={onBack ? handleBack : undefined}
         onSave={() => void handleSave()}
-        saveState={session.saveState}
-        onResolveConflict={handleResolveConflict}
+        isSaving={session.saveState.status === 'saving'}
+        onShowShortcuts={() => setShowShortcuts(true)}
         onUndo={undo}
         onRedo={redo}
         canUndo={session.canUndo}
@@ -1076,8 +1090,8 @@ function RecipeProcessCanvasContent({
         onAutoArrange={autoArrange}
         canAutoArrange={nodes.length > 0}
         onPreview={openSlideshow}
-        onExport={handleExport}
-        onGenerateVisuals={() => void visuals.generate()}
+        onExport={() => void handleExport()}
+        onGenerateVisuals={askForVisualsModels}
         isGeneratingVisuals={visuals.generating}
         visualsProgressLabel={visuals.progressLabel}
         generateVisualsStatus={visuals.status}
@@ -1247,7 +1261,7 @@ function RecipeProcessCanvasContent({
                           onDeleteNode={(id) => void requestDeleteNode(id)}
                           onDuplicateNode={duplicateNode}
                           onOpenSubprocess={handleOpenSubprocess}
-                          onGenerateVisuals={() => void visuals.generate()}
+                          onGenerateVisuals={askForVisualsModels}
                           isGeneratingVisuals={visuals.generating}
                           visualsProgressLabel={visuals.progressLabel}
                           issues={readiness?.issues.filter((issue) => issue.nodeId === popupNode.id && issue.processId === processId) ?? []}
@@ -1260,6 +1274,14 @@ function RecipeProcessCanvasContent({
                   )}
                 </ReactFlow>
               </RecipeProcessGraphProvider>
+              {flowReady && nodes.length === 0 && (
+                <EmptyCanvasPrompt
+                  isPreparation={isPreparationProcess}
+                  onAddStep={addStep}
+                  onAddCondition={addCondition}
+                  onGenerateWithAi={aiActions && !isPreparationProcess ? () => aiActions.onOpenAiCreation() : undefined}
+                />
+              )}
             </div>
           </div>
         </div>
@@ -1305,7 +1327,7 @@ function RecipeProcessCanvasContent({
                   onDeleteNode={(id) => void requestDeleteNode(id)}
                   onDuplicateNode={duplicateNode}
                   onOpenSubprocess={handleOpenSubprocess}
-                  onGenerateVisuals={() => void visuals.generate()}
+                  onGenerateVisuals={askForVisualsModels}
                   isGeneratingVisuals={visuals.generating}
                   visualsProgressLabel={visuals.progressLabel}
                 />
@@ -1336,15 +1358,26 @@ function RecipeProcessCanvasContent({
         />
       )}
 
-      {exportJson && (
-        <ExportProcessModal
-          json={exportJson}
-          nodeCount={nodes.length}
-          edgeCount={edges.length}
-          fileName={`process-${processId}.json`}
-          onClose={() => setExportJson(null)}
+      {visualsModelsOpen && (
+        <ModelChoiceDialog
+          title="🖼️ Generate visuals"
+          description={isPreparationProcess
+            ? 'One image per preparation flow. The text model writes the image prompts; the image model draws them.'
+            : 'One image for every step of this process. The text model writes the image prompts; the image model draws them.'}
+          capabilities={VISUALS_MODELS}
+          existing={{ images: nodes.filter((node) => isRecipeStepNode(node) && normalizeRecipeStepNodeData(node.data).visualization?.imageUrl).length }}
+          confirmLabel="Generate visuals"
+          onCancel={() => setVisualsModelsOpen(false)}
+          onConfirm={(modelKeys, overwriteExisting) => {
+            setVisualsModelsOpen(false)
+            void visuals.generate(modelKeys, overwriteExisting)
+          }}
         />
       )}
+
+      {exportedFile && <ExportProcessModal file={exportedFile} onClose={() => setExportedFile(null)} />}
+
+      {showShortcuts && <ShortcutHelpDialog onClose={() => setShowShortcuts(false)} />}
     </div>
   )
 }

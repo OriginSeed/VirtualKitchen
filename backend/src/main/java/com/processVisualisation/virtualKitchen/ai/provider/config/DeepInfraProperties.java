@@ -66,5 +66,19 @@ public class DeepInfraProperties {
         private Integer height = 1024;
         /** Sent as {@code n}. Only the first image is used, so anything above 1 is paid for and discarded. */
         private Integer count = 1;
+
+        /**
+         * DeepInfra's OpenAI-style image edit endpoint ({@code /v1/images/edits}, multipart). Blank (the default)
+         * keeps this client prompt-only. When set, a request that carries reference images is sent here with the
+         * images as {@code image} parts, and the client reports that it supports reference images. Only set it for
+         * a model that accepts image input on this endpoint.
+         */
+        private String editEndpoint;
+
+        /** How many reference images one edit request carries (FLUX.2 takes several; the endpoint documents one). */
+        private Integer maxReferenceImages = 1;
+
+        /** Send the request's seed as {@code seed}. Off by default: the OpenAI-style endpoint does not document it. */
+        private boolean sendSeed;
     }
 }

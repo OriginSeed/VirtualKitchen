@@ -195,6 +195,25 @@ class StepNarrationServiceTest {
     }
 
     @Test
+    void batchKeepsReadyNarrationByDefault_andReplacesItWhenForced() throws Exception {
+        service.ensureAll(OWNER, RECIPE_ID, PROCESS_ID, null);
+        pool.runAll();
+        int spokenFirst = spoken("geminiTtsProvider").size();
+        assertEquals(2, spokenFirst);
+
+        service.ensureAll(OWNER, RECIPE_ID, PROCESS_ID, null);
+        pool.runAll();
+        assertEquals(spokenFirst, spoken("geminiTtsProvider").size(), "READY narration is kept");
+
+        List<StepNarrationResponseDTO> forced = service.ensureAll(OWNER, RECIPE_ID, PROCESS_ID, null, true);
+        assertEquals(List.of("GENERATING", "GENERATING"), forced.stream().map(StepNarrationResponseDTO::getStatus).toList());
+        pool.runAll();
+        assertEquals(spokenFirst + 2, spoken("geminiTtsProvider").size(), "every step narrated again");
+        assertEquals(List.of("READY", "READY"),
+                service.list(OWNER, RECIPE_ID, PROCESS_ID).stream().map(StepNarrationResponseDTO::getStatus).toList());
+    }
+
+    @Test
     void sameTextReusesExistingNarrationWithoutCallingTheProvider() throws Exception {
         service.ensure(OWNER, RECIPE_ID, PROCESS_ID, STEP_1, false);
         pool.runAll();

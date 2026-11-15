@@ -1,0 +1,299 @@
+/*
+ * Shared page building blocks: header, buttons, empty / error / loading states.
+ * Every kitchen page uses these so the same situation always looks the same. Colours come from --flow-* tokens.
+ */
+
+/* ---------- Page container ---------- */
+
+.vk-page {
+  width: 100%;
+  max-width: 1400px;
+  margin: 0 auto;
+}
+
+/* ---------- Header ---------- */
+
+.vk-page-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 22px;
+}
+
+.vk-page-header-text {
+  min-width: 0;
+  max-width: 720px;
+}
+
+.vk-page-eyebrow {
+  margin-bottom: 4px;
+  color: var(--flow-accent);
+  font-size: 0.7rem;
+  font-weight: 800;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+}
+
+.vk-page-title {
+  margin: 0;
+  color: var(--flow-text);
+  font-size: 30px;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  line-height: 1.15;
+}
+
+.vk-page-subtitle {
+  margin: 6px 0 0;
+  color: var(--flow-text-muted);
+  font-size: 14px;
+  line-height: 20px;
+}
+
+.vk-page-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+}
+
+@media (max-width: 480px) {
+  .vk-page-title { font-size: 24px; }
+  .vk-page-actions { width: 100%; }
+}
+
+/* ---------- Buttons ---------- */
+
+.vk-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.45rem;
+  min-height: 2.5rem;
+  padding: 0.55rem 1rem;
+  border: 1px solid transparent;
+  border-radius: var(--flow-radius-md);
+  font: inherit;
+  font-size: 0.82rem;
+  font-weight: 700;
+  line-height: 1.2;
+  text-decoration: none;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background 0.15s ease, border-color 0.15s ease, transform 0.15s ease, box-shadow 0.15s ease;
+}
+
+.vk-btn:disabled {
+  cursor: default;
+  opacity: 0.65;
+}
+
+.vk-btn:focus-visible {
+  outline: 2px solid var(--flow-accent);
+  outline-offset: 2px;
+}
+
+.vk-btn-primary {
+  background: linear-gradient(135deg, var(--flow-accent), var(--flow-accent-secondary));
+  color: #fff;
+}
+
+.vk-btn-primary:hover:not(:disabled) {
+  transform: translateY(-1px);
+  box-shadow: 0 7px 18px rgba(var(--flow-accent-rgb), 0.25);
+}
+
+.vk-btn-secondary {
+  border-color: var(--flow-border);
+  background: var(--flow-surface);
+  color: var(--flow-text);
+}
+
+.vk-btn-secondary:hover:not(:disabled) {
+  background: var(--flow-surface-muted);
+  border-color: var(--flow-border-strong);
+}
+
+.vk-btn-ghost {
+  background: transparent;
+  color: var(--flow-accent);
+}
+
+.vk-btn-ghost:hover:not(:disabled) {
+  background: var(--flow-accent-soft);
+}
+
+.vk-btn-sm {
+  min-height: 2rem;
+  padding: 0.35rem 0.7rem;
+  font-size: 0.76rem;
+}
+
+/* ---------- Empty / error states ---------- */
+
+.vk-state {
+  display: flex;
+  min-height: 260px;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 2.5rem 1.5rem;
+  border: 1px dashed var(--flow-border-strong);
+  border-radius: var(--flow-radius-lg);
+  background: var(--flow-surface);
+  text-align: center;
+}
+
+.vk-state-compact {
+  min-height: 0;
+  padding: 1.5rem 1rem;
+}
+
+.vk-state-icon {
+  margin-bottom: 10px;
+  font-size: 2rem;
+  line-height: 1;
+}
+
+.vk-state-title {
+  margin: 0;
+  color: var(--flow-text);
+  font-size: 1rem;
+  font-weight: 800;
+}
+
+.vk-state-text {
+  max-width: 380px;
+  margin: 0.4rem 0 0;
+  color: var(--flow-text-muted);
+  font-size: 0.82rem;
+  line-height: 1.35rem;
+}
+
+.vk-state-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 10px;
+  margin-top: 18px;
+}
+
+.vk-state-error {
+  border-style: solid;
+  border-color: var(--flow-danger-border);
+  background: var(--flow-danger-soft);
+}
+
+.vk-state-error .vk-state-title {
+  color: var(--flow-danger);
+}
+
+/* ---------- Loading ---------- */
+
+.vk-skeleton-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 18px;
+}
+
+.vk-skeleton-card {
+  overflow: hidden;
+  border: 1px solid var(--flow-border);
+  border-radius: var(--flow-radius-lg);
+  background: var(--flow-surface);
+}
+
+.vk-skeleton-block,
+.vk-skeleton-line {
+  background: var(--flow-skeleton);
+  animation: vk-skeleton-pulse 1.4s ease-in-out infinite;
+}
+
+.vk-skeleton-block {
+  height: 140px;
+}
+
+.vk-skeleton-body {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 16px;
+}
+
+.vk-skeleton-line {
+  height: 12px;
+  border-radius: 6px;
+}
+
+.vk-skeleton-line.is-short { width: 40%; }
+.vk-skeleton-line.is-medium { width: 70%; }
+
+.vk-loading-text {
+  padding: 2rem 1rem;
+  color: var(--flow-text-muted);
+  font-size: 0.9rem;
+  text-align: center;
+}
+
+@keyframes vk-skeleton-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.55; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .vk-skeleton-block,
+  .vk-skeleton-line { animation: none; }
+}
+
+/* ---------- Chips ---------- */
+
+.vk-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  border: 1px solid var(--flow-border);
+  border-radius: 999px;
+  background: var(--flow-surface-muted);
+  color: var(--flow-text-muted);
+  font-size: 0.68rem;
+  font-weight: 700;
+  line-height: 1.4;
+  white-space: nowrap;
+}
+
+.vk-chip-demo {
+  border-color: var(--flow-magic-border);
+  background: var(--flow-magic-soft);
+  color: var(--flow-magic);
+}
+
+.vk-chip-success {
+  border-color: var(--flow-success-border);
+  background: var(--flow-success-soft);
+  color: var(--flow-success-strong);
+}
+
+.vk-chip-warning {
+  border-color: var(--flow-warning-border);
+  background: var(--flow-warning-soft);
+  color: var(--flow-warning);
+}
+
+.vk-chip-danger {
+  border-color: var(--flow-danger-border);
+  background: var(--flow-danger-soft);
+  color: var(--flow-danger);
+}
+
+/* Screen-reader-only text. */
+.vk-sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}

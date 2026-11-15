@@ -1,5 +1,7 @@
 package com.processVisualisation.virtualKitchen.ai.recipe.narration;
 
+import com.processVisualisation.virtualKitchen.common.logging.UsageLedger;
+
 import com.processVisualisation.virtualKitchen.ai.platform.analytics.AiAnalyticsRecorder;
 import com.processVisualisation.virtualKitchen.ai.platform.artifact.AiArtifactKeyBuilder;
 import com.processVisualisation.virtualKitchen.ai.platform.artifact.AiArtifactService;
@@ -184,7 +186,20 @@ public class StepNarrationService {
      * independent: a step that fails never affects the others or narration already READY.
      */
     public List<StepNarrationResponseDTO> ensureAll(Long userId, Long recipeId, Long processId, List<String> stepIds) {
-        requireViewable(recipeId, userId);
+        return ensureAll(userId, recipeId, processId, stepIds, false);
+    }
+
+    /**
+     * {@link #ensureAll(Long, Long, Long, List)}; with {@code force}, steps whose narration is already READY are
+     * narrated again and replaced ("regenerate and replace", owner only — see {@link #ensure}).
+     */
+    public List<StepNarrationResponseDTO> ensureAll(Long userId, Long recipeId, Long processId, List<String> stepIds,
+                                                    boolean force) {
+        if (force) {
+            requireOwned(recipeId, userId);
+        } else {
+            requireViewable(recipeId, userId);
+        }
         Map<String, NarrationScript> scripts = loadScripts(recipeId, processId);
         List<String> targets = stepIds == null || stepIds.isEmpty() ? new ArrayList<>(scripts.keySet()) : stepIds;
         log.info("event=narration_batch_requested recipeId={} processId={} steps={}", recipeId, processId, targets.size());
@@ -196,7 +211,7 @@ public class StepNarrationService {
                 continue;
             }
             try {
-                result.add(ensureStep(userId, recipeId, processId, stepId, script, false));
+                result.add(ensureStep(userId, recipeId, processId, stepId, script, force));
             } catch (RuntimeException e) {
                 FailureLogger.logFailure(log, "narration_batch_step_failed", e,
                         "narrationKey=" + narrationKey(recipeId, stepId));
@@ -238,6 +253,7 @@ public class StepNarrationService {
             StepNarration record = existing.get();
             boolean sameText = script.hash().equals(record.getSourceTextHash());
             if (sameText && record.getStatus() == StepNarrationStatus.READY) {
+                UsageLedger.increment(UsageLedger.Counter.CACHE_HITS);
                 log.debug("event=narration_cache_hit narrationKey={}", key);
                 return toDto(stepId, record, script, now);
             }
@@ -329,6 +345,8 @@ public class StepNarrationService {
         } catch (Exception e) {
             operation.failed(e, "narrationKey=" + key);
             store.markFailed(key, token, describeFailure(e), now());
+        } finally {
+            operation.close();
         }
     }
 

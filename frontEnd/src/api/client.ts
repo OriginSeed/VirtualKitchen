@@ -9,6 +9,16 @@ import { expireSession, getStoredToken } from './authToken'
 interface FetchOptions extends RequestInit {
   params?: Record<string, string | number | boolean>
   timeout?: number
+  /**
+   * Names the user action (e.g. `editor.save`) this request belongs to, sent as `X-UI-Action` so the
+   * backend can tie every call of one click together. Lowercase letters, digits, `.`, `_`, `-`; max 64.
+   */
+  uiAction?: string
+}
+
+/** Per-call options for the API modules' functions that let a caller tag the request. */
+export interface UiActionOptions {
+  uiAction?: string
 }
 
 /**
@@ -18,11 +28,14 @@ interface FetchOptions extends RequestInit {
  */
 export class ApiError extends Error {
   readonly status: number
+  /** The backend's `X-Request-ID` for this request, for users to quote when reporting the error. */
+  readonly requestId?: string
 
-  constructor(message: string, status: number) {
+  constructor(message: string, status: number, requestId?: string) {
     super(message)
     this.name = 'ApiError'
     this.status = status
+    this.requestId = requestId
   }
 }
 
@@ -59,7 +72,7 @@ async function request<T>(
   endpoint: string,
   options: FetchOptions = {}
 ): Promise<T> {
-  const { params, timeout = API_CONFIG.timeout, ...fetchOptions } = options
+  const { params, timeout = API_CONFIG.timeout, uiAction, ...fetchOptions } = options
 
   const url = buildUrl(endpoint, params)
   const controller = new AbortController()
@@ -86,6 +99,7 @@ async function request<T>(
       headers: {
         ...API_CONFIG.headers,
         ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        ...(uiAction ? { 'X-UI-Action': uiAction } : {}),
         ...fetchOptions.headers,
       },
     })
@@ -112,6 +126,7 @@ async function request<T>(
       errorData.message ||
       `HTTP ${response.status}: ${response.statusText}`,
       response.status,
+      response.headers.get('X-Request-ID') ?? undefined,
     )
   }
 

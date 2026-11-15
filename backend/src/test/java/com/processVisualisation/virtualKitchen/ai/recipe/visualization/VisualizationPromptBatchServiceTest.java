@@ -17,6 +17,7 @@ import com.processVisualisation.virtualKitchen.ai.provider.dto.AiResponse;
 import com.processVisualisation.virtualKitchen.ai.recipe.visualization.RecipeProcessVisualizationService.FlowContext;
 import com.processVisualisation.virtualKitchen.ai.recipe.visualization.RecipeProcessVisualizationService.VisualPreparation;
 import com.processVisualisation.virtualKitchen.ai.recipe.visualization.RecipeProcessVisualizationService.VisualTarget;
+import com.processVisualisation.virtualKitchen.ai.recipe.visualization.RecipeProcessVisualizationService.PrepFlow;
 import com.processVisualisation.virtualKitchen.recipe.model.Process;
 import com.processVisualisation.virtualKitchen.recipe.model.ProcessType;
 import org.junit.jupiter.api.BeforeEach;
@@ -36,6 +37,7 @@ import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
@@ -144,6 +146,29 @@ class VisualizationPromptBatchServiceTest {
         assertEquals(0, service.ensurePrompts(USER, RECIPE, List.of(MAIN)));
 
         verify(aiClient, never()).chat(any());
+    }
+
+    @Test
+    void sceneAnchorSwitchedOffAtRuntime_theNextBatchAsksForNoScene() {
+        // A real anchor service, configured on, then switched off as an admin override would.
+        VisualizationSceneAnchorService anchors = new VisualizationSceneAnchorService(
+                visualizationService, mock(com.processVisualisation.virtualKitchen.ai.provider.ImageStorageClient.class), true);
+        service = new VisualizationPromptBatchService(
+                visualizationService,
+                new RecipeProcessVisualizationPromptBuilder(),
+                queueService,
+                new AiClientResolver(Map.of("testTextClient", aiClient), Map.of()),
+                new AiJsonResponseSupport(mock(AiResponseService.class)),
+                anchors);
+        anchors.setEnabled(false);
+        givenMainWithSteps(1);
+        answerWithPromptsFor("m1");
+
+        service.ensurePrompts(USER, RECIPE, List.of(MAIN));
+
+        String prompt = capturedRequests().get(0).getUserPrompt();
+        assertTrue(!prompt.contains("SCENE:"), prompt);
+        verify(visualizationService, never()).saveScenePrompt(any(), any(), any());
     }
 
     @Test
@@ -290,6 +315,110 @@ class VisualizationPromptBatchServiceTest {
             pool.shutdownNow();
         }
         verify(aiClient, times(1)).chat(any());
+    }
+
+    // --- Focused Cooking View --------------------------------------------------------------------
+
+    private static final String KITCHEN_JSON = "\"scene\":{\"vessel\":\"a steel kadai\",\"stove\":\"a black gas stove\","
+            + "\"surface\":\"a granite countertop\",\"cuttingBoard\":\"a wooden cutting board\","
+            + "\"prepBowl\":\"a steel bowl\",\"servingDish\":\"a white plate\"}";
+
+    @Test
+    void focusedView_storesEachStepsOwnTextWithItsFocus_andTheRecipesEquipment() {
+        when(visualizationService.focusedViewEnabled()).thenReturn(true);
+        when(visualizationService.defaultFocus(any())).thenReturn(VisualFocus.COOKING_VESSEL);
+        when(visualizationService.findScene(RECIPE)).thenReturn(Optional.empty());
+        givenMainWithSteps(3);
+        when(aiClient.chat(any())).thenReturn(AiResponse.builder().content("{\"dishContext\":\"Part of making Tomato Masala\","
+                + KITCHEN_JSON + ",\"prompts\":["
+                + "{\"id\":\"m1\",\"focus\":\"CUTTING_BOARD\",\"state\":\"Half an onion in small dice\",\"action\":\"A knife chopping\"},"
+                + "{\"id\":\"m2\",\"focus\":\"wide shot\",\"state\":\"Oil in the pan\",\"action\":\"\"},"
+                + "{\"id\":\"m3\",\"focus\":\"COOKING_VESSEL\",\"state\":\"\",\"action\":\"\"}]}").build());
+
+        assertEquals(2, service.ensurePrompts(USER, RECIPE, List.of(MAIN)));
+
+        // The writer moved the camera to the board for m1; an unknown focus keeps the step's default.
+        verify(visualizationService).savePrompt(VisualizationKeyBuilder.build("100", "main-0"),
+                "Half an onion in small dice. A knife chopping.", VisualFocus.CUTTING_BOARD, false);
+        verify(visualizationService).savePrompt(VisualizationKeyBuilder.build("100", "main-1"),
+                "Oil in the pan.", VisualFocus.COOKING_VESSEL, false);
+        // An empty entry is left to the per-step fallback.
+        verify(visualizationService, never()).savePrompt(eq(VisualizationKeyBuilder.build("100", "main-2")), anyString(), any(), any());
+        verify(visualizationService).saveSceneContext(RECIPE, new SceneContext("a steel kadai", "a black gas stove",
+                "a granite countertop", "a wooden cutting board", "a steel bowl", "a white plate"), "Part of making Tomato Masala");
+        verify(visualizationService, never()).saveScenePrompt(any(), any(), any());
+
+        AiRequest request = capturedRequests().get(0);
+        assertEquals(new RecipeProcessVisualizationPromptBuilder().buildFocusedBatchSystemPrompt(), request.getSystemPrompt());
+        assertTrue(request.getUserPrompt().contains("Default focus: COOKING_VESSEL"), request.getUserPrompt());
+        assertTrue(request.getUserPrompt().contains("SCENE: also write dishContext and scene"), request.getUserPrompt());
+    }
+
+    @Test
+    void focusedView_aRecipeThatHasItsEquipment_isNotAskedForItAgain() {
+        when(visualizationService.focusedViewEnabled()).thenReturn(true);
+        when(visualizationService.defaultFocus(any())).thenReturn(VisualFocus.COOKING_VESSEL);
+        com.processVisualisation.virtualKitchen.ai.asset.VisualizationAsset scene =
+                new com.processVisualisation.virtualKitchen.ai.asset.VisualizationAsset();
+        scene.setSceneContext(new SceneContext("a steel kadai", null, null, null, null, null));
+        when(visualizationService.findScene(RECIPE)).thenReturn(Optional.of(scene));
+        givenMainWithSteps(1);
+        when(aiClient.chat(any())).thenReturn(AiResponse.builder().content("{\"prompts\":["
+                + "{\"id\":\"m1\",\"focus\":\"COOKING_VESSEL\",\"state\":\"Oil in the pan\",\"action\":\"Oil being poured\"}]}").build());
+
+        assertEquals(1, service.ensurePrompts(USER, RECIPE, List.of(MAIN)));
+
+        assertFalse(capturedRequests().get(0).getUserPrompt().contains("SCENE:"));
+        verify(visualizationService, never()).saveSceneContext(any(), any(), any());
+    }
+
+    @Test
+    void focusedView_listsPreparationStepsPerFlow_andStoresLookAlikeSteps_neverForAFlowsFirstStep() {
+        when(visualizationService.focusedViewEnabled()).thenReturn(true);
+        when(visualizationService.defaultFocus(any())).thenReturn(VisualFocus.PREP_BOWL);
+        when(visualizationService.findScene(RECIPE)).thenReturn(Optional.empty());
+        PrepFlow chicken = new PrepFlow("out-a", "Marinated Chicken");
+        PrepFlow onions = new PrepFlow("out-b", "Chopped Onions");
+        when(visualizationService.prepareVisualTargets(PREP)).thenReturn(new VisualPreparation(process(PREP, ProcessType.SUBPROCESS), List.of(
+                new VisualTarget("a1", input("Cut chicken"), null, chicken),
+                new VisualTarget("a2", input("Marinate"), null, chicken),
+                new VisualTarget("a3", input("Rest 30 min"), null, chicken),
+                new VisualTarget("b1", input("Chop onions"), null, onions))));
+        when(aiClient.chat(any())).thenReturn(AiResponse.builder().content("{\"prompts\":["
+                + "{\"id\":\"p1\",\"focus\":\"CUTTING_BOARD\",\"state\":\"Raw chicken\",\"action\":\"Cutting\",\"sameAsPrevious\":false},"
+                + "{\"id\":\"p2\",\"focus\":\"PREP_BOWL\",\"state\":\"Chicken in yogurt\",\"action\":\"Mixing\",\"sameAsPrevious\":false},"
+                + "{\"id\":\"p3\",\"focus\":\"PREP_BOWL\",\"state\":\"Chicken in yogurt\",\"action\":\"\",\"sameAsPrevious\":true},"
+                + "{\"id\":\"p4\",\"focus\":\"CUTTING_BOARD\",\"state\":\"Chopped onion\",\"action\":\"\",\"sameAsPrevious\":true}]}").build());
+
+        assertEquals(4, service.ensurePrompts(USER, RECIPE, List.of(PREP)));
+
+        verify(visualizationService).savePrompt(VisualizationKeyBuilder.build("100", "a1"),
+                "Raw chicken. Cutting.", VisualFocus.CUTTING_BOARD, false);
+        verify(visualizationService).savePrompt(VisualizationKeyBuilder.build("100", "a3"),
+                "Chicken in yogurt.", VisualFocus.PREP_BOWL, true);
+        // The first step of a flow has nothing before it to look like.
+        verify(visualizationService).savePrompt(VisualizationKeyBuilder.build("100", "b1"),
+                "Chopped onion.", VisualFocus.CUTTING_BOARD, false);
+        String prompt = capturedRequests().get(0).getUserPrompt();
+        assertTrue(prompt.contains("PREPARATION STEPS"), prompt);
+        assertTrue(prompt.contains("Making Marinated Chicken:"), prompt);
+        assertTrue(prompt.contains("Making Chopped Onions:"), prompt);
+        assertFalse(prompt.contains("STORYBOARD"), prompt);
+    }
+
+    @Test
+    void focusedViewSwitchedOff_writesSelfContainedPromptsExactlyAsBefore() {
+        when(visualizationService.focusedViewEnabled()).thenReturn(false);
+        givenMainWithSteps(1);
+        answerWithPromptsFor("m1");
+
+        service.ensurePrompts(USER, RECIPE, List.of(MAIN));
+
+        AiRequest request = capturedRequests().get(0);
+        assertEquals(new RecipeProcessVisualizationPromptBuilder().buildBatchSystemPrompt(), request.getSystemPrompt());
+        verify(visualizationService).savePrompt(VisualizationKeyBuilder.build("100", "main-0"), "prompt for m1");
+        verify(visualizationService, never()).savePrompt(anyString(), anyString(), any());
+        verify(visualizationService, never()).defaultFocus(any());
     }
 
     // --- helpers -------------------------------------------------------------------------------

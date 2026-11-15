@@ -57,6 +57,87 @@ public class VisualizationImageProperties {
     /** Generation profile per purpose. */
     private Map<String, Profile> profiles = new LinkedHashMap<>();
 
+    /**
+     * The Focused Cooking View: close-up step images whose scene (equipment, camera, lighting, style) is written by
+     * code from {@link SceneContext} and {@link #scene}, with the framing chosen by the step's action. False restores
+     * the previous behaviour exactly: full-kitchen prompts written entirely by the text model, every image generated
+     * in parallel against the scene anchor alone. Read for each visuals job; images already made are unchanged.
+     */
+    private volatile boolean focusedViewEnabled = true;
+
+    /**
+     * With the focused view on: draw each main step against the previous image of the same focus as well as the
+     * scene anchor, so the food carries over from step to step. Those steps then run one after another instead of in
+     * parallel. Only image models that take reference images use it.
+     */
+    private volatile boolean referenceChainEnabled = true;
+
+    /** The values {@link #preparationStepsPerImage} may take. */
+    public static final java.util.List<Integer> STEPS_PER_IMAGE_OPTIONS = java.util.List.of(1, 2, 4);
+
+    /**
+     * With the focused view on: how many Preparation steps share one generated image (1, 2 or 4). Several steps are
+     * drawn as equal panels of one image, which is then cut into one image per step, so a step costs a fraction of an
+     * image. 1 draws every step on its own.
+     */
+    private volatile int preparationStepsPerImage = 4;
+
+    /**
+     * Steps the prompt writer marks as looking the same as the step before them (resting, setting aside, keeping
+     * warm) get no image of their own and reuse the previous step's image. Off: every step is drawn.
+     */
+    private volatile boolean skipLookAlikeSteps = true;
+
+    /** {@link #preparationStepsPerImage}, with any value outside {@link #STEPS_PER_IMAGE_OPTIONS} read as 1. */
+    public int effectivePreparationStepsPerImage() {
+        return STEPS_PER_IMAGE_OPTIONS.contains(preparationStepsPerImage) ? preparationStepsPerImage : 1;
+    }
+
+    /** What a focused image centres on, per purpose ({@link VisualFocus} names); others use {@link #defaultFocus}. */
+    private Map<String, String> focusByPurpose = new LinkedHashMap<>(Map.of(
+            INGREDIENT_PREPARATION, VisualFocus.CUTTING_BOARD.name(),
+            SERVING, VisualFocus.PLATE.name()));
+
+    /**
+     * Focus for a whole catalog category whose purpose does not say where it happens; wins over
+     * {@link #focusByPurpose}. Coating and dough work is ingredient preparation, but in a bowl, not on the board.
+     */
+    private Map<String, String> focusByCategory = new LinkedHashMap<>(Map.of(
+            "coating", VisualFocus.PREP_BOWL.name(),
+            "dough", VisualFocus.PREP_BOWL.name()));
+
+    /** The focus of every purpose without an entry in {@link #focusByPurpose}, and of unknown actions. */
+    private String defaultFocus = VisualFocus.COOKING_VESSEL.name();
+
+    /** The parts of a focused image's scene that are the same for every recipe. */
+    private Scene scene = new Scene();
+
+    /**
+     * {@code ai.visualization.image.scene.*}: the camera, lighting and style of every focused image, and the
+     * equipment used when a recipe's {@link SceneContext} doesn't name one.
+     */
+    @Data
+    public static class Scene {
+
+        /** Degrees above the counter the camera looks down from. */
+        private int cameraAngle = 50;
+        private String environment = "minimal home cooking setup, plain uncluttered background";
+        private String lighting = "soft natural light";
+        private String style = "photorealistic";
+
+        private String vessel = "a black round frying pan";
+        private String stove = "a black gas stove";
+        private String surface = "a light grey stone countertop";
+        private String cuttingBoard = "a wooden cutting board";
+        private String prepBowl = "a plain steel mixing bowl";
+        private String servingDish = "a plain white plate";
+
+        /** The equipment used where a recipe names none. */
+        public SceneContext equipment() {
+            return new SceneContext(vessel, stove, surface, cuttingBoard, prepBowl, servingDish);
+        }
+    }
+
     /** Generation settings for one purpose; a null field falls back to {@link #defaultProfile}, then the provider's own. */
     @Data
     public static class Profile {

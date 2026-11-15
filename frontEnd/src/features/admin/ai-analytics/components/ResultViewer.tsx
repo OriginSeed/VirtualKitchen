@@ -3,6 +3,7 @@ import { API_CONFIG } from '../../../../api/config'
 import { AiAnalyticsApi } from '../api/aiAnalyticsApi'
 import type { AiResult } from '../api/aiAnalyticsApi'
 import { useApiData } from '../../../../shared/hooks/useApiData'
+import ZoomableImage from '../../../../shared/components/image-viewer/ZoomableImage'
 import {
   costBasisLabel,
   formatBytes,
@@ -77,7 +78,7 @@ function ResultBody({ result }: { result: AiResult }) {
   if (result.kind === 'IMAGE' && result.url) {
     return (
       <figure className="aia-media">
-        <img src={mediaUrl(result.url)} alt="Generated output" loading="lazy" />
+        <ZoomableImage src={mediaUrl(result.url)} alt="Generated output" caption="Generated output" loading="lazy" />
         <figcaption className="aia-muted">
           {[result.imageWidth && result.imageHeight ? `${result.imageWidth}×${result.imageHeight}` : null,
             result.mimeType, result.sizeBytes ? formatBytes(result.sizeBytes) : null].filter(Boolean).join(' · ')}

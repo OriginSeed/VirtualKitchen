@@ -148,6 +148,21 @@ class ProcessServiceTest {
     }
 
     @Test
+    void create_marksTheRecipeAsUpdated() {
+        service.create(recipeId, OWNER_ID, request(ProcessType.SUBPROCESS, "Prep"));
+
+        verify(recipeTemplateRepository).touchUpdatedAt(org.mockito.ArgumentMatchers.eq(recipeId), any());
+    }
+
+    @Test
+    void create_rejected_leavesTheRecipeUntouched() {
+        assertThrows(RecipeAccessDeniedException.class,
+                () -> service.create(recipeId, OTHER_USER_ID, request(ProcessType.MAIN, "Main")));
+
+        verify(recipeTemplateRepository, never()).touchUpdatedAt(any(), any());
+    }
+
+    @Test
     void create_subprocess_persistsAndReturnsSubprocess() {
         ProcessResponseDTO created = service.create(recipeId, OWNER_ID, request(ProcessType.SUBPROCESS, "Prepare Chicken"));
 

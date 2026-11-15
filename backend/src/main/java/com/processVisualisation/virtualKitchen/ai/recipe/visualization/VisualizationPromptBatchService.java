@@ -26,6 +26,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
@@ -59,8 +60,10 @@ public class VisualizationPromptBatchService {
     private final AiRequestQueueService queueService;
     private final AiClientResolver clientResolver;
     private final AiJsonResponseSupport responseSupport;
-    private final boolean sceneAnchorEnabled;
+    /** Asked on every batch: an admin can switch scene anchors on or off at runtime. */
+    private final VisualizationSceneAnchorService sceneAnchorService;
     private final Map<String, Object> responseSchema = buildResponseSchema();
+    private final Map<String, Object> focusedResponseSchema = buildFocusedResponseSchema();
 
     private final Map<Long, Object> recipeLocks = new ConcurrentHashMap<>();
 
@@ -77,7 +80,7 @@ public class VisualizationPromptBatchService {
         this.queueService = queueService;
         this.clientResolver = clientResolver;
         this.responseSupport = responseSupport;
-        this.sceneAnchorEnabled = sceneAnchorService.isEnabled();
+        this.sceneAnchorService = sceneAnchorService;
     }
 
     /** Sampling parameters; admin runtime overrides apply to the next request. Defaults when not injected (tests). */
@@ -113,6 +116,166 @@ public class VisualizationPromptBatchService {
         }
     }
 
+    /** The focused batch answer: the recipe's equipment (when asked for) and one {@link ActionContext} per target id. */
+    record FocusedOutput(String dishContext, SceneContext scene, List<Entry> prompts) {
+        record Entry(String id, String focus, String state, String action, Boolean sameAsPrevious) {
+
+            Entry(String id, String focus, String state, String action) {
+                this(id, focus, state, action, null);
+            }
+        }
+    }
+
+    /** What one focused call answered, by id; scene fields are null unless asked for and answered. */
+    private record FocusedAnswer(String dishContext, SceneContext scene, Map<String, FocusedOutput.Entry> entries) {
+    }
+
+    /**
+     * The Focused Cooking View's batch: the text model names the recipe's equipment once and describes only the food
+     * and the action of each image; every prompt is stored with its {@link VisualFocus}, and the scene is added when
+     * the image is requested. Targets that already have a prompt (of either kind) are left alone.
+     */
+    private int writeMissingFocusedPrompts(Long userId, Long recipeId, List<VisualTarget> flows, List<VisualTarget> steps,
+                                           String dishName) {
+        List<BatchTarget> missing = new ArrayList<>();
+        Map<String, String> keyById = new LinkedHashMap<>();
+        List<String> ignoredReferences = new ArrayList<>();
+        collect(recipeId, flows, "p", missing, keyById, ignoredReferences);
+        collect(recipeId, steps, "m", missing, keyById, ignoredReferences);
+        Map<String, VisualFocus> focusById = new LinkedHashMap<>();
+        missing.forEach(target -> focusById.put(target.id(), visualizationService.defaultFocus(target.target())));
+        Set<String> firstOfGroup = firstOfGroup(flows, steps);
+
+        // The equipment is written once per recipe, with or without a scene anchor: every focused prompt uses it.
+        boolean sceneNeeded = visualizationService.findScene(recipeId)
+                .map(com.processVisualisation.virtualKitchen.ai.asset.VisualizationAsset::getSceneContext).isEmpty()
+                && (!missing.isEmpty() || anyImageMissing(recipeId, flows) || anyImageMissing(recipeId, steps));
+        if (missing.isEmpty() && !sceneNeeded) {
+            log.debug("event=visualization_prompt_batch_skipped recipeId={} reason=no_missing_prompts", recipeId);
+            return 0;
+        }
+
+        int written = 0;
+        boolean sceneWritten = false;
+        int start = 0;
+        do {
+            List<BatchTarget> chunk = missing.subList(start, Math.min(missing.size(), start + MAX_TARGETS_PER_REQUEST));
+            boolean askScene = sceneNeeded && start == 0;
+            FocusedAnswer answer = requestFocusedPrompts(userId, recipeId, chunk, focusById, dishName, askScene);
+            if (askScene && answer.scene() != null) {
+                visualizationService.saveSceneContext(recipeId, answer.scene(), answer.dishContext());
+                sceneWritten = true;
+            }
+            for (BatchTarget target : chunk) {
+                FocusedOutput.Entry entry = answer.entries().get(target.id());
+                if (entry == null) continue;
+                VisualFocus defaultFocus = focusById.get(target.id());
+                // A storyboard stays one; otherwise the writer may move the camera to where the step happens.
+                VisualFocus focus = defaultFocus == VisualFocus.STORYBOARD
+                        ? defaultFocus
+                        : VisualFocus.parse(entry.focus()).orElse(defaultFocus);
+                String text = new ActionContext(focus, entry.state(), entry.action()).describe();
+                if (!StringUtils.hasText(text)) continue;
+                // The first step of a flow (or of the main steps) has nothing before it to look like.
+                boolean reusesPrevious = Boolean.TRUE.equals(entry.sameAsPrevious())
+                        && target.target().flow() == null
+                        && !firstOfGroup.contains(target.target().nodeId());
+                visualizationService.savePrompt(keyById.get(target.id()), text, focus, reusesPrevious);
+                written++;
+            }
+            start += MAX_TARGETS_PER_REQUEST;
+        } while (start < missing.size());
+        log.info("event=visualization_prompt_batch_completed recipeId={} promptVersion={} focused=true targets={} written={} fallbackTargets={} sceneRequested={} sceneWritten={}",
+                recipeId, RecipeProcessVisualizationPromptBuilder.FOCUSED_BATCH_PROMPT_VERSION, missing.size(), written,
+                missing.size() - written, sceneNeeded, sceneWritten);
+        return written;
+    }
+
+    private FocusedAnswer requestFocusedPrompts(Long userId, Long recipeId, List<BatchTarget> chunk,
+                                                Map<String, VisualFocus> focusById, String dishName, boolean askScene) {
+        String userPrompt = promptBuilder.buildFocusedBatchUserPrompt(chunk, focusById, dishName, askScene);
+        return queueService.executeBounded(
+                userId,
+                AiCapability.TEXT_TO_TEXT,
+                null,
+                null,
+                CORRELATION_TYPE,
+                String.valueOf(recipeId),
+                selection -> {
+                    AiClient client = clientResolver.resolveTextClient(selection.model());
+                    AiRequest request = AiRequest.builder()
+                            .model(selection.model().getProviderModelId())
+                            .systemPrompt(promptBuilder.buildFocusedBatchSystemPrompt())
+                            .userPrompt(userPrompt)
+                            .temperature(generationParams.getPromptBatch().getTemperature())
+                            .maxTokens(generationParams.getPromptBatch().maxTokensFor(chunk.size()))
+                            .responseFormat("json_object")
+                            .responseSchema(focusedResponseSchema)
+                            .responseSchemaName("visualization_focused_prompts")
+                            .operation("VISUALIZATION_PROMPT_BATCH")
+                            .build();
+                    long startNs = System.nanoTime();
+                    AiResponse response = client.chat(request);
+                    long durationMs = (System.nanoTime() - startNs) / 1_000_000L;
+                    return readFocusedPrompts(userPrompt, response, durationMs, chunk, askScene);
+                }
+        ).value();
+    }
+
+    private FocusedAnswer readFocusedPrompts(String userPrompt, AiResponse response, long durationMs,
+                                             List<BatchTarget> chunk, boolean askScene) {
+        String content = response == null ? null : response.getContent();
+        Map<String, FocusedOutput.Entry> entries = new LinkedHashMap<>();
+        List<String> errors = new ArrayList<>();
+        FocusedOutput output = null;
+        if (!StringUtils.hasText(content)) {
+            errors.add("AI response content is empty");
+        } else {
+            try {
+                output = responseSupport.readValue(content, FocusedOutput.class);
+                List<String> ids = chunk.stream().map(BatchTarget::id).toList();
+                for (FocusedOutput.Entry entry : output.prompts() == null ? List.<FocusedOutput.Entry>of() : output.prompts()) {
+                    if (entry == null || !ids.contains(entry.id())) continue;
+                    if (!StringUtils.hasText(entry.state()) && !StringUtils.hasText(entry.action())) continue;
+                    entries.putIfAbsent(entry.id(), entry);
+                }
+                ids.stream().filter(id -> !entries.containsKey(id))
+                        .forEach(id -> errors.add("No prompt for " + id));
+            } catch (Exception e) {
+                output = null;
+                errors.add("Invalid JSON format: " + e.getMessage());
+            }
+        }
+        boolean sceneAnswered = askScene && output != null && output.scene() != null;
+        if (askScene && output != null && !sceneAnswered) errors.add("No scene");
+        // A partial answer is still used; the targets it missed fall back to per-step prompts.
+        responseSupport.persistAIResponse(CORRELATION_TYPE, userPrompt, response, !entries.isEmpty() || sceneAnswered,
+                durationMs, errors);
+        if (output == null) return new FocusedAnswer(null, null, entries);
+        return new FocusedAnswer(output.dishContext(), sceneAnswered ? output.scene() : null, entries);
+    }
+
+    private static Map<String, Object> buildFocusedResponseSchema() {
+        Map<String, Object> entry = RecipeProcessOutputSchema.object(List.of(
+                new Field("id", RecipeProcessOutputSchema.string(), true),
+                new Field("focus", RecipeProcessOutputSchema.string(), true),
+                new Field("state", RecipeProcessOutputSchema.string(), true),
+                new Field("action", RecipeProcessOutputSchema.string(), true),
+                new Field("sameAsPrevious", Map.of("type", "boolean"), true)));
+        Map<String, Object> scene = RecipeProcessOutputSchema.object(List.of(
+                new Field("vessel", RecipeProcessOutputSchema.string(), true),
+                new Field("stove", RecipeProcessOutputSchema.string(), true),
+                new Field("surface", RecipeProcessOutputSchema.string(), true),
+                new Field("cuttingBoard", RecipeProcessOutputSchema.string(), true),
+                new Field("prepBowl", RecipeProcessOutputSchema.string(), true),
+                new Field("servingDish", RecipeProcessOutputSchema.string(), true)));
+        return RecipeProcessOutputSchema.object(List.of(
+                // Only asked for when the recipe has no equipment yet.
+                new Field("dishContext", RecipeProcessOutputSchema.string(), false),
+                new Field("scene", scene, false),
+                new Field("prompts", RecipeProcessOutputSchema.arrayOf(entry), true)));
+    }
+
     private int writeMissingPrompts(Long userId, Long recipeId, List<Long> scopeProcessIds) {
         List<VisualTarget> flows = new ArrayList<>();
         List<VisualTarget> steps = new ArrayList<>();
@@ -124,6 +287,10 @@ public class VisualizationPromptBatchService {
             boolean isPreparation = preparation.process().getType() == ProcessType.SUBPROCESS;
             (isPreparation ? flows : steps).addAll(preparation.targets());
             if (!isPreparation) dishName = preparation.process().getName();
+        }
+        // Read for every batch: an admin can switch the focused view on or off at runtime.
+        if (visualizationService.focusedViewEnabled()) {
+            return writeMissingFocusedPrompts(userId, recipeId, flows, steps, dishName);
         }
 
         // Preparations first, then MAIN in cooking order — the order the model reads the recipe in.
@@ -139,7 +306,7 @@ public class VisualizationPromptBatchService {
         collect(recipeId, steps, "m", missing, keyById, styleReferences);
 
         // The scene is written once per recipe, and only when some image still has to be drawn against it.
-        boolean sceneNeeded = sceneAnchorEnabled && scenePrompt.isEmpty()
+        boolean sceneNeeded = sceneAnchorService.isEnabled() && scenePrompt.isEmpty()
                 && (!missing.isEmpty() || anyImageMissing(recipeId, flows) || anyImageMissing(recipeId, steps));
         if (missing.isEmpty() && !sceneNeeded) {
             log.debug("event=visualization_prompt_batch_skipped recipeId={} reason=no_missing_prompts", recipeId);
@@ -173,6 +340,18 @@ public class VisualizationPromptBatchService {
                 recipeId, RecipeProcessVisualizationPromptBuilder.BATCH_PROMPT_VERSION, missing.size(), written,
                 missing.size() - written, sceneNeeded, sceneWritten);
         return written;
+    }
+
+    /** The node ids that start a group: the first step of each Preparation flow, and of each process's main steps. */
+    static Set<String> firstOfGroup(List<VisualTarget> preparationTargets, List<VisualTarget> mainTargets) {
+        Set<String> first = new java.util.HashSet<>();
+        Set<String> seenFlows = new java.util.HashSet<>();
+        for (VisualTarget target : preparationTargets) {
+            String group = target.isPreparationStep() ? target.prepFlow().id() : target.nodeId();
+            if (seenFlows.add(group)) first.add(target.nodeId());
+        }
+        if (!mainTargets.isEmpty()) first.add(mainTargets.get(0).nodeId());
+        return first;
     }
 
     private boolean anyImageMissing(Long recipeId, List<VisualTarget> targets) {

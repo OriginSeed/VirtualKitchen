@@ -104,6 +104,43 @@ class StepNarrationCopierTest {
         assertFalse(store.find(StepNarrationService.narrationKey(TARGET_RECIPE, "step-c2")).isPresent());
     }
 
+    @Test
+    void copyTo_writesAnotherRecipesStepItsOwnAudio_underTheGivenTextFingerprint() {
+        StepNarration source = ready(SOURCE_RECIPE, 57L, "step-a", storage.put(AUDIO));
+
+        StepNarrationCopier.CopyOutcome outcome = copier.copyTo(source, 300L, 70L, "step-a", "hash-of-imported-step", false);
+
+        assertEquals(StepNarrationCopier.CopyOutcome.COPIED, outcome);
+        StepNarration copy = store.find(StepNarrationService.narrationKey(300L, "step-a")).orElseThrow();
+        assertEquals(300L, copy.getRecipeId());
+        assertEquals(70L, copy.getProcessId());
+        assertEquals("hash-of-imported-step", copy.getSourceTextHash());
+        assertNotEquals(source.getStoragePath(), copy.getStoragePath());
+        assertNotEquals(source.getAudioUrl(), copy.getAudioUrl());
+        assertArrayEquals(AUDIO, storage.read(copy.getStoragePath()).orElseThrow());
+        // The copy is found by its own URL, the source still by its own.
+        assertEquals(copy.getNarrationKey(), store.findReadyByAudioUrl(copy.getAudioUrl()).orElseThrow().getNarrationKey());
+        assertEquals(source.getNarrationKey(), store.findReadyByAudioUrl(source.getAudioUrl()).orElseThrow().getNarrationKey());
+    }
+
+    @Test
+    void copyTo_neverSharesAUrlWhenSharingIsNotAllowed_andReportsWhatHappened() {
+        StepNarration gone = ready(SOURCE_RECIPE, 57L, "step-a", "missing.wav");
+        StepNarration elsewhere = ready(SOURCE_RECIPE, 57L, "step-b", storage.put(AUDIO));
+        elsewhere.setStorageBackend("another-backend");
+        StepNarration fine = ready(SOURCE_RECIPE, 57L, "step-c", storage.put(AUDIO));
+        ready(300L, 70L, "step-c", storage.put(new byte[]{9}));
+        int objectsBefore = storage.files.size();
+
+        assertEquals(StepNarrationCopier.CopyOutcome.AUDIO_UNAVAILABLE, copier.copyTo(gone, 300L, 70L, "step-a", "h", false));
+        assertEquals(StepNarrationCopier.CopyOutcome.AUDIO_UNAVAILABLE, copier.copyTo(elsewhere, 300L, 70L, "step-b", "h", false));
+        assertEquals(StepNarrationCopier.CopyOutcome.ALREADY_NARRATED, copier.copyTo(fine, 300L, 70L, "step-c", "h", false));
+
+        assertTrue(store.find(StepNarrationService.narrationKey(300L, "step-a")).isEmpty());
+        assertTrue(store.find(StepNarrationService.narrationKey(300L, "step-b")).isEmpty());
+        assertEquals(objectsBefore, storage.files.size(), "no object is left behind");
+    }
+
     private static RecipeCopiedEvent event(Map<Long, Long> processIds, Map<Long, Map<String, String>> nodeIds) {
         return new RecipeCopiedEvent(SOURCE_RECIPE, TARGET_RECIPE, 2L, processIds, nodeIds);
     }

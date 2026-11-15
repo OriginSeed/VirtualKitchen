@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
-import { AiApi } from '../../../../api/aiApi'
 import { RecipeAiWorkflowApi } from '../../../../api/recipeAiWorkflowApi'
-import type { RecipeAiTaskType, RecipeAiWorkflowEstimate, RecipeAiWorkflowResponse, RunModelCapability } from '../../../../types/recipeAiWorkflow'
+import type { RecipeAiTaskType, RecipeAiWorkflowEstimate, RecipeAiWorkflowResponse } from '../../../../types/recipeAiWorkflow'
 import { isWorkflowOpen } from '../../jobs/jobTracker'
 import { useRecipeSession } from '../../session/sessionContext'
 import {
@@ -35,8 +34,9 @@ import { useDraft } from '../../../../shared/drafts/useDraft'
 import DraftRestoredNote from '../../../../shared/drafts/DraftRestoredNote'
 import { useConfirm } from '../../../../shared/components/confirm/confirmContext'
 import { useConfirmDiscard } from '../../../../shared/components/confirm/useConfirmDiscard'
-import { runModelOptions } from '../../../../shared/format/modelOptions'
-import { useApiData } from '../../../../shared/hooks/useApiData'
+import { runModelsFor, taskRunModelCapabilities, useRunModelChoices } from '../model/runModels'
+import { ModelChoiceDialog, RunModelSelects } from './RunModelPicker'
+import ExistingAssetsChoice from './ExistingAssetsChoice'
 import '../../styles/modals.css'
 
 type AiRecipeCreationDraft = { selection: WorkflowTaskSelection; recipeText: string }
@@ -68,23 +68,6 @@ const secondaryButton = {
   color: 'var(--flow-text-muted)', fontSize: 12.5, fontWeight: 700, cursor: 'pointer',
 }
 const subtleText = { fontSize: 11.5, color: 'var(--flow-text-subtle)' }
-
-const RUN_MODEL_LABELS: Record<RunModelCapability, string> = {
-  TEXT_TO_TEXT: 'Text model',
-  TEXT_TO_IMAGE: 'Image model',
-  TEXT_TO_SPEECH: 'Narration model',
-}
-
-/** What the run model picker offers: the models the user may choose, and what their requests run on now. */
-async function loadRunModelChoices() {
-  const [preferences, text, image, speech] = await Promise.all([
-    AiApi.getMyPreferences(),
-    AiApi.getSelectableModels('TEXT_TO_TEXT'),
-    AiApi.getSelectableModels('TEXT_TO_IMAGE'),
-    AiApi.getSelectableModels('TEXT_TO_SPEECH'),
-  ])
-  return { effective: preferences.effective, models: { TEXT_TO_TEXT: text, TEXT_TO_IMAGE: image, TEXT_TO_SPEECH: speech } }
-}
 
 /**
  * AI Recipe Creation: the user picks what AI should create, AI builds the recipe process first, the
@@ -188,7 +171,9 @@ function TaskSelectionStep({ recipeId, willReplaceMain, initialTasks, busy, erro
   const confirmDiscard = useConfirmDiscard()
   // Models for this run only; '' keeps the account setting. Priced in the estimate, charged when the run goes.
   const [runModels, setRunModels] = useState<RunModels>({})
-  const modelChoices = useApiData('run-model-choices', loadRunModelChoices)
+  // Steps that already have images/narration: keep them (default) or regenerate and replace them.
+  const [overwriteExisting, setOverwriteExisting] = useState(false)
+  const modelChoices = useRunModelChoices()
 
   const existingStepCount = useMemo(
     () => summarizeProcesses(session?.getProcesses() ?? []).steps,
@@ -201,12 +186,19 @@ function TaskSelectionStep({ recipeId, willReplaceMain, initialTasks, busy, erro
   const runModelsKey = runCapabilities.map((capability) => runModels[capability] ?? '').join(',')
   const choices = modelChoices.data
 
+  // Keep-or-replace only means something for the recipe's existing steps: a newly generated process has none.
+  const keepOrReplaceApplies = !selection.PROCESS && (selection.VISUALS || selection.NARRATION)
+  const selectionRequest = () => ({
+    ...toTaskSelectionRequest(selection, runModels),
+    ...(keepOrReplaceApplies && overwriteExisting ? { overwriteExisting: true } : {}),
+  })
+
   // The estimate follows the selection (debounced, so ticking several boxes asks once).
   useEffect(() => {
     if (!selectionKey) return undefined // nothing selected: no estimate is shown
     const controller = new AbortController()
     const timer = window.setTimeout(() => {
-      RecipeAiWorkflowApi.estimate(recipeId, toTaskSelectionRequest(selection, runModels), controller.signal)
+      RecipeAiWorkflowApi.estimate(recipeId, selectionRequest(), controller.signal)
         .then((result) => {
           setEstimate(result)
           setEstimateError(false)
@@ -219,14 +211,14 @@ function TaskSelectionStep({ recipeId, willReplaceMain, initialTasks, busy, erro
       window.clearTimeout(timer)
       controller.abort()
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- selectionKey and runModelsKey capture the request
-  }, [recipeId, selectionKey, runModelsKey])
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- selectionKey, runModelsKey and the choice capture the request
+  }, [recipeId, selectionKey, runModelsKey, overwriteExisting])
 
   const handleCreate = async () => {
     setTouched(true)
     if (problem) return
     const started = await onCreate({
-      selection: toTaskSelectionRequest(selection, runModels),
+      selection: selectionRequest(),
       recipeText: selection.PROCESS ? recipeText.trim() : undefined,
     })
     // Without a process to generate there is no text to keep: the selection has done its job.
@@ -281,24 +273,18 @@ function TaskSelectionStep({ recipeId, willReplaceMain, initialTasks, busy, erro
         </div>
       ) : null}
 
-      {choices && runCapabilities.length > 0 && (
-        <div className="recipe-ai-run-models" role="group" aria-label="AI models for this run">
-          {runCapabilities.map((capability) => (
-            <label key={capability} className="recipe-ai-run-model">
-              <span>{RUN_MODEL_LABELS[capability]}</span>
-              <select
-                value={runModels[capability] ?? ''}
-                disabled={busy}
-                onChange={(event) => setRunModels((current) => ({ ...current, [capability]: event.target.value }))}
-              >
-                {runModelOptions(choices.models[capability], choices.effective[capability]).map((option) => (
-                  <option key={option.value} value={option.value}>{option.label}</option>
-                ))}
-              </select>
-            </label>
-          ))}
-          <div style={subtleText}>For this run only. Change the account setting in Account Settings.</div>
-        </div>
+      <RunModelSelects choices={choices} capabilities={runCapabilities} value={runModels} onChange={setRunModels} disabled={busy} />
+
+      {keepOrReplaceApplies && (
+        <ExistingAssetsChoice
+          counts={{
+            images: selection.VISUALS ? estimate?.existingImages : 0,
+            narrations: selection.NARRATION ? estimate?.existingNarrations : 0,
+          }}
+          overwrite={overwriteExisting}
+          onChange={setOverwriteExisting}
+          disabled={busy}
+        />
       )}
 
       {selectionKey && <EstimatePanel estimate={estimate} failed={estimateError} />}
@@ -368,6 +354,8 @@ function WorkflowStatusStep({ recipeId, workflow, ai, onClose, onStartOver }: {
 
   // A ticking clock only while a retry is held back (narration's short back-off after a failure).
   const [now, setNow] = useState(() => Date.now())
+  // Retrying spends credits again: the user picks the models first (the run's choices preselected).
+  const [retryTask, setRetryTask] = useState<RecipeAiTaskType | null>(null)
   const nextRetryAt = rows.map((row) => row.retry?.availableAt).find((at) => secondsUntil(at, now) > 0)
   useEffect(() => {
     if (!nextRetryAt) return undefined
@@ -384,7 +372,7 @@ function WorkflowStatusStep({ recipeId, workflow, ai, onClose, onStartOver }: {
 
       <div className="recipe-ai-task-rows">
         {rows.map((row) => (
-          <TaskRow key={row.type} row={row} now={now} retrying={ai.busy === 'retry'} onRetry={() => void ai.retry(row.type)} />
+          <TaskRow key={row.type} row={row} now={now} retrying={ai.busy === 'retry'} onRetry={() => setRetryTask(row.type)} />
         ))}
       </div>
 
@@ -401,6 +389,22 @@ function WorkflowStatusStep({ recipeId, workflow, ai, onClose, onStartOver }: {
 
       {ai.connectionLost && <div style={subtleText}>Connection lost — retrying…</div>}
       {ai.pollError && <div className="recipe-builder-status recipe-builder-status-error" role="alert">Lost track of AI Recipe Creation: {ai.pollError}</div>}
+
+      {retryTask && (
+        <ModelChoiceDialog
+          title={`Retry ${WORKFLOW_TASK_LABELS[retryTask].toLowerCase()}`}
+          description="Choose the AI models for this retry. Only the failed part runs again."
+          capabilities={taskRunModelCapabilities(retryTask)}
+          initial={workflow.modelKeys ?? {}}
+          confirmLabel="Retry"
+          onCancel={() => setRetryTask(null)}
+          onConfirm={(modelKeys) => {
+            const task = retryTask
+            setRetryTask(null)
+            void ai.retry(task, modelKeys)
+          }}
+        />
+      )}
 
       {waiting && <ApprovalCard recipeId={recipeId} workflow={workflow} processSummary={formatProcessSummary(processSummary)} ai={ai} onReview={onClose} />}
 
@@ -460,17 +464,33 @@ function ApprovalCard({ recipeId, workflow, processSummary, ai, onReview }: {
   const ready = !generated || workflow.generationApplied
   const [estimate, setEstimate] = useState<RecipeAiWorkflowEstimate | null>(null)
   const [estimateFailed, setEstimateFailed] = useState(false)
+  // The models the visuals and narration run on, asked again here because approving is what spends their credits.
+  const modelChoices = useRunModelChoices()
+  const approvalCapabilities = runModelCapabilities({
+    PROCESS: false,
+    VISUALS: downstream.includes('VISUALS'),
+    NARRATION: downstream.includes('NARRATION'),
+  })
+  const [approvalModels, setApprovalModels] = useState<RunModels>(() => ({ ...(workflow.modelKeys ?? {}) }))
+  const approvalModelKeys = runModelsFor(approvalModels, approvalCapabilities)
+  const approvalModelsKey = approvalCapabilities.map((capability) => approvalModelKeys[capability]).join(',')
+  // Keep (default) or replace images/narration the steps already have — starting from what the run chose.
+  const [overwrite, setOverwrite] = useState(Boolean(workflow.overwriteExisting))
 
   useEffect(() => {
     if (!ready || downstream.length === 0) return undefined
     const controller = new AbortController()
-    RecipeAiWorkflowApi.estimateApproval(recipeId, workflow.workflowId, controller.signal)
-      .then(setEstimate)
+    RecipeAiWorkflowApi.estimateApproval(recipeId, workflow.workflowId, controller.signal, approvalModelKeys, overwrite)
+      .then((result) => {
+        setEstimate(result)
+        setEstimateFailed(false)
+      })
       .catch(() => {
         if (!controller.signal.aborted) setEstimateFailed(true)
       })
     return () => controller.abort()
-  }, [recipeId, workflow.workflowId, ready, downstream.length])
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- approvalModelsKey captures the models
+  }, [recipeId, workflow.workflowId, ready, downstream.length, approvalModelsKey, overwrite])
 
   const busy = ai.busy === 'approve'
   const confirm = useConfirm()
@@ -494,6 +514,29 @@ function ApprovalCard({ recipeId, workflow, processSummary, ai, onReview }: {
         </div>
       </div>
 
+      {downstream.length > 0 && (
+        <RunModelSelects
+          choices={modelChoices.data}
+          capabilities={approvalCapabilities}
+          value={approvalModels}
+          onChange={setApprovalModels}
+          disabled={busy}
+          note="Used for what runs after you approve (and any retries). Change the account setting in Account Settings."
+        />
+      )}
+
+      {downstream.length > 0 && ready && (
+        <ExistingAssetsChoice
+          counts={{
+            images: downstream.includes('VISUALS') ? estimate?.existingImages : 0,
+            narrations: downstream.includes('NARRATION') ? estimate?.existingNarrations : 0,
+          }}
+          overwrite={overwrite}
+          onChange={setOverwrite}
+          disabled={busy}
+        />
+      )}
+
       {downstream.length > 0 && ready && <EstimatePanel estimate={estimate} failed={estimateFailed} title="Approving will use about" />}
 
       {!ready && <div style={subtleText}>Loading the generated recipe process into the editor…</div>}
@@ -501,7 +544,7 @@ function ApprovalCard({ recipeId, workflow, processSummary, ai, onReview }: {
 
       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
         <button type="button" onClick={onReview} style={secondaryButton}>Review &amp; Edit</button>
-        <button type="button" onClick={() => void ai.approve()} disabled={busy || !ready} style={primaryButton(busy, !ready)}>
+        <button type="button" onClick={() => void ai.approve(downstream.length > 0 ? approvalModelKeys : undefined, downstream.length > 0 ? overwrite : undefined)} disabled={busy || !ready} style={primaryButton(busy, !ready)}>
           {busy ? 'Saving & approving…' : downstream.length === 0 ? 'Approve' : 'Approve & Continue'}
         </button>
         {workflow.cancellable && (

@@ -1,21 +1,19 @@
+import type { ReactNode } from 'react'
 import { Outlet, useNavigate } from 'react-router-dom'
 import type { User } from '../../../types/User'
 import AppFooter from '../../../shared/components/AppFooter'
 import KitchenNavbar from './KitchenNavbar'
 import './KitchenLayout.css'
-import type { Kitchen } from '../../../types/kitchen'
 
 interface KitchenPageProps {
   user: User
-  kitchen: Kitchen
   onLogout: () => void
+  /** Status the app adds to the navbar (e.g. background AI work), without kitchen importing other features. */
+  navbarExtras?: ReactNode
 }
 
-export default function KitchenLayout({
-  user,
-  kitchen,
-  onLogout,
-}: KitchenPageProps) {
+/** Every signed-in page: the navbar above a scrolling body (with the footer at its end). */
+export default function KitchenLayout({ user, onLogout, navbarExtras }: KitchenPageProps) {
   const navigate = useNavigate()
 
   // Navigate before clearing auth state so the /kitchen route guard
@@ -26,16 +24,12 @@ export default function KitchenLayout({
   }
   return (
     <div className="kitchen-page">
-      <KitchenNavbar
-        user={user}
-        kitchen={kitchen}
-        onLogout={handleLogoutAndGoHome}
-      />
+      <KitchenNavbar user={user} onLogout={handleLogoutAndGoHome} extras={navbarExtras} />
 
       <div className="kitchen-body">
-        <div className="kitchen-content">
+        <main className="kitchen-content">
           <Outlet />
-        </div>
+        </main>
         <AppFooter />
       </div>
     </div>

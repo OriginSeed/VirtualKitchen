@@ -32,7 +32,10 @@ async function loadModelChoices() {
  * Account settings: the user's own AI model choices. Each AI request is charged the chosen model's credits; when the
  * balance can't cover a paid model, the request falls back as configured by the admin.
  */
-export default function AccountSettingsPage() {
+/** The signed-in account's own details, shown read-only at the top. */
+type AccountSummary = { name: string; email: string }
+
+export default function AccountSettingsPage({ account }: { account?: AccountSummary }) {
   const choices = useApiData('ai-model-choices', loadModelChoices)
   const credits = useApiData('ai-credits', () => AiApi.getMyCredits())
   const [saving, setSaving] = useState<AiCapability | null>(null)
@@ -57,8 +60,18 @@ export default function AccountSettingsPage() {
     <div className="account-settings">
       <header>
         <h1>Account settings</h1>
-        <p className="account-settings-muted">Choose the AI models your recipes use. Each request costs the chosen model's credits.</p>
+        <p className="account-settings-muted">Your account, and the AI models and narration voice your recipes use. Each AI request costs the chosen model's credits.</p>
       </header>
+
+      {account && (
+        <section className="account-settings-card account-settings-profile" aria-label="Your account">
+          <span className="account-settings-avatar" aria-hidden="true">{account.name.trim().charAt(0).toUpperCase() || 'U'}</span>
+          <span>
+            <strong>{account.name}</strong>
+            <span className="account-settings-muted">{account.email}</span>
+          </span>
+        </section>
+      )}
 
       <section className="account-settings-card">
         <h2>AI credits</h2>

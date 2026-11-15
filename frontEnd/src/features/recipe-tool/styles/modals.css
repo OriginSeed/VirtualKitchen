@@ -201,6 +201,58 @@
   font-weight: 400;
 }
 
+/* Keep or replace images/narration the steps already have (ExistingAssetsChoice). */
+.recipe-ai-existing {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 0;
+  padding: 10px 12px;
+  border: 1px solid var(--flow-border);
+  border-radius: var(--flow-radius-md);
+  min-width: 0;
+}
+
+.recipe-ai-existing legend {
+  padding: 0 4px;
+  font-size: 12.5px;
+  font-weight: 700;
+  color: var(--flow-text);
+}
+
+.recipe-ai-existing-summary {
+  font-size: 11.5px;
+  color: var(--flow-text-subtle);
+}
+
+.recipe-ai-existing-option {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 6px 8px;
+  border: 1px solid transparent;
+  border-radius: var(--flow-radius-sm);
+  font-size: 12px;
+  color: var(--flow-text-muted);
+  cursor: pointer;
+}
+
+.recipe-ai-existing-option.is-checked {
+  border-color: var(--flow-accent-soft-border);
+  background: var(--flow-accent-soft);
+  color: var(--flow-text);
+}
+
+.recipe-ai-existing-option input {
+  margin-top: 2px;
+  accent-color: var(--flow-accent);
+}
+
+.recipe-ai-existing[disabled] .recipe-ai-existing-option {
+  cursor: default;
+  opacity: 0.7;
+}
+
 .recipe-ai-estimate {
   border: 1px solid var(--flow-border);
   border-radius: var(--flow-radius-md);

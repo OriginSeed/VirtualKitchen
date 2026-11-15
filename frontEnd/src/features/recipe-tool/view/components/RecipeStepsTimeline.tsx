@@ -183,7 +183,8 @@ function OpenInEditor({ processId, nodeId, onOpenStep, title = 'Open this step i
  * cooking order, the output it makes, and one way into the editor for the whole flow.
  */
 function FlowItem({ flow, navigate, onOpenStep }: { flow: RecipeTimelineFlow; navigate: Navigate; onOpenStep: OpenStep }) {
-  const hasImage = Boolean(flow.imageUrl)
+  // Steps with their own images show them beside each point; an older flow has one image for the whole card.
+  const hasImage = !flow.stepImages && Boolean(flow.imageUrl)
   return (
     <li id={flow.anchorId} className="rp-timeline-item">
       <span className="rp-step-number" aria-hidden>{flow.number || '?'}</span>
@@ -192,9 +193,18 @@ function FlowItem({ flow, navigate, onOpenStep }: { flow: RecipeTimelineFlow; na
           <h4 className="rp-step-heading"><span className="rp-step-inline-icon" aria-hidden>🔪</span>{flow.title}</h4>
           <ul className="rp-flow-points">
             {flow.items.map((item) => (item.kind === 'step' ? (
-              <li key={item.key} id={item.anchorId} className="rp-flow-point">
-                <p className="rp-flow-point-text"><Instruction parts={item.instruction} navigate={navigate} /></p>
-                {item.explanation && <p className="rp-flow-point-note">{item.explanation}</p>}
+              <li key={item.key} id={item.anchorId} className={`rp-flow-point${flow.stepImages ? ' has-image' : ''}`}>
+                <div className="rp-flow-point-row">
+                  <div className="rp-flow-point-copy">
+                    <p className="rp-flow-point-text"><Instruction parts={item.instruction} navigate={navigate} /></p>
+                    {item.explanation && <p className="rp-flow-point-note">{item.explanation}</p>}
+                  </div>
+                  {flow.stepImages && (
+                    <div className="rp-flow-point-media">
+                      <RecipeImage src={item.imageUrl} alt={`${flow.title}: ${item.name}`} caption={item.instructionText || item.name} fallbackIcon={item.icon} />
+                    </div>
+                  )}
+                </div>
               </li>
             ) : (
               <li key={item.key} id={item.anchorId} className="rp-flow-point is-check">
@@ -208,10 +218,10 @@ function FlowItem({ flow, navigate, onOpenStep }: { flow: RecipeTimelineFlow; na
           <OpenInEditor processId={flow.processId} nodeId={flow.nodeId} onOpenStep={onOpenStep} title="Open this preparation in the editor" />
         </div>
 
-        {/* One image for the whole preparation (a storyboard of its steps when it has several). */}
+        {/* An older preparation's one image for the whole flow (a storyboard of its steps when it has several). */}
         {hasImage && (
           <div className="rp-step-media">
-            <RecipeImage src={flow.imageUrl} alt="" fallbackIcon="🔪" />
+            <RecipeImage src={flow.imageUrl} alt={flow.title} caption={flow.title} fallbackIcon="🔪" />
           </div>
         )}
       </article>
@@ -259,7 +269,12 @@ function StepItem({ step, navigate, onOpenStep }: { step: RecipeTimelineStep; na
 
         {hasImage && (
           <div className="rp-step-media">
-            <RecipeImage src={step.imageUrl} alt="" fallbackIcon={step.icon} />
+            <RecipeImage
+              src={step.imageUrl}
+              alt={`Step ${step.number}: ${step.name}`}
+              caption={`Step ${step.number} — ${step.instructionText || step.name}`}
+              fallbackIcon={step.icon}
+            />
           </div>
         )}
       </article>

@@ -90,12 +90,24 @@ export const loadCart = (userId: number, storage: CartStorage | null = defaultSt
   }
 }
 
+/**
+ * Fired on `window` (detail: the user id) whenever this tab saves or clears a cart, so other parts of the page —
+ * the navbar's cart badge — follow along. Other tabs hear about it through the `storage` event instead.
+ */
+export const CART_CHANGED_EVENT = 'virtual-kitchen:cart-changed'
+
+const announceCartChange = (userId: number) => {
+  if (typeof window === 'undefined' || typeof CustomEvent === 'undefined') return
+  window.dispatchEvent(new CustomEvent(CART_CHANGED_EVENT, { detail: userId }))
+}
+
 export const saveCart = (userId: number, items: CartItem[], storage: CartStorage | null = defaultStorage()): void => {
   try {
     storage?.setItem(getCartStorageKey(userId), JSON.stringify(items))
   } catch {
     // Quota/blocked storage: the in-memory cart still works for this visit.
   }
+  announceCartChange(userId)
 }
 
 export const clearCart = (userId: number, storage: CartStorage | null = defaultStorage()): void => {
@@ -104,7 +116,11 @@ export const clearCart = (userId: number, storage: CartStorage | null = defaultS
   } catch {
     // Nothing to clear.
   }
+  announceCartChange(userId)
 }
+
+/** How many different things are in the cart (the badge counts lines, not 500 grams of flour). */
+export const cartLineCount = (items: CartItem[]): number => items.length
 
 /**
  * How a line is merged into a cart that already holds the same item:

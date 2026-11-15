@@ -1,5 +1,7 @@
 package com.processVisualisation.virtualKitchen.auth.controller;
 
+import com.processVisualisation.virtualKitchen.common.logging.LogAction;
+
 import com.processVisualisation.virtualKitchen.auth.dto.*;
 import com.processVisualisation.virtualKitchen.auth.exception.AuthException;
 import com.processVisualisation.virtualKitchen.auth.service.AuthService;
@@ -24,6 +26,7 @@ import java.time.LocalDateTime;
  * authentication filter) and rejects unauthenticated callers.
  */
 @RestController
+@LogAction("auth")
 @RequestMapping("/api/v1/auth")
 public class AuthController {
 

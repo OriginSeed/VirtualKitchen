@@ -50,5 +50,5 @@ const NO_ITEMS: ShopCatalogItem[] = []
 /** Everything the shop sells (ingredients, then equipment), loaded once. */
 export function useShopCatalog() {
   const catalog = useApiData('shop-catalog', loadCatalog)
-  return { items: catalog.data ?? NO_ITEMS, loading: catalog.loading, error: catalog.error ?? '' }
+  return { items: catalog.data ?? NO_ITEMS, loading: catalog.loading, error: catalog.error ?? '', reload: catalog.reload }
 }

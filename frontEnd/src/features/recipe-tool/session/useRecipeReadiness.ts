@@ -58,3 +58,43 @@ export function useReadinessGate(onShowIssue?: (issue: ReadinessIssue) => void) 
     return false
   }, [session, confirm, notifyError, onShowIssue])
 }
+
+/**
+ * Cook mode's gate: like `useReadinessGate`, but an unfinished recipe isn't a dead end — the cook can still walk
+ * through what is there as a preview. Resolves 'cook' (ready), 'preview' (not ready, previewing anyway) or null.
+ */
+export function useCookModeGate() {
+  const session = useRecipeSession()
+  const confirm = useConfirm()
+  const { notifyError } = useNotifications()
+
+  return useCallback(async (): Promise<'cook' | 'preview' | null> => {
+    if (!session) return null
+    // Narration is generated from the saved steps, so pending edits are saved first.
+    if (session.canEdit) {
+      const saved = await session.saveNow()
+      if (!saved.ok) {
+        notifyError(`Your latest changes couldn't be saved, so cook mode didn't start. ${saved.error ?? 'Please try again.'}`)
+        return null
+      }
+    }
+    const readiness = evaluateRecipeReadiness(session.getProcesses(), { isKnownAction })
+    if (readiness.ready) return 'cook'
+
+    const { blockers } = readiness
+    const listed = blockers.slice(0, 4).map((issue) => `• ${issue.message}`).join('\n')
+    const more = blockers.length > 4 ? `\n…and ${blockers.length - 4} more.` : ''
+    const fixWhere = session.canEdit
+      ? 'The readiness badge in the header lists everything to fix.'
+      : 'Its author still has to finish it.'
+    const preview = await confirm({
+      eyebrow: 'Recipe not finished',
+      title: 'This recipe isn’t ready to cook yet',
+      message: `${listed}${more}\n\nYou can still preview what is there, step by step. ${fixWhere}`,
+      confirmLabel: 'Preview anyway',
+      cancelLabel: 'Close',
+      tone: 'default',
+    })
+    return preview ? 'preview' : null
+  }, [session, confirm, notifyError])
+}

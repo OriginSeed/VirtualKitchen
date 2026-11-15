@@ -23,6 +23,8 @@ const loadSession = async (): Promise<SignedInSession> => {
 export function useAppSession() {
   const [session, setSession] = useState<SignedInSession | null>(null)
   const [restoring, setRestoring] = useState(isAuthenticated)
+  // Why the user is signed out when it wasn't their choice; the sign-in form shows it until they sign in.
+  const [notice, setNotice] = useState<string | null>(null)
 
   useEffect(() => {
     clearAllDrafts(undefined, { onlyExpired: true })
@@ -35,6 +37,7 @@ export function useAppSession() {
       .catch((error) => {
         console.error('Session restore failed:', error)
         clearStoredToken()
+        if (!cancelled) setNotice('We couldn’t restore your session. Please log in again.')
       })
       .finally(() => {
         if (!cancelled) setRestoring(false)
@@ -51,9 +54,15 @@ export function useAppSession() {
     setSession(null)
   }, [])
 
-  useEffect(() => onSessionExpired(logout), [logout])
+  useEffect(() => onSessionExpired(() => {
+    logout()
+    setNotice('Your session has expired. Please log in again.')
+  }), [logout])
 
-  const login = useCallback((user: User, kitchen: Kitchen) => setSession({ user, kitchen }), [])
+  const login = useCallback((user: User, kitchen: Kitchen) => {
+    setNotice(null)
+    setSession({ user, kitchen })
+  }, [])
 
-  return { session, restoring, login, logout }
+  return { session, restoring, notice, login, logout }
 }

@@ -9,6 +9,7 @@ import OrderSummaryCard from '../components/OrderSummaryCard'
 import SnapshotModal from '../components/SnapshotModal'
 import SuggestionsPanel from '../components/SuggestionsPanel'
 import TrackingTimeline from '../components/TrackingTimeline'
+import { SHOW_ORDER_MOCKS } from '../orderFeatures'
 import { buildOrderPresentation, flattenPresentationSteps } from '../model/orderPresentation'
 import {
   canAdvanceStatus,
@@ -105,7 +106,8 @@ export default function TrackingView({ order, onOrderChange, onError }: OrderSte
         Simulated preparation — no real chef/kitchen is connected in this prototype.
       </DemoNotice>
 
-      <div className="ro-tabs" role="tablist" aria-label="Tracking">
+      {/* The Suggestions tab (chef chat) is a mock-up; without it there is only the timeline, so no tabs. */}
+      {SHOW_ORDER_MOCKS && <div className="ro-tabs" role="tablist" aria-label="Tracking">
         {(['timeline', 'suggestions'] as const).map((id) => (
           <button
             key={id}
@@ -120,9 +122,9 @@ export default function TrackingView({ order, onOrderChange, onError }: OrderSte
             {id === 'timeline' ? 'Timeline' : 'Suggestions'}
           </button>
         ))}
-      </div>
+      </div>}
 
-      {tab === 'timeline' ? (
+      {tab === 'timeline' || !SHOW_ORDER_MOCKS ? (
         <div id="ro-panel-timeline" role="tabpanel" aria-labelledby="ro-tab-timeline" className="ro-stack">
           {completed ? (
             <section className="ro-card ro-complete">
@@ -141,17 +143,19 @@ export default function TrackingView({ order, onOrderChange, onError }: OrderSte
                 <span className="ro-muted">Move the simulated kitchen on one stage at a time, or let it play.</span>
               </div>
               <div className="ro-actions">
-                <button
-                  type="button"
-                  className="ro-btn ro-btn-ghost"
-                  onClick={() => {
-                    setSnapshotsLeft((value) => Math.max(0, value - 1))
-                    setSnapshotOpen(true)
-                  }}
-                  disabled={snapshotsLeft <= 0}
-                >
-                  📷 Request Snapshot · {snapshotsLeft} remaining
-                </button>
+                {SHOW_ORDER_MOCKS && (
+                  <button
+                    type="button"
+                    className="ro-btn ro-btn-ghost"
+                    onClick={() => {
+                      setSnapshotsLeft((value) => Math.max(0, value - 1))
+                      setSnapshotOpen(true)
+                    }}
+                    disabled={snapshotsLeft <= 0}
+                  >
+                    📷 Request Snapshot · {snapshotsLeft} remaining
+                  </button>
+                )}
                 {order.status !== 'CONFIRMED' && canAdvance && (
                   <button
                     type="button"
@@ -191,7 +195,7 @@ export default function TrackingView({ order, onOrderChange, onError }: OrderSte
         </div>
       )}
 
-      <SnapshotModal open={snapshotOpen} onClose={() => setSnapshotOpen(false)} imageUrl={snapshotImage} />
+      {SHOW_ORDER_MOCKS && <SnapshotModal open={snapshotOpen} onClose={() => setSnapshotOpen(false)} imageUrl={snapshotImage} />}
     </div>
   )
 }

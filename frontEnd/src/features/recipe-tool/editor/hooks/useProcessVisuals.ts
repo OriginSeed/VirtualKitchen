@@ -3,6 +3,7 @@ import type { RecipeProcessVisualizationStepResult } from '../../../../types/rec
 import { errorMessage } from '../../../../shared/errors'
 import { isTrackedJobActive, visualsJobKey } from '../../jobs/jobTracker'
 import { useJobTracker, useTrackedJob } from '../../jobs/useJobTracker'
+import type { RunModels } from '../../workflow/model/workflowSelection'
 
 export type GenerateVisualsStatus = { type: 'success' | 'error' | 'info'; text: string }
 
@@ -39,7 +40,11 @@ export function useProcessVisuals({ recipeId, processId, stepCount, unit = 'step
     }
   }, [])
 
-  const generate = useCallback(async () => {
+  /**
+   * `modelKeys`: the models the user picked for this run (see ModelChoiceDialog); omitted = account setting.
+   * `overwriteExisting`: regenerate and replace images steps already have (default: keep them).
+   */
+  const generate = useCallback(async (modelKeys?: RunModels, overwriteExisting = false) => {
     if (generating) return
     if (stepCount === 0) {
       setMessage({ type: 'error', text: 'No steps to visualize' })
@@ -48,7 +53,7 @@ export function useProcessVisuals({ recipeId, processId, stepCount, unit = 'step
     setMessage(null)
     setStarting(true)
     try {
-      await jobTracker.startVisuals(recipeId, processId)
+      await jobTracker.startVisuals(recipeId, processId, modelKeys, overwriteExisting)
     } catch (error) {
       if (!unmountedRef.current) {
         setMessage({ type: 'error', text: errorMessage(error, 'Unable to generate visuals right now.') })

@@ -698,6 +698,12 @@
   background: var(--flow-surface-muted);
 }
 
+/* The zoom trigger around a step image fills the media box the image is absolutely placed in. */
+.rp-step-media > .image-zoom-trigger {
+  position: absolute;
+  inset: 0;
+}
+
 .rp-step-media .rp-image {
   position: absolute;
   inset: 0;
@@ -1240,6 +1246,31 @@ button.rp-continuation:hover {
   font-size: 13.5px;
   line-height: 1.5;
   color: var(--flow-text-muted);
+}
+
+/* A preparation step with its own image: the point beside a small picture of it. */
+.rp-flow-point.has-image > .rp-flow-point-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 132px;
+  gap: 12px;
+  align-items: start;
+}
+
+.rp-flow-point-media {
+  aspect-ratio: 4 / 3;
+  border-radius: 10px;
+  overflow: hidden;
+  background: var(--flow-surface-muted);
+}
+
+@media (max-width: 560px) {
+  .rp-flow-point.has-image > .rp-flow-point-row {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .rp-flow-point-media {
+    max-width: 280px;
+  }
 }
 
 .rp-flow-output {

@@ -115,6 +115,14 @@ class InMemoryStepNarrationStore implements StepNarrationStore {
     }
 
     @Override
+    public synchronized Optional<StepNarration> findReadyByAudioUrl(String audioUrl) {
+        return records.values().stream()
+                .filter(r -> audioUrl.equals(r.getAudioUrl()) && r.getStatus() == StepNarrationStatus.READY)
+                .map(InMemoryStepNarrationStore::copy)
+                .findFirst();
+    }
+
+    @Override
     public synchronized boolean insertIfAbsent(StepNarration narration) {
         if (records.containsKey(narration.getNarrationKey())) {
             return false;

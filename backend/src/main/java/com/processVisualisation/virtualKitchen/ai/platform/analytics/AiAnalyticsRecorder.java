@@ -19,6 +19,7 @@ import com.processVisualisation.virtualKitchen.ai.platform.registry.ModelDefinit
 import com.processVisualisation.virtualKitchen.ai.platform.usage.AiCallListener;
 import com.processVisualisation.virtualKitchen.ai.platform.usage.AiCallRecord;
 import com.processVisualisation.virtualKitchen.common.logging.MdcKeys;
+import com.processVisualisation.virtualKitchen.common.logging.LogScope;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.slf4j.MDC;
@@ -60,7 +61,7 @@ public class AiAnalyticsRecorder {
 
     private static final Logger log = LoggerFactory.getLogger(AiAnalyticsRecorder.class);
 
-    public static final String WORKFLOW_ID_MDC = "workflowId";
+    public static final String WORKFLOW_ID_MDC = MdcKeys.WORKFLOW_ID;
 
     private static final int MAX_CAS_ATTEMPTS = 32;
     private static final int MAX_PENDING = 10_000;
@@ -96,6 +97,32 @@ public class AiAnalyticsRecorder {
     /** A recorder that records nothing; for callers (mostly tests) constructed without analytics. */
     public static AiAnalyticsRecorder disabled() {
         return new AiAnalyticsRecorder(null, null, null, null, new AnalyticsHealth(), Clock.systemUTC());
+    }
+
+    /**
+     * The cost of one successful request to a model priced per output rather than per token (image models priced
+     * per image, free local engines, speech priced at zero per second), from the rate card in force now; null when
+     * that cannot be known here (no card, a failed call, or a non-zero per-second rate with no duration at hand).
+     * Used for log lines and operation totals only; analytics prices every call itself.
+     */
+    public Double flatCostUsd(String modelKey, AiCapability capability, boolean succeeded) {
+        if (pricing == null || modelKey == null || !succeeded) {
+            return null;
+        }
+        PricingRateCard card = pricing.rateFor(modelKey, clock.instant()).orElse(null);
+        if (card == null) {
+            return null;
+        }
+        if (card.isLocal()) {
+            return 0d;
+        }
+        if (capability == AiCapability.TEXT_TO_IMAGE && card.getPerImage() != null) {
+            return card.getPerImage();
+        }
+        if (capability == AiCapability.TEXT_TO_SPEECH && card.getPerAudioSecond() != null && card.getPerAudioSecond() == 0d) {
+            return 0d;
+        }
+        return null;
     }
 
     /**
@@ -583,6 +610,17 @@ public class AiAnalyticsRecorder {
     /** Re-applies queued writes in order. Each write is idempotent, so a retry can never double-apply. */
     @Scheduled(fixedDelayString = "${vk.ai.analytics.retry-interval-ms:30000}")
     public void retryPendingWrites() {
+        if (pending.isEmpty()) {
+            return;
+        }
+        // Scheduler threads have no request context; name this sweep so its lines group together.
+        try (LogScope ignored = LogScope.with(MdcKeys.AREA, "system", MdcKeys.ACTION, "scheduled.analytics_write_retry",
+                MdcKeys.JOB_ID, "analytics-retry-" + Long.toHexString(System.currentTimeMillis()))) {
+            retryPendingWritesNow();
+        }
+    }
+
+    private void retryPendingWritesNow() {
         int batch = pending.size();
         List<PendingWrite> again = new ArrayList<>();
         for (int i = 0; i < batch; i++) {

@@ -1,6 +1,10 @@
 package com.processVisualisation.virtualKitchen.recipe.service;
 
+import ch.qos.logback.classic.Level;
+import ch.qos.logback.classic.spi.ILoggingEvent;
+import com.processVisualisation.virtualKitchen.common.logging.LogCapture;
 import com.processVisualisation.virtualKitchen.common.persistence.SequenceGeneratorService;
+import com.processVisualisation.virtualKitchen.recipe.dto.RecipeTemplateRequestDTO;
 import com.processVisualisation.virtualKitchen.recipe.dto.NutritionInfoDTO;
 import com.processVisualisation.virtualKitchen.recipe.dto.ProcessResponseDTO;
 import com.processVisualisation.virtualKitchen.recipe.dto.RecipeDetailResponseDTO;
@@ -32,6 +36,8 @@ import java.util.Optional;
 import java.util.concurrent.atomic.AtomicLong;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertNotSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -367,6 +373,53 @@ class RecipeTemplateServiceTest {
         Long recipeId = seedRecipe(OWNER_ID, Visibility.PRIVATE);
 
         assertThrows(NoSuchElementException.class, () -> service.getMainProcess(recipeId, OWNER_ID));
+    }
+
+    @Test
+    void delete_owner_logsRecipeDeletedWithIdsOnly() {
+        Long recipeId = seedRecipe(OWNER_ID, Visibility.PRIVATE);
+
+        try (LogCapture logs = LogCapture.of(RecipeTemplateService.class)) {
+            service.delete(recipeId, OWNER_ID);
+
+            List<ILoggingEvent> deleted = logs.events("recipe_deleted");
+            assertEquals(1, deleted.size(), logs.allMessages());
+            assertEquals(Level.INFO, deleted.get(0).getLevel());
+            assertEquals("event=recipe_deleted recipeId=" + recipeId + " userId=" + OWNER_ID,
+                    deleted.get(0).getFormattedMessage());
+        }
+        assertFalse(recipeStore.containsKey(recipeId));
+    }
+
+    @Test
+    void delete_nonOwner_logsNoDeletion() {
+        Long recipeId = seedRecipe(OWNER_ID, Visibility.PRIVATE);
+
+        try (LogCapture logs = LogCapture.of(RecipeTemplateService.class)) {
+            assertThrows(RecipeAccessDeniedException.class, () -> service.delete(recipeId, OTHER_USER_ID));
+
+            assertTrue(logs.events("recipe_deleted").isEmpty(), logs.allMessages());
+        }
+    }
+
+    @Test
+    void create_logsRecipeCreatedWithoutTheRecipeText() {
+        RecipeTemplateRequestDTO dto = new RecipeTemplateRequestDTO();
+        dto.setName("Grandma's secret stew");
+        dto.setDescription("Family recipe");
+        dto.setCreatedBy(OWNER_ID);
+
+        try (LogCapture logs = LogCapture.of(RecipeTemplateService.class)) {
+            RecipeTemplateResponseDTO created = service.create(dto);
+
+            List<ILoggingEvent> events = logs.events("recipe_created");
+            assertEquals(1, events.size(), logs.allMessages());
+            String message = events.get(0).getFormattedMessage();
+            assertTrue(message.contains("recipeId=" + created.getId()), message);
+            assertTrue(message.contains("userId=" + OWNER_ID), message);
+            assertFalse(logs.allMessages().contains("stew"), "no recipe names in the logs");
+            assertFalse(logs.allMessages().contains("Family recipe"), "no recipe descriptions in the logs");
+        }
     }
 
     private Long seedRecipe(Long ownerId, Visibility visibility) {

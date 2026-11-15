@@ -76,10 +76,12 @@ public class AuthService {
      */
     public UserResponseDTO signup(SignupRequestDTO request) {
         if (!request.getPassword().equals(request.getConfirmPassword())) {
+            log.warn("event=auth_signup_rejected reason=password_mismatch");
             throw new AuthException("Password and confirmation do not match", HttpStatus.BAD_REQUEST);
         }
 
         if (userRepository.existsByEmail(request.getEmail())) {
+            log.warn("event=auth_signup_rejected reason=account_exists");
             throw new AuthException("An account with this email already exists", HttpStatus.CONFLICT);
         }
 
@@ -94,8 +96,10 @@ public class AuthService {
 
         User saved = userRepository.save(user);
         announceRegistration(saved);
+        log.info("event=auth_signup_completed userId={} provider={}", saved.getId(), AuthProvider.LOCAL);
 
         otpService.generateAndSendOtp(saved.getEmail(), OtpPurpose.EMAIL_VERIFICATION);
+        logOtpSent(saved.getId(), OtpPurpose.EMAIL_VERIFICATION);
 
         return userMapper.toDTO(saved);
     }
@@ -109,18 +113,24 @@ public class AuthService {
      * @throws AuthException if no account matches the email/password, or the account email has not been verified
      */
     public AuthResponseDTO login(LoginRequestDTO request) {
-        User user = userRepository.findByEmail(request.getEmail().trim().toLowerCase())
-                .orElseThrow(() -> new AuthException("Invalid email or password", HttpStatus.UNAUTHORIZED));
+        User user = userRepository.findByEmail(request.getEmail().trim().toLowerCase()).orElse(null);
+        if (user == null) {
+            log.warn("event=auth_login_failed method=password reason=unknown_account");
+            throw new AuthException("Invalid email or password", HttpStatus.UNAUTHORIZED);
+        }
 
         if (user.getPasswordHash() == null || !passwordEncoder.matches(request.getPassword(), user.getPasswordHash())) {
+            log.warn("event=auth_login_failed method=password reason={} userId={}",
+                    user.getPasswordHash() == null ? "no_password_set" : "bad_credentials", user.getId());
             throw new AuthException("Invalid email or password", HttpStatus.UNAUTHORIZED);
         }
 
         if (!user.isEmailVerified()) {
+            log.warn("event=auth_login_failed method=password reason=email_unverified userId={}", user.getId());
             throw new AuthException("Please verify your email before signing in", HttpStatus.FORBIDDEN);
         }
 
-        return buildAuthResponse(user);
+        return buildAuthResponse(user, "password");
     }
 
     /**
@@ -152,14 +162,16 @@ public class AuthService {
 
             user = userRepository.save(user);
             announceRegistration(user);
+            log.info("event=auth_signup_completed userId={} provider={}", user.getId(), AuthProvider.GOOGLE);
         } else if (user.getGoogleId() == null) {
             // Link the existing (email/password) account to this Google identity instead of duplicating it.
             user.setGoogleId(googleUser.googleId());
             user.setEmailVerified(true);
             user = userRepository.save(user);
+            log.info("event=auth_google_account_linked userId={}", user.getId());
         }
 
-        return buildAuthResponse(user);
+        return buildAuthResponse(user, "google");
     }
 
     /**
@@ -177,6 +189,7 @@ public class AuthService {
         }
 
         otpService.generateAndSendOtp(user.getEmail(), OtpPurpose.EMAIL_VERIFICATION);
+        logOtpSent(user.getId(), OtpPurpose.EMAIL_VERIFICATION);
     }
 
     /**
@@ -194,8 +207,9 @@ public class AuthService {
 
         user.setEmailVerified(true);
         user = userRepository.save(user);
+        log.info("event=auth_email_verified userId={}", user.getId());
 
-        return buildAuthResponse(user);
+        return buildAuthResponse(user, "email_verification_otp");
     }
 
     /**
@@ -206,8 +220,9 @@ public class AuthService {
      * @throws AuthException if no account exists for the given email
      */
     public void sendLoginOtp(String email) {
-        getUserByEmailOrThrow(email);
+        User user = getUserByEmailOrThrow(email);
         otpService.generateAndSendOtp(email.trim().toLowerCase(), OtpPurpose.LOGIN);
+        logOtpSent(user.getId(), OtpPurpose.LOGIN);
     }
 
     /**
@@ -222,14 +237,20 @@ public class AuthService {
     public AuthResponseDTO verifyLoginOtp(VerifyOtpRequestDTO request) {
         User user = getUserByEmailOrThrow(request.getEmail());
 
-        otpService.verifyAndConsume(user.getEmail(), request.getOtp(), OtpPurpose.LOGIN);
+        try {
+            otpService.verifyAndConsume(user.getEmail(), request.getOtp(), OtpPurpose.LOGIN);
+        } catch (AuthException e) {
+            log.warn("event=auth_login_failed method=login_otp reason=otp_rejected userId={}", user.getId());
+            throw e;
+        }
 
         if (!user.isEmailVerified()) {
             user.setEmailVerified(true);
             user = userRepository.save(user);
+            log.info("event=auth_email_verified userId={}", user.getId());
         }
 
-        return buildAuthResponse(user);
+        return buildAuthResponse(user, "login_otp");
     }
 
     /**
@@ -240,8 +261,9 @@ public class AuthService {
      * @throws AuthException if no account exists for the given email
      */
     public void sendPasswordResetOtp(String email) {
-        getUserByEmailOrThrow(email);
+        User user = getUserByEmailOrThrow(email);
         otpService.generateAndSendOtp(email.trim().toLowerCase(), OtpPurpose.PASSWORD_RESET);
+        logOtpSent(user.getId(), OtpPurpose.PASSWORD_RESET);
     }
 
     /**
@@ -274,6 +296,7 @@ public class AuthService {
 
         user.setPasswordHash(passwordEncoder.encode(request.getNewPassword()));
         userRepository.save(user);
+        log.info("event=auth_password_reset_completed userId={}", user.getId());
     }
 
     /**
@@ -312,20 +335,27 @@ public class AuthService {
         eventPublisher.publishEvent(new UserRegisteredEvent(user.getId(), user.getName()));
     }
 
+    /** One line per OTP handed to the mail sender: the purpose and account id only, never the address or code. */
+    private static void logOtpSent(Long userId, OtpPurpose purpose) {
+        log.info("event=auth_otp_sent userId={} purpose={}", userId, purpose);
+    }
+
     /**
      * Builds the authentication response for a user by issuing a fresh JWT
      * access token and mapping the user entity to its response DTO.
      *
-     * @param user the user to build an authentication response for
+     * @param user   the user to build an authentication response for
+     * @param method how the user authenticated, for the {@code auth_login_succeeded} log line
      * @return the issued authentication token paired with the user profile
      */
-    private AuthResponseDTO buildAuthResponse(User user) {
+    private AuthResponseDTO buildAuthResponse(User user, String method) {
         if (user.isEmailVerified() && user.getUserType() != UserType.ADMIN && adminAllowlist.contains(user.getEmail())) {
             user.setUserType(UserType.ADMIN);
             user = userRepository.save(user);
             log.info("event=user_promoted_to_admin userId={} reason=vk.admin.emails", user.getId());
         }
         String token = jwtService.generateToken(user.getId(), user.getEmail(), user.getUserType());
+        log.info("event=auth_login_succeeded userId={} method={} userType={}", user.getId(), method, user.getUserType());
 
         return AuthResponseDTO.builder()
                 .token(token)

@@ -1,7 +1,6 @@
-import { useRef, type CSSProperties, type ReactNode } from 'react'
+import { useRef, useState, type CSSProperties, type ReactNode } from 'react'
 import './HomePage.css'
 import chefLogo from '../../assets/kitchen/blackShadowChef.png'
-import { isAuthenticated } from '../../api/authToken'
 import AppFooter from '../../shared/components/AppFooter'
 import { useTheme } from '../../shared/theme/themeContext'
 import AiDemo from './AiDemo'
@@ -9,6 +8,8 @@ import HeroFlow from './HeroFlow'
 import { useReveal } from './useReveal'
 
 type Props = {
+  /** Whether a session is active (a stored token alone may still fail to restore). */
+  signedIn?: boolean
   onTryIt?: () => void
   onLogin?: () => void
 }
@@ -21,31 +22,33 @@ const FEATURES = [
   { icon: '✍️', title: 'Easy step building', text: 'Type @ to tag ingredients, amounts and equipment in a step. Titles are written for you from the action, so building a recipe stays quick.' },
   { icon: '▶', title: 'Visuals & narration', text: 'See an image for each preparation and play the recipe as a narrated, captioned walkthrough, so every step is clear.' },
   { icon: '🥕', title: 'Ingredients & nutrition', text: 'Pick quantities from a real ingredient catalog and see the nutrition of the whole recipe.' },
-  { icon: '📚', title: 'Recipe library', text: 'Keep your own recipes, open any recipe from the global library in read mode and add it to your kitchen to make it yours.' },
+  { icon: '📚', title: 'Recipe library', text: 'Keep your own recipes, browse public recipes in Discover, read any of them and add a copy to your kitchen to make it yours.' },
 ]
 
 const STEPS = [
   { title: 'Create', text: 'Add Preparation and Main steps, tag ingredients with @ and set quantities.' },
   { title: 'Refine with AI', text: 'Generate a flow from a sentence or extend the one you have.' },
   { title: 'Visualize', text: 'Play it back as a narrated, step-by-step walkthrough.' },
-  { title: 'Order & cook', text: 'Check your pantry, buy what is missing and track delivery.' },
+  { title: 'Cook or order', text: 'Cook it yourself in cook mode — or, soon, have our chefs prepare and deliver it.' },
 ]
 
 const ORDER_STAGES = ['Confirm', 'Ingredients', 'Payment', 'Receipt', 'Tracking']
 
 const FAQS = [
-  { q: 'Do I need cooking or technical experience?', a: 'No. Start from scratch, add a recipe from the global library to your kitchen, or describe a dish and let AI draft it for you.' },
+  { q: 'Do I need cooking or technical experience?', a: 'No. Start from scratch, add a public recipe from Discover to your kitchen, or describe a dish and let AI draft it for you.' },
   { q: 'How do AI credits work?', a: 'Every account gets a monthly AI credit allowance, visible in the AI menu. Bigger AI workflows show an estimate and wait for your approval before they run.' },
-  { q: 'Who can see my recipes?', a: 'You choose. Keep a recipe in My recipes or publish it to the global library so others can view it and add it to their kitchen.' },
-  { q: 'Is ordering real?', a: 'The ordering flow checks your kitchen inventory, reserves what you already have and lets you shop for the rest. Payment is a demo today, so no real charges are made.' },
+  { q: 'Who can see my recipes?', a: 'You choose. Keep a recipe private in My Recipes, or publish it to Discover so others can view it and add it to their kitchen.' },
+  { q: 'Can I order a recipe today?', a: 'Chef-prepared delivery is coming soon. Until then you can try a demo of the ordering flow: it checks your pantry, reserves what you already have and lets you shop for the rest, with simulated payment, preparation and delivery — nothing is cooked or charged.' },
   { q: 'What is the narrated walkthrough?', a: 'It turns your recipe flow into a step-by-step slideshow with captions that follow a spoken narration, so you can cook hands-free.' },
 ]
 
-export default function HomePage({ onTryIt, onLogin }: Props) {
-  const hideLogin = isAuthenticated()
+export default function HomePage({ signedIn = false, onTryIt, onLogin }: Props) {
+  const hideLogin = signedIn
   const { theme, toggleTheme } = useTheme()
   const rootRef = useRef<HTMLDivElement>(null)
   useReveal(rootRef)
+  // Narrow screens: the section links fold into a menu.
+  const [menuOpen, setMenuOpen] = useState(false)
 
   return (
     <div className="home-page" ref={rootRef}>
@@ -54,7 +57,14 @@ export default function HomePage({ onTryIt, onLogin }: Props) {
           <span className="home-logo"><img src={chefLogo} alt="" /></span>
           Virtual Kitchen
         </a>
-        <nav className="home-nav-links" aria-label="Home sections">
+        <nav
+          id="home-section-links"
+          className={`home-nav-links${menuOpen ? ' is-open' : ''}`}
+          aria-label="Home sections"
+          onClick={(event) => {
+            if ((event.target as HTMLElement).closest('a')) setMenuOpen(false)
+          }}
+        >
           <a href="#features">Features</a>
           <a href="#how-it-works">How it works</a>
           <a href="#ai">AI</a>
@@ -62,6 +72,16 @@ export default function HomePage({ onTryIt, onLogin }: Props) {
           <a href="#faq">FAQ</a>
         </nav>
         <div className="home-nav-actions">
+          <button
+            type="button"
+            className="home-menu-toggle"
+            aria-expanded={menuOpen}
+            aria-controls="home-section-links"
+            aria-label={menuOpen ? 'Close menu' : 'Open menu'}
+            onClick={() => setMenuOpen((open) => !open)}
+          >
+            {menuOpen ? '✕' : '☰'}
+          </button>
           <button
             type="button"
             className="home-theme-toggle"
@@ -75,7 +95,7 @@ export default function HomePage({ onTryIt, onLogin }: Props) {
             <button type="button" className="home-btn home-btn-ghost" onClick={onLogin}>Log in</button>
           )}
           <button type="button" className="home-btn home-btn-primary" onClick={onTryIt}>
-            {hideLogin ? 'Open kitchen' : 'Get started'}
+            {hideLogin ? 'Open Kitchen' : 'Get started'}
           </button>
         </div>
       </header>
@@ -160,13 +180,16 @@ export default function HomePage({ onTryIt, onLogin }: Props) {
         <section className="home-section" id="ordering">
           <div className="home-split is-reversed">
             <div className="home-split-copy" data-reveal>
-              <span className="home-eyebrow">Recipe ordering</span>
+              <span className="home-eyebrow">Recipe ordering · Coming soon</span>
               <h2>From recipe to doorstep.</h2>
               <p>
-                Pick your servings and Virtual Kitchen checks your inventory, reserves what you
-                already have and builds a cart for the rest. Then follow your order to the door.
+                Soon our chefs will cook any recipe in your kitchen exactly as it is written and deliver
+                it to your door — your recipe flow is their instructions.
               </p>
-              <p className="home-roadmap">Next on the roadmap: recipes prepared for you, end to end.</p>
+              <p className="home-roadmap">
+                Try the demo today: pick your servings, see what your pantry already covers, shop for
+                the rest and follow a simulated order to the door.
+              </p>
             </div>
             <div className="home-order-card" data-reveal style={order(1)}>
               <ol className="home-order-track" aria-label="Recipe order stages">

@@ -68,14 +68,20 @@ public interface ImageGenerationClient {
      * @param width output width in pixels, or null
      * @param height output height in pixels, or null
      * @param steps inference steps, or null; only providers whose API takes a step count send it
+     * @param seed a fixed generation seed, or null; only providers whose API takes one send it. A seed alone does not
+     *             make two different prompts look alike: it is a small aid next to a shared scene and references.
      */
-    record ImageGenerationSettings(Integer width, Integer height, Integer steps, String modelId) {
+    record ImageGenerationSettings(Integer width, Integer height, Integer steps, String modelId, Long seed) {
 
         /** No overrides: every provider uses its own configured settings, exactly as before settings existed. */
         public static final ImageGenerationSettings NONE = new ImageGenerationSettings(null, null, null);
 
         public ImageGenerationSettings(Integer width, Integer height, Integer steps) {
-            this(width, height, steps, null);
+            this(width, height, steps, null, null);
+        }
+
+        public ImageGenerationSettings(Integer width, Integer height, Integer steps, String modelId) {
+            this(width, height, steps, modelId, null);
         }
 
         /**
@@ -83,15 +89,20 @@ public interface ImageGenerationClient {
          * that was selected (and charged for), not only the provider's configured one.
          */
         public ImageGenerationSettings withModel(String providerModelId) {
-            return new ImageGenerationSettings(width, height, steps, providerModelId);
+            return new ImageGenerationSettings(width, height, steps, providerModelId, seed);
+        }
+
+        /** The same settings with a fixed seed, for providers that take one. */
+        public ImageGenerationSettings withSeed(Long seed) {
+            return new ImageGenerationSettings(width, height, steps, modelId, seed);
         }
 
         /**
-         * No size or steps requested. The model id doesn't count: without a size the call stays a plain
+         * No size, steps or seed requested. The model id doesn't count: without a size the call stays a plain
          * {@code generate(prompt)}, and the provider runs its configured model.
          */
         public boolean isNone() {
-            return width == null && height == null && steps == null;
+            return width == null && height == null && steps == null && seed == null;
         }
     }
 
@@ -116,5 +127,13 @@ public interface ImageGenerationClient {
      */
     default boolean supportsReferenceImages() {
         return false;
+    }
+
+    /**
+     * How many reference images one request can carry, for providers that {@link #supportsReferenceImages()}.
+     * Callers send at most this many (the most relevant ones).
+     */
+    default int maxReferenceImages() {
+        return 1;
     }
 }

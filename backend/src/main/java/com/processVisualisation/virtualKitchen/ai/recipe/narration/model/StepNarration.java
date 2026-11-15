@@ -43,6 +43,8 @@ public class StepNarration {
     /** SHA-256 of the versioned, normalized narration script this record was (or is being) generated from. */
     private String sourceTextHash;
 
+    /** Indexed: an imported recipe file names its narration by this URL. */
+    @Indexed
     private String audioUrl;
     private String storageBackend;
     private String storagePath;

@@ -154,6 +154,12 @@ public class GeminiImageClient implements ImageGenerationClient {
         return true;
     }
 
+    /** The scene anchor and the previous step: Gemini takes several inline images ahead of the prompt. */
+    @Override
+    public int maxReferenceImages() {
+        return 2;
+    }
+
     Map<String, Object> buildRequestPayload(String prompt, List<ReferenceImage> references) {
         List<Map<String, Object>> parts = new ArrayList<>();
         for (ReferenceImage reference : references == null ? List.<ReferenceImage>of() : references) {

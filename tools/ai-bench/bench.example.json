@@ -1,0 +1,45 @@
+{
+  "baseUrl": "http://localhost:8080",
+  "auth": {
+    "user": { "emailEnv": "BENCH_USER_EMAIL", "passwordEnv": "BENCH_USER_PASSWORD" },
+    "admin": { "emailEnv": "BENCH_ADMIN_EMAIL", "passwordEnv": "BENCH_ADMIN_PASSWORD" }
+  },
+  "recipes": [
+    { "id": "pancakes", "file": "recipes/pancakes.txt" },
+    { "id": "tomato-soup", "file": "recipes/tomato-soup.txt" },
+    { "id": "tomato-masala", "file": "recipes/tomato-masala.txt" },
+    { "id": "chicken-curry", "file": "recipes/chicken-curry.txt" }
+  ],
+  "combos": [
+    [
+      { "name": "prompt", "text": "gemini-flash", "image": "gemini-image", "speech": "gemini-tts",
+        "focusedView": true, "anchor": false, "reference": false },
+      { "name": "anchor", "image": "gemini-image", "speech": "gemini-tts",
+        "focusedView": true, "anchor": true, "reference": false },
+      { "name": "reference", "image": "gemini-image", "speech": "gemini-tts",
+        "focusedView": true, "anchor": false, "reference": true },
+      { "name": "anchor+reference", "image": "gemini-image", "speech": "gemini-tts",
+        "focusedView": true, "anchor": true, "reference": true },
+      { "name": "before", "image": "gemini-image", "speech": null,
+        "focusedView": false, "anchor": true }
+    ],
+    [
+      { "name": "prep-1-per-image", "text": "gemini-flash", "image": "gemini-image", "speech": null,
+        "focusedView": true, "stepsPerImage": 1, "skipLookAlike": false },
+      { "name": "prep-2-per-image", "image": "gemini-image", "speech": null,
+        "focusedView": true, "stepsPerImage": 2, "skipLookAlike": true },
+      { "name": "prep-4-per-image", "image": "gemini-image", "speech": null,
+        "focusedView": true, "stepsPerImage": 4, "skipLookAlike": true }
+    ],
+    { "name": "deepinfra-all", "text": "deepinfra-deepseek-v4-flash", "image": "deepinfra-flux2-klein", "speech": "deepinfra-mimo-tts" },
+    { "name": "local-text", "text": "ollama-qwen" }
+  ],
+  "repeats": 1,
+  "concurrency": 1,
+  "grantCredits": 200,
+  "allowAdminOverrides": true,
+  "failOnFallback": false,
+  "cleanup": "keep",
+  "downloadAssets": true,
+  "timeouts": { "text": 600, "image": 1200, "speech": 600 }
+}

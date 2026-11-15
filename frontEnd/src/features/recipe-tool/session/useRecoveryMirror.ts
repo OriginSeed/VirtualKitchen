@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef } from 'react'
+import { useNotifications } from '../../../shared/components/notifications/notificationContext'
 import { clearRecovery, writeRecovery, type StorageLike } from './persistence/recoveryStore'
 import type { SaveCoordinator } from './persistence/saveCoordinator'
 import type { SessionStore } from './persistence/sessionStore'
@@ -22,6 +23,7 @@ export function useRecoveryMirror({ recipeId, canEdit, coordinator, store, stora
 }) {
   const recoveryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const recoveryWarnedRef = useRef(false)
+  const { notifyInfo } = useNotifications()
 
   /** Writes the current unsaved session to localStorage (synchronously — also used on pagehide/unmount). */
   const writeRecoveryNow = useCallback(() => {
@@ -38,8 +40,10 @@ export function useRecoveryMirror({ recipeId, canEdit, coordinator, store, stora
     if (!result.ok && !recoveryWarnedRef.current) {
       recoveryWarnedRef.current = true
       console.warn('Unable to keep a local recovery copy of unsaved recipe changes:', result.error)
+      // Autosave still runs; only the crash-safety net is missing, so say so once rather than alarm.
+      notifyInfo('This browser isn’t letting us keep a backup copy of unsaved edits. Autosave still works, but save before closing the tab.')
     }
-  }, [canEdit, coordinator, store, storage, recipeId])
+  }, [canEdit, coordinator, store, storage, recipeId, notifyInfo])
 
   /** Throttled, so continuous typing still reaches the recovery copy every half second at most. */
   const noteChange = useCallback(() => {

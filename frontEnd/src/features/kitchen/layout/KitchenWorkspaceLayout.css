@@ -1,0 +1,121 @@
+.kitchen-workspace {
+  display: grid;
+  grid-template-columns: 210px minmax(0, 1fr);
+  align-items: start;
+  gap: 28px;
+  max-width: 1640px;
+  margin: 0 auto;
+}
+
+.kitchen-workspace-main {
+  min-width: 0;
+}
+
+/* ---------- Side navigation ---------- */
+
+.kitchen-sidenav {
+  position: sticky;
+  top: 0;
+  padding: 10px;
+  border: 1px solid var(--flow-border);
+  border-radius: var(--flow-radius-lg);
+  background: var(--flow-surface);
+  box-shadow: var(--flow-shadow-card);
+}
+
+.kitchen-sidenav-title {
+  padding: 6px 10px 10px;
+  color: var(--flow-text);
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.kitchen-sidenav-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.kitchen-sidenav-heading {
+  padding: 12px 10px 4px;
+  color: var(--flow-text-subtle);
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.kitchen-sidenav-link {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 38px;
+  padding: 0 10px;
+  border-radius: var(--flow-radius-md);
+  color: var(--flow-text-muted);
+  font-size: 13px;
+  font-weight: 650;
+  text-decoration: none;
+  white-space: nowrap;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+
+.kitchen-sidenav-link:hover {
+  background: var(--flow-surface-muted);
+  color: var(--flow-text);
+}
+
+.kitchen-sidenav-link.active {
+  background: var(--flow-accent-soft);
+  color: var(--flow-accent-strong);
+  font-weight: 750;
+}
+
+.kitchen-sidenav-link:focus-visible {
+  outline: 2px solid var(--flow-accent);
+  outline-offset: 1px;
+}
+
+.kitchen-sidenav-icon {
+  width: 20px;
+  font-size: 15px;
+  text-align: center;
+}
+
+/* ---------- Narrow screens: a horizontal tab strip ---------- */
+
+@media (max-width: 900px) {
+  .kitchen-workspace {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 18px;
+  }
+
+  .kitchen-sidenav {
+    position: static;
+    padding: 6px;
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+
+  .kitchen-sidenav::-webkit-scrollbar {
+    display: none;
+  }
+
+  .kitchen-sidenav-title,
+  .kitchen-sidenav-heading {
+    display: none;
+  }
+
+  .kitchen-sidenav-list {
+    flex-direction: row;
+    gap: 4px;
+  }
+
+  .kitchen-sidenav-link {
+    min-height: 36px;
+    padding: 0 12px;
+  }
+}

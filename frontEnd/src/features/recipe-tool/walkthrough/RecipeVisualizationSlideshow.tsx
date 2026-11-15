@@ -1,4 +1,6 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useId, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from 'react'
+import { ImageZoomButton } from '../../../shared/components/image-viewer/ZoomableImage'
+import { useImageLightbox } from '../../../shared/components/image-viewer/useImageLightbox'
 import NarrationControls from './narration/NarrationControls'
 import type { NarrationPhase } from './narration/narrationPlayer'
 import { useNarrationPlayer } from './narration/useNarrationPlayer'
@@ -65,6 +67,9 @@ function StepStage({ step, narrationText, revealMode, paused, progress, narratio
   const showImage = imageStatus === 'loaded'
   // Until the narration state has loaded (or when a step has none), fall back to the step's own text.
   const text = narrationText?.trim() || step.instruction?.trim() || step.title.trim() || 'Untitled step'
+  // Full-size view: click the image (mouse/touch) or its corner button (keyboard). Opens over the walkthrough.
+  const lightbox = useImageLightbox()
+  const fullImage = imageUrl ? { src: imageUrl, alt: step.title, caption: step.instruction?.trim() || step.title } : null
 
   return (
     <div className={`recipe-slideshow-body ${showImage ? 'recipe-slideshow-body-image' : 'recipe-slideshow-body-text'}`}>
@@ -74,10 +79,14 @@ function StepStage({ step, narrationText, revealMode, paused, progress, narratio
           className={`recipe-slideshow-image${showImage ? ' is-loaded' : ''}`}
           src={imageUrl}
           alt={step.title}
+          style={showImage ? { cursor: 'zoom-in' } : undefined}
+          onClick={() => fullImage && lightbox.open(fullImage)}
           onLoad={() => setImage({ url: imageUrl, status: 'loaded' })}
           onError={() => setImage({ url: imageUrl, status: 'error' })}
         />
       )}
+      {showImage && fullImage && <ImageZoomButton {...fullImage} onOpen={lightbox.open} />}
+      {lightbox.element}
       <AnimatedInstruction
         // A different text (e.g. the narration script arriving) restarts the reveal cleanly.
         key={text}
@@ -169,15 +178,49 @@ export default function RecipeVisualizationSlideshow({
     return () => window.removeEventListener('keydown', onKeyDown)
   }, [player, onClose])
 
+  // A real dialog: focus moves in on open (and back to whatever opened it on close), and Tab stays inside.
+  const titleId = useId()
+  const dialogRef = useRef<HTMLDivElement>(null)
+  const closeRef = useRef<HTMLButtonElement>(null)
+  useEffect(() => {
+    const opener = document.activeElement as HTMLElement | null
+    closeRef.current?.focus()
+    return () => opener?.focus?.()
+  }, [])
+  const trapFocus = (event: ReactKeyboardEvent) => {
+    if (event.key !== 'Tab' || !dialogRef.current) return
+    const focusable = Array.from(dialogRef.current.querySelectorAll<HTMLElement>(
+      'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])',
+    )).filter((element) => element.offsetParent !== null)
+    if (focusable.length === 0) return
+    const first = focusable[0]
+    const last = focusable[focusable.length - 1]
+    if (event.shiftKey && document.activeElement === first) {
+      event.preventDefault()
+      last.focus()
+    } else if (!event.shiftKey && document.activeElement === last) {
+      event.preventDefault()
+      first.focus()
+    }
+  }
+
   const isPlaying = state.autoplay && state.phase !== 'blocked'
   const playLabel = isPlaying ? '⏸ Pause' : state.finished ? '↺ Play again' : '▶ Play'
 
   return (
     <div className="flow-canvas-export-modal-overlay" onClick={onClose}>
-      <div className="recipe-slideshow-modal" onClick={(event) => event.stopPropagation()}>
+      <div
+        ref={dialogRef}
+        className="recipe-slideshow-modal"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby={titleId}
+        onClick={(event) => event.stopPropagation()}
+        onKeyDown={trapFocus}
+      >
         <div className="recipe-slideshow-header">
-          <div className="recipe-slideshow-title">{heading}</div>
-          <button type="button" className="recipe-slideshow-close-btn" onClick={onClose} aria-label="Close">✕</button>
+          <div id={titleId} className="recipe-slideshow-title">{heading}</div>
+          <button ref={closeRef} type="button" className="recipe-slideshow-close-btn" onClick={onClose} aria-label="Close">✕</button>
         </div>
 
         {!hasSteps ? (

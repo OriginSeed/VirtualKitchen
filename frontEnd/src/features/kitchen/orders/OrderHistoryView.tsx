@@ -6,6 +6,7 @@ import { formatServings, isPaidStatus, OrderStatusBadge, OrderThumb, recipeOrder
 import { formatDateTime } from '../../../shared/format/date'
 import { formatMoney } from '../../../shared/format/money'
 import { errorMessage } from '../../../shared/errors'
+import { EmptyState, PageHeader } from '../../../shared/components/page'
 import './OrderHistoryView.css'
 
 interface OrderHistoryViewProps {
@@ -20,7 +21,7 @@ type OrderEntry =
 
 const TABS: { id: OrderTab; label: string }[] = [
   { id: 'all', label: 'All Orders' },
-  { id: 'recipe', label: 'Recipe Orders' },
+  { id: 'recipe', label: 'Recipe Orders (demo)' },
   { id: 'shop', label: 'Shop Orders' },
 ]
 
@@ -35,6 +36,7 @@ function RecipeOrderCard({ order }: { order: RecipeOrder }) {
       <div className="recipe-order-main">
         <div className="recipe-order-top">
           <span className="order-kind order-kind-recipe">Recipe order</span>
+          <span className="vk-chip vk-chip-demo" title="Demo: preparation and delivery are simulated">Demo</span>
           <span className="order-code">{order.orderCode}</span>
         </div>
         <h3>{name}</h3>
@@ -164,10 +166,11 @@ export default function OrderHistoryView({ userId }: OrderHistoryViewProps) {
 
   return (
     <div className="order-history-view">
-      <div className="order-history-header">
-        <h2>Order History</h2>
-        <p>View your recipe orders and shop orders, their totals, payment status, and order status.</p>
-      </div>
+      <PageHeader
+        eyebrow="My Kitchen"
+        title="Orders"
+        subtitle="Your recipe orders and shop orders, with their totals, payment status and progress."
+      />
 
       <div className="order-tabs" role="tablist" aria-label="Order type">
         {TABS.map((item) => (
@@ -186,7 +189,7 @@ export default function OrderHistoryView({ userId }: OrderHistoryViewProps) {
       </div>
 
       {loading ? (
-        <div className="order-state" role="status">Loading orders...</div>
+        <div className="vk-loading-text" role="status">Loading orders…</div>
       ) : (
         <>
           {errors.length > 0 && (
@@ -198,13 +201,21 @@ export default function OrderHistoryView({ userId }: OrderHistoryViewProps) {
 
           {entries.length === 0 ? (
             errors.length === 0 && (
-              <div className="order-state">
-                {tab === 'recipe'
-                  ? 'No recipe orders yet. Use “Order Recipe” on one of your recipes to start one.'
-                  : tab === 'shop'
-                    ? 'No shop orders yet.'
-                    : 'No previous orders found.'}
-              </div>
+              tab === 'recipe' ? (
+                <EmptyState
+                  icon="🧾"
+                  title="No recipe orders yet"
+                  text="Open one of your recipes and choose “Order” to try the demo ordering flow."
+                  actions={<Link className="vk-btn vk-btn-primary" to="/kitchen/recipes">Go to My Recipes</Link>}
+                />
+              ) : (
+                <EmptyState
+                  icon="🛒"
+                  title={tab === 'shop' ? 'No shop orders yet' : 'No orders yet'}
+                  text="Ingredients and equipment you buy in the shop show up here."
+                  actions={<Link className="vk-btn vk-btn-primary" to="/kitchen/shop">Visit the shop</Link>}
+                />
+              )
             )
           ) : (
             <div className="order-history-list">

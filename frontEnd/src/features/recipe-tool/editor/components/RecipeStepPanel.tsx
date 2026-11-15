@@ -4,6 +4,7 @@ import '../../../../styles/flow-ui.css'
 import SearchableSelect, { type SearchableSelectOption } from '../../../../shared/components/SearchableSelect'
 import { useConfirm } from '../../../../shared/components/confirm/confirmContext'
 import IngredientSelector from './IngredientSelector'
+import ZoomableImage from '../../../../shared/components/image-viewer/ZoomableImage'
 import { draftKeys } from '../../../../shared/drafts/draftStore'
 import type { Process } from '../../../../types/process'
 import { PreparationStyleSelect, UnitSelect } from './StepFieldInputs'
@@ -779,7 +780,12 @@ export default function RecipeStepPanel({
             <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
               {visualization?.imageUrl && (
                 <div style={{ width: '100%', aspectRatio: '16 / 10', borderRadius: 10, overflow: 'hidden', border: '1px solid var(--flow-border)', background: '#0f172a' }}>
-                  <img src={visualization.imageUrl} alt="Generated visualization" style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
+                  <ZoomableImage
+                    src={visualization.imageUrl}
+                    alt="Generated visualization"
+                    caption="Generated visualization"
+                    style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
+                  />
                 </div>
               )}
               <button

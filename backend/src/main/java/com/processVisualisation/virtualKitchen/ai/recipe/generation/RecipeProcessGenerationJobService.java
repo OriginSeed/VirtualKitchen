@@ -218,6 +218,8 @@ public class RecipeProcessGenerationJobService {
                     .set("aiUsage", operation.aiTotals())
                     .unset("activeKey");
             mongoTemplate.updateFirst(query(where("_id").is(jobId)), update, RecipeProcessGenerationJob.class);
+        } finally {
+            operation.close();
         }
     }
 

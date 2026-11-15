@@ -157,6 +157,8 @@ export interface RecipeProcessGenerationRequest {
   targetProcess?: EditTargetProcess
   /** EDIT only: the node selected in the editor. */
   selectedNodeId?: string | null
+  /** Models picked for this run (capability → model key); omitted capabilities use the account setting. */
+  modelKeys?: Partial<Record<'TEXT_TO_TEXT' | 'TEXT_TO_IMAGE' | 'TEXT_TO_SPEECH', string>>
 }
 
 export type RecipeProcessGenerationJobStatus = 'QUEUED' | 'IN_PROGRESS' | 'COMPLETED' | 'FAILED'
@@ -223,6 +225,19 @@ export interface RecipeIngredient {
   notes?: string
   preparation?: string
 }
+
+/** One image or audio file a recipe file links to, for one step of the recipe being imported (RecipeAssetImportDTO). */
+export type RecipeAssetRef = { processId: number; stepId: string; url: string; prompt?: string }
+
+export type RecipeAssetImportRequest = { images: RecipeAssetRef[]; audio: RecipeAssetRef[] }
+
+/** How many files of a kind were copied into the recipe, and which were not (with a reason to show). */
+export type RecipeAssetImportOutcome = {
+  copied: number
+  failed: { processId: number | null; stepId: string | null; reason: string }[]
+}
+
+export type RecipeAssetImportResponse = { images: RecipeAssetImportOutcome; audio: RecipeAssetImportOutcome }
 
 export interface NutritionInfo {
   calories?: number

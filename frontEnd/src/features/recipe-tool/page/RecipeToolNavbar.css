@@ -1,0 +1,329 @@
+/* The Recipe Tool's header. Elements that collapse on narrow screens use Tailwind's `hidden sm:inline` etc.,
+   so nothing here sets `display` on them (unlayered CSS would win over the utilities). */
+
+.rt-navbar {
+  position: relative;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  align-items: center;
+  gap: 12px;
+  height: 3.75rem;
+  flex-shrink: 0;
+  padding: 0 16px;
+  border-bottom: 1px solid var(--flow-border);
+  background: var(--flow-surface);
+}
+
+.rt-navbar-left,
+.rt-navbar-center,
+.rt-navbar-right {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 8px;
+}
+
+.rt-navbar-center {
+  flex-shrink: 0;
+}
+
+/* The recipe name and status give way (clip) rather than run under the centred tabs. */
+.rt-navbar-left {
+  overflow: hidden;
+  /* Room for focus outlines inside the clipped area. */
+  margin: -4px;
+  padding: 4px;
+}
+
+.rt-navbar-right {
+  justify-content: flex-end;
+}
+
+/* ---------- Buttons ---------- */
+
+.rt-button {
+  display: inline-flex;
+  flex-shrink: 0;
+  align-items: center;
+  gap: 4px;
+  height: 34px;
+  padding: 0 11px;
+  border: 1px solid var(--flow-border);
+  border-radius: 8px;
+  background: var(--flow-surface);
+  color: var(--flow-text);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background 0.12s ease, border-color 0.12s ease;
+}
+
+.rt-button:hover:not(:disabled) {
+  border-color: var(--flow-border-strong);
+  background: var(--flow-surface-muted);
+}
+
+.rt-button:disabled {
+  cursor: progress;
+  opacity: 0.7;
+}
+
+.rt-button.is-primary {
+  border-color: transparent;
+  background: linear-gradient(135deg, var(--flow-accent), var(--flow-accent-secondary));
+  color: #fff;
+}
+
+.rt-button.is-primary:hover:not(:disabled) {
+  filter: brightness(1.05);
+}
+
+.rt-button:focus-visible,
+.rt-recipe-chip:focus-visible,
+.rt-tab:focus-visible,
+.rt-readiness:focus-visible {
+  outline: 2px solid var(--flow-accent);
+  outline-offset: 2px;
+}
+
+/* ---------- Recipe chip ---------- */
+
+.rt-recipe-chip {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 8px;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  background: transparent;
+  font: inherit;
+  cursor: pointer;
+}
+
+.rt-recipe-chip:hover,
+.rt-recipe-chip.is-open {
+  background: var(--flow-surface-muted);
+}
+
+.rt-recipe-icon {
+  display: flex;
+  width: 28px;
+  height: 28px;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  border-radius: 8px;
+  background: linear-gradient(135deg, var(--flow-accent), var(--flow-accent-secondary));
+  font-size: 14px;
+}
+
+.rt-recipe-name {
+  max-width: 220px;
+  overflow: hidden;
+  color: var(--flow-text);
+  font-size: 13px;
+  font-weight: 700;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.rt-recipe-description {
+  max-width: 260px;
+  overflow: hidden;
+  color: var(--flow-text-muted);
+  font-size: 10.5px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.rt-visibility {
+  flex-shrink: 0;
+  padding: 2px 7px;
+  border: 1px solid var(--flow-border);
+  border-radius: 999px;
+  background: var(--flow-surface-muted);
+  color: var(--flow-text-muted);
+  font-size: 10px;
+  font-weight: 700;
+}
+
+.rt-visibility.is-public {
+  border-color: var(--flow-success-border);
+  background: var(--flow-success-soft);
+  color: var(--flow-success-strong);
+}
+
+.rt-chevron {
+  flex-shrink: 0;
+  color: var(--flow-text-subtle);
+  font-size: 11px;
+}
+
+.rt-recipe-chip.is-open .rt-chevron {
+  transform: rotate(180deg);
+}
+
+/* ---------- Status: readiness + save ---------- */
+
+.rt-status {
+  display: inline-flex;
+  min-width: 0;
+  align-items: center;
+  gap: 10px;
+}
+
+.rt-readiness {
+  display: inline-flex;
+  flex-shrink: 0;
+  align-items: center;
+  gap: 4px;
+  height: 26px;
+  padding: 0 9px;
+  border: 1px solid var(--flow-border);
+  border-radius: 999px;
+  font: inherit;
+  font-size: 11px;
+  font-weight: 750;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.rt-readiness:disabled {
+  cursor: default;
+}
+
+.rt-readiness.is-ready {
+  border-color: var(--flow-success-border);
+  background: var(--flow-success-soft);
+  color: var(--flow-success-strong);
+}
+
+.rt-readiness.is-warning {
+  border-color: var(--flow-warning-border);
+  background: var(--flow-warning-soft);
+  color: var(--flow-warning);
+}
+
+.rt-readiness.is-blocked {
+  border-color: var(--flow-danger-border);
+  background: var(--flow-danger-soft);
+  color: var(--flow-danger);
+}
+
+.rt-save-status {
+  display: inline-flex;
+  min-width: 0;
+  max-width: 260px;
+  align-items: center;
+}
+
+.rt-save-status.is-conflict {
+  max-width: none;
+}
+
+/* ---------- Tabs ---------- */
+
+.rt-tabs {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  gap: 4px;
+  padding: 4px;
+  border: 1px solid var(--flow-border);
+  border-radius: 10px;
+  background: var(--flow-surface-muted);
+}
+
+.rt-tab {
+  padding: 6px 12px;
+  border-radius: 7px;
+  color: var(--flow-text-muted);
+  font-size: 12px;
+  font-weight: 700;
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.rt-tab:hover {
+  color: var(--flow-text);
+}
+
+.rt-tab.is-active {
+  background: var(--flow-surface);
+  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.12);
+  color: var(--flow-accent-strong);
+}
+
+.rt-readonly {
+  padding: 7px 12px;
+  border: 1px solid var(--flow-border);
+  border-radius: 8px;
+  background: var(--flow-surface-muted);
+  color: var(--flow-text-muted);
+  font-size: 12px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+/* ---------- Details popover ---------- */
+
+.rt-details-popover {
+  position: absolute;
+  top: 100%;
+  left: 12px;
+  z-index: 30;
+  width: min(420px, calc(100vw - 24px));
+  margin-top: 6px;
+  box-shadow: 0 12px 28px rgba(15, 23, 42, 0.18);
+}
+
+/* ---------- Narrow screens ---------- */
+
+@media (max-width: 640px) {
+  .rt-navbar {
+    gap: 6px;
+    padding: 0 8px;
+  }
+
+  .rt-readiness-label {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
+  }
+
+  .rt-readiness {
+    position: relative;
+  }
+}
+
+/* ---------- Small screens: the editor is built for larger ones ---------- */
+
+.rt-small-screen-note {
+  display: none;
+}
+
+@media (max-width: 767px) {
+  .rt-small-screen-note {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px 10px;
+    padding: 8px 12px;
+    border-bottom: 1px solid var(--flow-info-border);
+    background: var(--flow-info-soft);
+    color: var(--flow-text);
+    font-size: 12px;
+  }
+
+  .rt-small-screen-note a {
+    color: var(--flow-accent);
+    font-weight: 700;
+    text-decoration: none;
+  }
+}

@@ -6,6 +6,10 @@ import DraftRestoredNote from '../../../../shared/drafts/DraftRestoredNote'
 import { useConfirm } from '../../../../shared/components/confirm/confirmContext'
 import { useConfirmDiscard } from '../../../../shared/components/confirm/useConfirmDiscard'
 import { errorMessage as describeError } from '../../../../shared/errors'
+import type { RunModelCapability } from '../../../../types/recipeAiWorkflow'
+import { pickRunModels, useRunModelChoices } from '../../workflow/model/runModels'
+import type { RunModels } from '../../workflow/model/workflowSelection'
+import { RunModelSelects } from '../../workflow/components/RunModelPicker'
 
 /** A finished AI edit waiting for the user's review — either a list of changes or a question back. */
 export type PendingProcessEdit = {
@@ -17,9 +21,10 @@ export type PendingProcessEdit = {
 
 type RecipeProcessGenerationModalProps = {
   onClose: () => void
-  onGenerate: (recipeText: string) => Promise<void>
+  /** `modelKeys`: the text model picked in this dialog for the run (none: the account setting). */
+  onGenerate: (recipeText: string, modelKeys: RunModels) => Promise<void>
   /** Asks the AI to change `editTargetName`'s process. */
-  onEdit: (instruction: string) => Promise<void>
+  onEdit: (instruction: string, modelKeys: RunModels) => Promise<void>
   isGenerating: boolean
   /** Which kind of job is running, so the modal shows (and locks to) that mode while it works. */
   runningMode: ProcessGenerationMode | null
@@ -64,6 +69,9 @@ Examples:
 • Replace olive oil with butter.
 • Remove the last step.`
 
+/** Generating or editing a process is one text-model call. */
+const TEXT_MODEL: RunModelCapability[] = ['TEXT_TO_TEXT']
+
 const primaryButton = (busy: boolean) => ({
   padding: '8px 16px', borderRadius: 8, border: '1px solid var(--flow-accent)', background: 'var(--flow-accent)',
   color: 'white', fontSize: 12.5, fontWeight: 700, cursor: busy ? 'wait' : 'pointer',
@@ -90,6 +98,9 @@ export default function RecipeProcessGenerationModal({
   const { value: text, setValue: setText, clear: clearText, restored } = useDraft(draftKey, '')
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
   const confirmDiscard = useConfirmDiscard()
+  // The text model for this run, picked before anything is sent ('' = the account setting).
+  const modelChoices = useRunModelChoices()
+  const [runModels, setRunModels] = useState<RunModels>({})
 
   const mode: ProcessGenerationMode = !allowCreate || pendingEdit
     ? 'EDIT'
@@ -104,7 +115,8 @@ export default function RecipeProcessGenerationModal({
     }
     setErrorMessage(null)
     try {
-      await (editing ? onEdit(trimmed) : onGenerate(trimmed))
+      const modelKeys = pickRunModels(runModels, TEXT_MODEL)
+      await (editing ? onEdit(trimmed, modelKeys) : onGenerate(trimmed, modelKeys))
     } catch (error) {
       setErrorMessage(describeError(error, 'Unable to reach the AI right now.'))
     }
@@ -185,6 +197,14 @@ export default function RecipeProcessGenerationModal({
                 rows={editing ? 5 : 10}
                 disabled={isGenerating}
                 style={{ minHeight: editing ? 110 : 180 }}
+              />
+
+              <RunModelSelects
+                choices={modelChoices.data}
+                capabilities={TEXT_MODEL}
+                value={runModels}
+                onChange={setRunModels}
+                disabled={isGenerating}
               />
 
               {(errorMessage || (!isGenerating && jobError)) && (

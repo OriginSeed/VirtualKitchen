@@ -1,5 +1,7 @@
 package com.processVisualisation.virtualKitchen.ai.platform.artifact;
 
+import com.processVisualisation.virtualKitchen.common.logging.UsageLedger;
+
 import com.mongodb.client.gridfs.model.GridFSFile;
 import com.mongodb.client.result.UpdateResult;
 import com.processVisualisation.virtualKitchen.ai.platform.artifact.codec.AiArtifactCodec;
@@ -113,6 +115,7 @@ public class AiArtifactService {
         try {
             AiArtifactPayload payload = readPayload(artifact);
             R value = spec.codec().decode(payload);
+            UsageLedger.increment(UsageLedger.Counter.ARTIFACTS_REUSED);
             log.info("event=ai_artifact_reused artifactId={} artifactKey={} reuseCount={} providerCall=false",
                     artifact.getId(), artifact.getArtifactKey(), artifact.getReuseCount());
             return Optional.of(new AiArtifactHit<>(artifact, value));

@@ -1,5 +1,9 @@
 package com.processVisualisation.virtualKitchen.recipe.controller;
 
+import com.processVisualisation.virtualKitchen.common.logging.LogAction;
+
+import com.processVisualisation.virtualKitchen.auth.exception.AuthException;
+import com.processVisualisation.virtualKitchen.auth.security.CurrentUser;
 import com.processVisualisation.virtualKitchen.common.web.ApiResponse;
 import com.processVisualisation.virtualKitchen.recipe.dto.RecipeDetailResponseDTO;
 import com.processVisualisation.virtualKitchen.recipe.dto.RecipePreparationNotesUpdateDTO;
@@ -13,6 +17,7 @@ import com.processVisualisation.virtualKitchen.recipe.service.RecipeThumbnailSer
 
 import jakarta.validation.Valid;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.*;
 
 import java.time.LocalDateTime;
@@ -22,11 +27,13 @@ import java.util.Objects;
 
 /**
  * REST controller for creating, reading, updating, deleting, and sharing recipe/process
- * templates. Recipe templates are user-owned: the update, updateVisibility, and delete
- * endpoints pass the requesting userId through to the service layer, which verifies ownership
- * before applying the change and rejects the request otherwise.
+ * templates. Recipe templates are user-owned. The caller is always the user in the verified JWT
+ * ({@link CurrentUser}) — never a {@code userId} sent by the client, which older clients may still
+ * add as a query parameter and which is ignored. The service layer verifies ownership before any
+ * change and rejects the request otherwise (403).
  */
 @RestController
+@LogAction("recipe")
 @RequestMapping("/api/v1/process-templates")
 public class RecipeTemplateController {
 
@@ -44,6 +51,8 @@ public class RecipeTemplateController {
      */
     @PostMapping
     public ApiResponse<RecipeTemplateResponseDTO> create(@RequestBody RecipeTemplateRequestDTO dto){
+        // The new recipe belongs to the caller, whatever the body says.
+        dto.setCreatedBy(CurrentUser.requireUserId());
         return build(service.create(dto), "created");
     }
 
@@ -53,33 +62,44 @@ public class RecipeTemplateController {
      * @param id the id of the template to fetch
      * @return an ApiResponse wrapping the matching template
      * @throws java.util.NoSuchElementException if no template exists with the given id
+     * @throws com.processVisualisation.virtualKitchen.recipe.exception.RecipeAccessDeniedException if it is private and not the caller's
      */
     @GetMapping("/{id}")
     public ApiResponse<RecipeTemplateResponseDTO> get(@PathVariable Long id){
-        return build(service.get(id), "fetched");
+        return build(service.get(id, CurrentUser.requireUserId()), "fetched");
     }
 
     /**
      * Retrieves all recipe templates owned by a given user.
      *
-     * @param userId the id of the owning user to filter by
+     * @param userId the id of the owning user to filter by; must be the caller
      * @return an ApiResponse wrapping the templates created by that user
+     * @throws AuthException 403 when asking for someone else's recipes
      */
     @GetMapping("/user/{userId}")
     public ApiResponse<List<RecipeTemplateResponseDTO>> getByUser(@PathVariable Long userId){
-        return build(withThumbnails(service.getByUser(userId)), "fetched");
+        return build(withThumbnails(service.getByUser(requireSelf(userId))), "fetched");
     }
 
     /**
      * Retrieves all publicly visible recipe templates that were not created by the given user,
      * i.e. the recipes available for that user to browse/copy from other authors.
      *
-     * @param userId the id of the user to exclude as owner
+     * @param userId the id of the user to exclude as owner; must be the caller
      * @return an ApiResponse wrapping the matching public templates owned by other users
      */
     @GetMapping("/global/{userId}")
     public ApiResponse<List<RecipeTemplateResponseDTO>> getGlobalRecipes(@PathVariable Long userId){
-        return build(withThumbnails(service.getGlobalRecipes(userId)), "fetched");
+        return build(withThumbnails(service.getGlobalRecipes(requireSelf(userId))), "fetched");
+    }
+
+    /** The caller's id, when the path names the caller; 403 when it names anyone else. */
+    private static Long requireSelf(Long pathUserId) {
+        Long userId = CurrentUser.requireUserId();
+        if (!userId.equals(pathUserId)) {
+            throw new AuthException("You can only list your own recipes", HttpStatus.FORBIDDEN);
+        }
+        return userId;
     }
 
     /** Fills each listed recipe's thumbnail (latest generated visual, or the default icon) in one batch. */
@@ -98,85 +118,76 @@ public class RecipeTemplateController {
 
     /**
      * Updates the name and description of a recipe template. The caller must own the template;
-     * ownership is verified in the service layer using the supplied userId.
+     * ownership is verified in the service layer against the authenticated caller.
      *
      * @param id     the id of the template to update
-     * @param userId the id of the user requesting the update, used for ownership verification
      * @param dto    the new name/description values
      * @return an ApiResponse wrapping the updated template
      * @throws java.util.NoSuchElementException if no template exists with the given id
-     * @throws com.processVisualisation.virtualKitchen.recipe.exception.RecipeAccessDeniedException if userId does not own the template
+     * @throws com.processVisualisation.virtualKitchen.recipe.exception.RecipeAccessDeniedException if the caller does not own the template
      */
     @PutMapping("/{id}")
     public ApiResponse<RecipeTemplateResponseDTO> update(@PathVariable Long id,
-                                                         @RequestParam Long userId,
                                                          @RequestBody RecipeTemplateUpdateDTO dto){
-        return build(service.update(id, userId, dto), "updated");
+        return build(service.update(id, CurrentUser.requireUserId(), dto), "updated");
     }
 
     /**
      * Updates the visibility (e.g. private/public) of a recipe template. The caller must own
-     * the template; ownership is verified in the service layer using the supplied userId.
+     * the template; ownership is verified in the service layer against the authenticated caller.
      *
      * @param id         the id of the template to update
-     * @param userId     the id of the user requesting the update, used for ownership verification
      * @param visibility the new visibility value
      * @return an ApiResponse wrapping the updated template
      * @throws java.util.NoSuchElementException if no template exists with the given id
-     * @throws com.processVisualisation.virtualKitchen.recipe.exception.RecipeAccessDeniedException if userId does not own the template
+     * @throws com.processVisualisation.virtualKitchen.recipe.exception.RecipeAccessDeniedException if the caller does not own the template
      */
     @PutMapping("/{id}/visibility")
     public ApiResponse<RecipeTemplateResponseDTO> updateVisibility(@PathVariable Long id,
-                                                                   @RequestParam Long userId,
                                                                    @RequestParam Visibility visibility){
-        return build(service.updateVisibility(id, userId, visibility), "updated");
+        return build(service.updateVisibility(id, CurrentUser.requireUserId(), visibility), "updated");
     }
 
     /**
      * Sets the recipe's default preparation guidance (blank resets it to the application's default). The caller
-     * must own the template; ownership is verified in the service layer using the supplied userId.
+     * must own the template; ownership is verified in the service layer against the authenticated caller.
      *
      * @param id     the id of the template to update
-     * @param userId the id of the user requesting the update, used for ownership verification
      * @param dto    the new guidance
      * @return an ApiResponse wrapping the updated recipe detail
      */
     @PutMapping("/{id}/preparation-notes")
     public ApiResponse<RecipeDetailResponseDTO> updatePreparationNotes(@PathVariable Long id,
-                                                                       @RequestParam Long userId,
                                                                        @Valid @RequestBody RecipePreparationNotesUpdateDTO dto){
-        return build(service.updatePreparationNotes(id, userId, dto.getPreparationNotes()), "updated");
+        return build(service.updatePreparationNotes(id, CurrentUser.requireUserId(), dto.getPreparationNotes()), "updated");
     }
 
     /**
      * Copies a publicly visible recipe template (and its saved flow graph) into a new private
-     * template owned by the given user.
+     * template owned by the caller.
      *
      * @param id     the id of the public template to copy
-     * @param userId the id of the user the copy will be owned by
      * @return an ApiResponse wrapping the newly created copy
      * @throws java.util.NoSuchElementException if no template exists with the given id
      * @throws com.processVisualisation.virtualKitchen.recipe.exception.RecipeAccessDeniedException if the source template is not public
      */
     @PostMapping("/{id}/copy")
-    public ApiResponse<RecipeTemplateResponseDTO> copy(@PathVariable Long id,
-                                                       @RequestParam Long userId){
-        return build(service.copyToUser(id, userId), "created");
+    public ApiResponse<RecipeTemplateResponseDTO> copy(@PathVariable Long id){
+        return build(service.copyToUser(id, CurrentUser.requireUserId()), "created");
     }
 
     /**
      * Deletes a recipe template. The caller must own the template; ownership is verified in the
-     * service layer using the supplied userId.
+     * service layer against the authenticated caller.
      *
      * @param id     the id of the template to delete
-     * @param userId the id of the user requesting the deletion, used for ownership verification
      * @return an ApiResponse with no data, confirming deletion
      * @throws java.util.NoSuchElementException if no template exists with the given id
-     * @throws com.processVisualisation.virtualKitchen.recipe.exception.RecipeAccessDeniedException if userId does not own the template
+     * @throws com.processVisualisation.virtualKitchen.recipe.exception.RecipeAccessDeniedException if the caller does not own the template
      */
     @DeleteMapping("/{id}")
-    public ApiResponse<Void> delete(@PathVariable Long id, @RequestParam Long userId){
-        service.delete(id, userId);
+    public ApiResponse<Void> delete(@PathVariable Long id){
+        service.delete(id, CurrentUser.requireUserId());
         return build(null, "deleted");
     }
 

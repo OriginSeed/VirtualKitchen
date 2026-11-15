@@ -176,6 +176,23 @@ public class RecipeAiWorkflowService {
         return choices;
     }
 
+    /**
+     * The run's model choices with {@code changes} applied, as picked again before approving or retrying: a key
+     * replaces the run's choice for its capability, a blank entry clears it (back to the account setting), and a
+     * capability not mentioned keeps the run's choice. Null changes nothing.
+     */
+    private Map<String, String> withRunChoices(Map<String, String> current, Map<String, String> changes) {
+        Map<String, String> merged = new LinkedHashMap<>(current != null ? current : Map.of());
+        if (changes == null) {
+            return merged;
+        }
+        changes.forEach((capability, key) -> {
+            if (key == null || key.isBlank()) merged.remove(capability);
+        });
+        merged.putAll(runChoices(changes));
+        return merged;
+    }
+
     // --- estimate ------------------------------------------------------------------------------
 
     /**
@@ -185,12 +202,13 @@ public class RecipeAiWorkflowService {
     public RecipeAiWorkflowEstimateDTO estimate(Long userId, Long recipeId, RecipeAiTaskSelectionDTO selection) {
         requireOwned(recipeId, userId);
         List<RecipeAiTaskType> tasks = RecipeAiTaskSelection.normalize(selection);
-        RecipeAiWorkflowEstimator.StepCounts steps = tasks.contains(RecipeAiTaskType.PROCESS)
-                ? estimator.assumedStepCounts()
-                : remainingStepCounts(userId, recipeId, savedSteps(recipeId));
+        // A new process has new steps: nothing of it exists yet, so there is nothing to keep or replace.
+        RemainingWork work = tasks.contains(RecipeAiTaskType.PROCESS)
+                ? new RemainingWork(estimator.assumedStepCounts(), 0, 0)
+                : remainingWork(userId, recipeId, savedSteps(recipeId), selection.isOverwriteExisting());
         // Priced with the models this run would use.
         try (AiRunModels.Scope ignored = AiRunModels.open(runChoices(selection.getModelKeys()))) {
-            return estimator.estimate(userId, tasks, steps);
+            return work.describe(estimator.estimate(userId, tasks, work.counts()));
         }
     }
 
@@ -199,10 +217,21 @@ public class RecipeAiWorkflowService {
      * currently saved steps (so edits made during review are reflected).
      */
     public RecipeAiWorkflowEstimateDTO estimateApproval(Long userId, Long recipeId, String workflowId) {
+        return estimateApproval(userId, recipeId, workflowId, null, null);
+    }
+
+    /**
+     * {@link #estimateApproval(Long, Long, String)} priced with the models and the keep-or-replace choice the user is
+     * about to approve with ({@code overwriteExisting} null: the run's choice).
+     */
+    public RecipeAiWorkflowEstimateDTO estimateApproval(Long userId, Long recipeId, String workflowId, Map<String, String> modelKeys,
+                                                        Boolean overwriteExisting) {
         RecipeAiWorkflow workflow = findOwned(userId, recipeId, workflowId);
         List<RecipeAiTaskType> downstream = workflow.getSelectedTasks().stream().filter(RecipeAiTaskType::isDownstream).toList();
-        try (AiRunModels.Scope ignored = AiRunModels.open(workflow.getModelKeys())) {
-            return estimator.estimate(userId, downstream, remainingStepCounts(userId, recipeId, savedSteps(recipeId)));
+        boolean overwrite = overwriteExisting != null ? overwriteExisting : workflow.isOverwriteExisting();
+        RemainingWork work = remainingWork(userId, recipeId, savedSteps(recipeId), overwrite);
+        try (AiRunModels.Scope ignored = AiRunModels.open(withRunChoices(workflow.getModelKeys(), modelKeys))) {
+            return work.describe(estimator.estimate(userId, downstream, work.counts()));
         }
     }
 
@@ -237,6 +266,7 @@ public class RecipeAiWorkflowService {
         workflow.setUserId(userId);
         workflow.setSelectedTasks(new ArrayList<>(tasks));
         workflow.setModelKeys(models);
+        workflow.setOverwriteExisting(request.getSelection().isOverwriteExisting());
         workflow.setRecipeText(tasks.contains(RecipeAiTaskType.PROCESS) ? request.getRecipeText().trim() : null);
         workflow.setStatus(RecipeAiWorkflowStatus.CREATED);
         workflow.setActiveKey(activeKey(recipeId));
@@ -288,8 +318,25 @@ public class RecipeAiWorkflowService {
      * @throws RecipeAiWorkflowException       (409) if the workflow isn't waiting for approval
      */
     public RecipeAiWorkflowResponseDTO approve(Long userId, Long recipeId, String workflowId, Long approvedRevision) {
+        return approve(userId, recipeId, workflowId, approvedRevision, null, null);
+    }
+
+    /** {@link #approve(Long, Long, String, Long, Map, Boolean)} keeping the run's keep-or-replace choice. */
+    public RecipeAiWorkflowResponseDTO approve(Long userId, Long recipeId, String workflowId, Long approvedRevision,
+                                               Map<String, String> modelKeys) {
+        return approve(userId, recipeId, workflowId, approvedRevision, modelKeys, null);
+    }
+
+    /**
+     * {@link #approve(Long, Long, String, Long)} with the models picked again at approval ({@code modelKeys}, see
+     * {@link #withRunChoices}); they replace the run's choices for the downstream tasks and anything retried later.
+     */
+    public RecipeAiWorkflowResponseDTO approve(Long userId, Long recipeId, String workflowId, Long approvedRevision,
+                                               Map<String, String> modelKeys, Boolean overwriteExisting) {
         RecipeTemplate recipe = requireOwned(recipeId, userId);
         RecipeAiWorkflow workflow = findOwned(userId, recipeId, workflowId);
+        Map<String, String> runModels = withRunChoices(workflow.getModelKeys(), modelKeys);
+        boolean overwrite = overwriteExisting != null ? overwriteExisting : workflow.isOverwriteExisting();
         Resolution current = resolve(userId, workflow);
         if (current.status() != RecipeAiWorkflowStatus.WAITING_FOR_APPROVAL) {
             throw RecipeAiWorkflowException.conflict("This AI Recipe Creation is not waiting for approval");
@@ -331,6 +378,8 @@ public class RecipeAiWorkflowService {
                 query(where("_id").is(workflowId).and("approvedSnapshot").is(null)
                         .and("status").ne(RecipeAiWorkflowStatus.CANCELLED)),
                 new Update().set("approvedSnapshot", snapshot)
+                        .set("modelKeys", runModels)
+                        .set("overwriteExisting", overwrite)
                         .set("status", RecipeAiWorkflowStatus.RUNNING_DOWNSTREAM_TASKS)
                         .set("updatedAt", now()),
                 FindAndModifyOptions.options().returnNew(true),
@@ -345,14 +394,15 @@ public class RecipeAiWorkflowService {
         // Both only submit work to their own pools and return: neither waits for the other.
         if (approved.isSelected(RecipeAiTaskType.VISUALS)) {
             approved.setVisualizationJobs(startVisuals(userId, recipeId, workflow.getId(), approved.getModelKeys(), approvedProcesses.stream()
-                    .map(ApprovedProcess::getProcessId).toList(), approved.getVisualizationJobs()));
+                    .map(ApprovedProcess::getProcessId).toList(), approved.getVisualizationJobs(), overwrite));
             mongoTemplate.updateFirst(query(where("_id").is(workflowId)),
                     new Update().set("visualizationJobs", approved.getVisualizationJobs()).set("updatedAt", now()),
                     RecipeAiWorkflow.class);
         }
         if (approved.isSelected(RecipeAiTaskType.NARRATION)) {
             for (ApprovedProcess process : approvedProcesses) {
-                startNarration(userId, recipeId, workflow.getId(), approved.getModelKeys(), process.getProcessId(), process.getStepIds());
+                startNarration(userId, recipeId, workflow.getId(), approved.getModelKeys(), process.getProcessId(), process.getStepIds(),
+                        overwrite);
             }
         }
         return toDto(approved, resolve(userId, approved), false, null);
@@ -367,8 +417,18 @@ public class RecipeAiWorkflowService {
      * narration is re-requested only for its failed steps (READY narration is never regenerated).
      */
     public RecipeAiWorkflowResponseDTO retryTask(Long userId, Long recipeId, String workflowId, RecipeAiTaskType task) {
+        return retryTask(userId, recipeId, workflowId, task, null);
+    }
+
+    /**
+     * {@link #retryTask(Long, Long, String, RecipeAiTaskType)} with the models picked again for the retry
+     * ({@code modelKeys}, see {@link #withRunChoices}); they become the run's choices from here on.
+     */
+    public RecipeAiWorkflowResponseDTO retryTask(Long userId, Long recipeId, String workflowId, RecipeAiTaskType task,
+                                                 Map<String, String> modelKeys) {
         requireOwned(recipeId, userId);
         RecipeAiWorkflow workflow = findOwned(userId, recipeId, workflowId);
+        Map<String, String> runModels = withRunChoices(workflow.getModelKeys(), modelKeys);
         Resolution current = resolve(userId, workflow);
         RecipeAiWorkflowResponseDTO.TaskDTO taskState = current.task(task);
         if (!workflow.isSelected(task) || !taskState.isRetryable()) {
@@ -378,9 +438,10 @@ public class RecipeAiWorkflowService {
             throw RecipeAiWorkflowException.conflict("Narration failed moments ago; try again in a few seconds");
         }
         reopen(workflow);
+        workflow.setModelKeys(runModels);
 
         RecipeProcessGenerationJobResponseDTO generation = null;
-        Update update = new Update().set("updatedAt", now()).unset("completedAt");
+        Update update = new Update().set("updatedAt", now()).set("modelKeys", runModels).unset("completedAt");
         switch (task) {
             case PROCESS -> {
                 generation = startGeneration(userId, workflow);
@@ -394,8 +455,9 @@ public class RecipeAiWorkflowService {
                         .filter(ref -> needsVisualsRetry(jobs.get(ref.getJobId())))
                         .map(VisualizationJobRef::getProcessId)
                         .toList();
+                // Retries only redo what failed: images that were drawn are kept, whatever the run chose.
                 workflow.setVisualizationJobs(startVisuals(userId, recipeId, workflow.getId(), workflow.getModelKeys(), toRestart,
-                        workflow.getVisualizationJobs()));
+                        workflow.getVisualizationJobs(), false));
                 workflow.setStatus(RecipeAiWorkflowStatus.RUNNING_DOWNSTREAM_TASKS);
                 update.set("visualizationJobs", workflow.getVisualizationJobs()).set("status", workflow.getStatus());
             }
@@ -406,7 +468,7 @@ public class RecipeAiWorkflowService {
                             .filter(stepId -> isFailedNarration(narrations.get(stepId)))
                             .toList();
                     if (!failed.isEmpty()) {
-                        startNarration(userId, recipeId, workflow.getId(), workflow.getModelKeys(), process.getProcessId(), failed);
+                        startNarration(userId, recipeId, workflow.getId(), workflow.getModelKeys(), process.getProcessId(), failed, false);
                     }
                 }
                 workflow.setStatus(RecipeAiWorkflowStatus.RUNNING_DOWNSTREAM_TASKS);
@@ -498,7 +560,8 @@ public class RecipeAiWorkflowService {
      * recorded without a job id, so its steps count as failed and a retry starts it again.
      */
     private List<VisualizationJobRef> startVisuals(Long userId, Long recipeId, String workflowId, Map<String, String> modelKeys,
-                                                   List<Long> processIds, List<VisualizationJobRef> existing) {
+                                                   List<Long> processIds, List<VisualizationJobRef> existing,
+                                                   boolean overwriteExisting) {
         Map<Long, VisualizationJobRef> refs = new LinkedHashMap<>();
         for (VisualizationJobRef ref : existing) {
             refs.put(ref.getProcessId(), ref);
@@ -509,7 +572,9 @@ public class RecipeAiWorkflowService {
                 try (MDC.MDCCloseable ignored = MDC.putCloseable(AiAnalyticsRecorder.WORKFLOW_ID_MDC, workflowId);
                      AiRunModels.Scope models = AiRunModels.open(modelKeys)) {
                     // Same prompt scope for every process started here: their image prompts are written in one call.
-                    jobId = visualizationJobService.startJob(userId, recipeId, processId, processIds).getJobId();
+                    jobId = (overwriteExisting
+                            ? visualizationJobService.startJob(userId, recipeId, processId, processIds, true)
+                            : visualizationJobService.startJob(userId, recipeId, processId, processIds)).getJobId();
                 }
             } catch (RuntimeException e) {
                 FailureLogger.logFailure(log, "ai_workflow_visuals_start_failed", e,
@@ -521,10 +586,14 @@ public class RecipeAiWorkflowService {
     }
 
     private void startNarration(Long userId, Long recipeId, String workflowId, Map<String, String> modelKeys,
-                                Long processId, List<String> stepIds) {
+                                Long processId, List<String> stepIds, boolean overwriteExisting) {
         try (MDC.MDCCloseable ignored = MDC.putCloseable(AiAnalyticsRecorder.WORKFLOW_ID_MDC, workflowId);
              AiRunModels.Scope models = AiRunModels.open(modelKeys)) {
-            narrationService.ensureAll(userId, recipeId, processId, stepIds);
+            if (overwriteExisting) {
+                narrationService.ensureAll(userId, recipeId, processId, stepIds, true);
+            } else {
+                narrationService.ensureAll(userId, recipeId, processId, stepIds);
+            }
         } catch (RuntimeException e) {
             // The steps stay NOT_GENERATED and are reported as failed, so the user can retry them.
             FailureLogger.logFailure(log, "ai_workflow_narration_start_failed", e,
@@ -651,28 +720,42 @@ public class RecipeAiWorkflowService {
         return names;
     }
 
-    /** Images still missing (per MAIN step / Preparation flow) and steps without usable narration: what approval would pay for. */
-    private RecipeAiWorkflowEstimator.StepCounts remainingStepCounts(Long userId, Long recipeId, Map<Long, List<String>> steps) {
+    /**
+     * Image calls still needed ({@link RecipeProcessVisualizationService#missingImageCalls}) and steps without usable
+     * narration: what approval would pay for.
+     */
+    /**
+     * What a run on the saved steps would still generate, and what the steps already have. With {@code overwrite},
+     * existing images and narration are generated again, so every step counts (the scene anchor is always kept).
+     */
+    private RemainingWork remainingWork(Long userId, Long recipeId, Map<Long, List<String>> steps, boolean overwrite) {
         int visual = 0;
         int narration = 0;
+        int existingImages = 0;
+        int existingNarrations = 0;
         for (Map.Entry<Long, List<String>> entry : steps.entrySet()) {
             if (entry.getValue().isEmpty()) {
                 continue;
             }
-            // Images are per MAIN step but per Preparation flow (one image for each flow's output step).
-            Set<String> withImage = new HashSet<>();
-            List<String> imageTargets = new ArrayList<>();
+            // Image calls, not steps: Preparation steps can share one panel image and look-alike steps reuse one.
+            int[] calls = new int[2];
             processRepository.findById(entry.getKey()).ifPresent(process -> {
+                Set<String> withImage = new HashSet<>();
                 process.getNodes().stream()
                         .filter(node -> hasImage(node.getData()))
                         .forEach(node -> withImage.add(node.getId()));
-                imageTargets.addAll(RecipeProcessVisualizationService.visualTargetNodeIds(process));
+                calls[0] = stepSource.missingImageCalls(recipeId, process, overwrite ? Set.of() : withImage);
+                calls[1] = withImage.size();
             });
-            visual += (int) imageTargets.stream().filter(nodeId -> !withImage.contains(nodeId)).count();
+            visual += calls[0];
+            existingImages += calls[1];
             try {
-                narration += (int) narrationService.list(userId, recipeId, entry.getKey()).stream()
-                        .filter(dto -> dto.isNarratable() && !"READY".equals(dto.getStatus()))
-                        .count();
+                List<StepNarrationResponseDTO> narrations = narrationService.list(userId, recipeId, entry.getKey()).stream()
+                        .filter(StepNarrationResponseDTO::isNarratable)
+                        .toList();
+                int ready = (int) narrations.stream().filter(dto -> "READY".equals(dto.getStatus())).count();
+                existingNarrations += ready;
+                narration += overwrite ? narrations.size() : narrations.size() - ready;
             } catch (NoSuchElementException e) {
                 narration += entry.getValue().size();
             }
@@ -680,7 +763,19 @@ public class RecipeAiWorkflowService {
         boolean sceneImageNeeded = stepSource.findScene(recipeId)
                 .map(scene -> scene.getImageUrl() == null || scene.getImageUrl().isBlank())
                 .orElse(true);
-        return RecipeAiWorkflowEstimator.StepCounts.exact(visual, narration, sceneImageNeeded);
+        return new RemainingWork(RecipeAiWorkflowEstimator.StepCounts.exact(visual, narration, sceneImageNeeded),
+                existingImages, existingNarrations);
+    }
+
+    /** {@link #remainingWork}'s result: the counts to price, and how many steps already have an image or narration. */
+    private record RemainingWork(RecipeAiWorkflowEstimator.StepCounts counts, int existingImages, int existingNarrations) {
+
+        /** The estimate, told what already exists (so the UI only offers "keep or replace" when there is something). */
+        RecipeAiWorkflowEstimateDTO describe(RecipeAiWorkflowEstimateDTO estimate) {
+            estimate.setExistingImages(existingImages);
+            estimate.setExistingNarrations(existingNarrations);
+            return estimate;
+        }
     }
 
     /** A step has an image when the visualization service wrote one (flat) or the editor kept one (nested). */
@@ -746,6 +841,8 @@ public class RecipeAiWorkflowService {
                 .approvedAt(workflow.getApprovedSnapshot() != null ? workflow.getApprovedSnapshot().getApprovedAt() : null)
                 .createdAt(workflow.getCreatedAt())
                 .completedAt(workflow.getCompletedAt())
+                .modelKeys(workflow.getModelKeys() != null ? new LinkedHashMap<>(workflow.getModelKeys()) : new LinkedHashMap<>())
+                .overwriteExisting(workflow.isOverwriteExisting())
                 .reused(reused)
                 .build();
     }

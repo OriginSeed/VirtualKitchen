@@ -4,33 +4,37 @@ import Auth from '../../features/auth/Auth'
 import HomePage from '../../features/home/HomePage'
 import type { Kitchen } from '../../types/kitchen'
 import type { User } from '../../types/User'
+import { DEFAULT_SIGNED_IN_PATH } from '../session/returnPath'
 
-/** The landing page; "Try it" and "Log in" open the sign-in dialog unless the visitor is already signed in. */
+/**
+ * The landing page. "Get started" opens the sign-up dialog and "Log in" the log-in dialog; a visitor who is
+ * already signed in goes straight to My Kitchen.
+ */
 export default function HomeRoute({ signedIn, onLoginSuccess }: {
   signedIn: boolean
   onLoginSuccess: (user: User, kitchen: Kitchen) => void
 }) {
   const navigate = useNavigate()
-  const [showAuthModal, setShowAuthModal] = useState(false)
+  const [authMode, setAuthMode] = useState<'signup' | 'login' | null>(null)
 
   const handleAuthSuccess = (user: User, kitchen: Kitchen) => {
     onLoginSuccess(user, kitchen)
-    setShowAuthModal(false)
-    navigate('/kitchen/inventory')
+    setAuthMode(null)
+    navigate(DEFAULT_SIGNED_IN_PATH)
   }
 
-  const tryIt = () => {
-    if (signedIn) {
-      navigate('/kitchen/recipes')
-    } else {
-      setShowAuthModal(true)
-    }
+  const openAuth = (mode: 'signup' | 'login') => {
+    if (signedIn) navigate(DEFAULT_SIGNED_IN_PATH)
+    else setAuthMode(mode)
   }
 
   return (
     <>
-      <HomePage onTryIt={tryIt} onLogin={() => setShowAuthModal(true)} />
-      {showAuthModal && <Auth onLoginSuccess={handleAuthSuccess} onClose={() => setShowAuthModal(false)} />}
+      <HomePage signedIn={signedIn} onTryIt={() => openAuth('signup')} onLogin={() => openAuth('login')} />
+      {authMode && (
+        // Keyed so switching between "Log in" and "Get started" opens on the right tab.
+        <Auth key={authMode} initialMode={authMode} onLoginSuccess={handleAuthSuccess} onClose={() => setAuthMode(null)} />
+      )}
     </>
   )
 }

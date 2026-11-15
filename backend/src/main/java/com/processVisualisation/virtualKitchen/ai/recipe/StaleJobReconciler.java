@@ -1,5 +1,7 @@
 package com.processVisualisation.virtualKitchen.ai.recipe;
 
+import com.processVisualisation.virtualKitchen.common.logging.LogScope;
+
 import com.processVisualisation.virtualKitchen.ai.platform.credit.CreditReservation;
 import com.processVisualisation.virtualKitchen.ai.platform.credit.CreditService;
 import com.processVisualisation.virtualKitchen.ai.platform.queue.AiRequestJob;
@@ -75,7 +77,7 @@ public class StaleJobReconciler {
             initialDelayString = "${app.jobs.reconciler.fixed-delay-ms:300000}")
     public void reconcile() {
         // Scheduler threads have no request ID; a per-sweep job ID groups this sweep's log lines instead.
-        try (MDC.MDCCloseable ignored = MDC.putCloseable(MdcKeys.JOB_ID,
+        try (LogScope ignored = LogScope.with(MdcKeys.AREA, "system", MdcKeys.ACTION, "scheduled.stale_job_sweep", MdcKeys.JOB_ID,
                 "stale-job-sweep-" + Long.toHexString(System.currentTimeMillis()))) {
             Instant now = Instant.now();
             failStaleGenerationJobs(now);

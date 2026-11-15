@@ -40,6 +40,11 @@ class LoggingImageGenerationClient implements ImageGenerationClient {
     }
 
     @Override
+    public int maxReferenceImages() {
+        return delegate.maxReferenceImages();
+    }
+
+    @Override
     public GeneratedImage generate(String prompt, List<ReferenceImage> references) throws JsonProcessingException {
         return generate(prompt, references, ImageGenerationSettings.NONE);
     }

@@ -18,6 +18,7 @@ import {
 } from '../../model/recipeStepData'
 import { parsePreparedAnnotationId, sameAnnotationTarget, type Annotation } from '../../model/stepAnnotations'
 import AnnotatedText from '../components/annotations/AnnotatedText'
+import { ImageZoomButton } from '../../../../shared/components/image-viewer/ZoomableImage'
 import type { ChipState } from '../components/annotations/AnnotatedTextEditor'
 import { useNodeHandleSides, useRecipeProcessGraphContext } from '../context/RecipeProcessGraphContext'
 import { DEFAULT_NODE_SIZE } from '../../model/recipeNodeTypes'
@@ -275,11 +276,13 @@ export default function RecipeStepNode({ selected, style: nodeStyle, width: node
         {imageUrl && (
           <div
             style={{
-              width: imageBoxWidth, height: imageBoxHeight, borderRadius: 10, overflow: 'hidden', flexShrink: 0,
+              position: 'relative', width: imageBoxWidth, height: imageBoxHeight, borderRadius: 10, overflow: 'hidden', flexShrink: 0,
               border: `1px solid ${theme.border}`, background: '#0f172a',
             }}
           >
-            <img src={imageUrl} alt="" style={{ width: '100%', height: '100%', objectFit: 'contain', display: 'block' }} />
+            <img src={imageUrl} alt={title} style={{ width: '100%', height: '100%', objectFit: 'contain', display: 'block' }} />
+            {/* Clicking the card selects/drags the node, so the full-size view gets its own button. */}
+            <ImageZoomButton className="nodrag nopan" src={imageUrl} alt={title} caption={title} />
           </div>
         )}
 

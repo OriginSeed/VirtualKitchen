@@ -1,6 +1,8 @@
 package com.processVisualisation.virtualKitchen.ai.asset;
 
 import com.processVisualisation.virtualKitchen.ai.platform.registry.ModelTier;
+import com.processVisualisation.virtualKitchen.ai.recipe.visualization.SceneContext;
+import com.processVisualisation.virtualKitchen.ai.recipe.visualization.VisualFocus;
 import lombok.Data;
 import org.springframework.data.annotation.CreatedDate;
 import org.springframework.data.annotation.Id;
@@ -38,7 +40,31 @@ public class VisualizationAsset {
      */
     private String dishContext;
 
+    /**
+     * Set on images written for the Focused Cooking View: what the image centres on. {@link #imagePrompt} then holds
+     * only the step's own text (what is in the frame and what is being done) and the scene is added when the image is
+     * requested. Null on every asset written before the focused view, or with it switched off: those prompts are
+     * self-contained and are sent as they are.
+     */
+    private VisualFocus focus;
+
+    /** Scene asset only ({@code recipeId::scene}): the recipe's equipment for focused images. Null otherwise. */
+    private SceneContext sceneContext;
+
     private String imageUrl;
+
+    /**
+     * Set by the prompt writer on a step whose picture would look the same as the previous step's (resting, setting
+     * aside, keeping warm). With look-alike skipping on, such a step gets no image call: it reuses the previous
+     * step's {@link #imageUrl}. Null on assets written before the flag existed.
+     */
+    private Boolean reusesPrevious;
+
+    /**
+     * Set on a step image cut from a shared panel image (several Preparation steps drawn as one grid): the grid
+     * asset's key ({@code recipeId::grid::...}). Null on images drawn on their own.
+     */
+    private String sourceGridKey;
 
     /**
      * Why {@link #imageUrl} is null, when it is — the generation or upload failure's

@@ -47,14 +47,14 @@ export function useAddToMyRecipes(recipe: RecipeDetail | null, isOwner: boolean,
     if (recipeId == null || adding) return
     setAdding(true)
     try {
-      const copy = await RecipeApi.copyRecipe(recipeId, currentUserId)
+      const copy = await RecipeApi.copyRecipe(recipeId)
       notifySuccess('Recipe added to your kitchen — it\'s yours to edit now.')
       navigate(recipeToolPath(copy.id, 'process'))
     } catch (error) {
       notifyError(errorMessage(error, 'Unable to add recipe to My Recipes'))
       setAdding(false)
     }
-  }, [recipeId, adding, currentUserId, notifySuccess, notifyError, navigate])
+  }, [recipeId, adding, notifySuccess, notifyError, navigate])
 
   const openCopy = useCallback(() => {
     if (existingCopyId != null) navigate(recipeToolPath(existingCopyId, 'process'))

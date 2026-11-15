@@ -80,6 +80,7 @@ export const API = {
     ingredients: (recipeId: number) => `/api/v1/recipes/${recipeId}/ingredients`,
     nutrition: (recipeId: number) => `/api/v1/recipes/${recipeId}/nutrition`,
     mainProcess: (recipeId: number) => `/api/v1/recipes/${recipeId}/main-process`,
+    importAssets: (recipeId: number) => `/api/v1/recipes/${recipeId}/assets/import`,
   },
 
   // Process (MAIN/SUBPROCESS) graph CRUD + copy, scoped under a recipe.

@@ -42,10 +42,10 @@ describe('form drafts', () => {
     const storage = new MemoryStorage()
     writeDraft(draftKeys.aiEdit(1), 'shorten step 3', storage, NOW)
     writeDraft(draftKeys.aiEdit(2), 'add salt', storage, NOW)
-    writeDraft(draftKeys.newSubprocess(1), { name: 'Sauce', description: '' }, storage, NOW)
+    writeDraft(draftKeys.nutrition(1), { servings: 2 }, storage, NOW)
     assert.equal(readDraft(draftKeys.aiEdit(1), storage, NOW), 'shorten step 3')
     assert.equal(readDraft(draftKeys.aiEdit(2), storage, NOW), 'add salt')
-    assert.deepEqual(readDraft(draftKeys.newSubprocess(1), storage, NOW), { name: 'Sauce', description: '' })
+    assert.deepEqual(readDraft(draftKeys.nutrition(1), storage, NOW), { servings: 2 })
   })
 
   it('drops drafts nobody came back to', () => {

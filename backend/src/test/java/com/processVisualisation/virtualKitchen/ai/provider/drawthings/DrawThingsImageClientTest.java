@@ -57,6 +57,22 @@ class DrawThingsImageClientTest {
     }
 
     @Test
+    void aSeedIsSentWhenTheRequestHasOne_andNotOtherwise() {
+        server.expect(once(), requestTo(URL))
+                .andExpect(jsonPath("$.seed").value(77))
+                .andRespond(withSuccess(RESPONSE, MediaType.APPLICATION_JSON));
+        client().generate("chop onions", List.of(), new ImageGenerationSettings(null, null, null).withSeed(77L));
+        server.verify();
+
+        server.reset();
+        server.expect(once(), requestTo(URL))
+                .andExpect(jsonPath("$.seed").doesNotExist())
+                .andRespond(withSuccess(RESPONSE, MediaType.APPLICATION_JSON));
+        client().generate("chop onions", List.of(), new ImageGenerationSettings(512, 512, null));
+        server.verify();
+    }
+
+    @Test
     void withoutSettings_theConfiguredSizeIsSentAndNoSteps() {
         server.expect(once(), requestTo(URL))
                 .andExpect(jsonPath("$.width").value(512))

@@ -1,0 +1,178 @@
+.order-entry-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: grid;
+  place-items: center;
+  padding: 16px;
+  background: var(--flow-overlay);
+  backdrop-filter: blur(3px);
+}
+
+.order-entry-dialog {
+  position: relative;
+  width: min(100%, 460px);
+  padding: 28px 26px 18px;
+  border: 1px solid var(--flow-border);
+  border-radius: var(--flow-radius-xl);
+  background: var(--flow-surface);
+  box-shadow: var(--flow-shadow-panel);
+  text-align: center;
+  animation: order-entry-in 0.16s ease-out;
+}
+
+@keyframes order-entry-in {
+  from { opacity: 0; transform: translateY(6px) scale(0.98); }
+  to { opacity: 1; transform: none; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .order-entry-dialog { animation: none; }
+}
+
+.order-entry-icon {
+  display: grid;
+  width: 56px;
+  height: 56px;
+  margin: 0 auto 10px;
+  place-items: center;
+  border-radius: 50%;
+  background: var(--flow-accent-soft);
+  font-size: 28px;
+}
+
+.order-entry-tag {
+  margin-bottom: 8px;
+}
+
+.order-entry-title {
+  margin: 0;
+  color: var(--flow-text);
+  font-size: 20px;
+  font-weight: 800;
+}
+
+.order-entry-text {
+  margin: 8px 0 0;
+  color: var(--flow-text-muted);
+  font-size: 14px;
+  line-height: 20px;
+}
+
+.order-entry-text strong {
+  color: var(--flow-text);
+}
+
+.order-entry-points {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 16px 0 0;
+  padding: 12px 14px;
+  border-radius: var(--flow-radius-md);
+  background: var(--flow-surface-muted);
+  color: var(--flow-text);
+  font-size: 13px;
+  text-align: left;
+  list-style: none;
+}
+
+.order-entry-points span {
+  display: inline-block;
+  width: 22px;
+}
+
+.order-entry-actions {
+  display: flex;
+  justify-content: center;
+  margin-top: 18px;
+}
+
+.order-entry-actions .vk-btn {
+  min-width: 140px;
+}
+
+/* The demo is deliberately small and secondary. */
+.order-entry-demo {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px solid var(--flow-border);
+}
+
+.order-entry-demo-button {
+  padding: 4px 6px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--flow-accent);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.order-entry-demo-button:hover:not(:disabled) {
+  text-decoration: underline;
+}
+
+.order-entry-demo-button:disabled {
+  cursor: progress;
+  opacity: 0.7;
+}
+
+.order-entry-demo-button:focus-visible,
+.order-entry-demo-info:focus-visible {
+  outline: 2px solid var(--flow-accent);
+  outline-offset: 2px;
+}
+
+.order-entry-demo-info {
+  position: relative;
+  display: inline-grid;
+  width: 18px;
+  height: 18px;
+  place-items: center;
+  border-radius: 50%;
+  color: var(--flow-text-muted);
+  font-size: 13px;
+  cursor: help;
+}
+
+.order-entry-tooltip {
+  position: absolute;
+  bottom: calc(100% + 8px);
+  left: 50%;
+  width: 250px;
+  padding: 9px 11px;
+  border-radius: var(--flow-radius-md);
+  background: var(--flow-text);
+  color: var(--flow-surface);
+  font-size: 11.5px;
+  font-weight: 500;
+  line-height: 16px;
+  text-align: left;
+  opacity: 0;
+  pointer-events: none;
+  transform: translate(-50%, 4px);
+  transition: opacity 0.15s ease, transform 0.15s ease;
+  z-index: 1;
+}
+
+/* Shown while the demo button or the info icon is hovered or focused. */
+.order-entry-demo:has(.order-entry-demo-button:hover) .order-entry-tooltip,
+.order-entry-demo:has(.order-entry-demo-button:focus-visible) .order-entry-tooltip,
+.order-entry-demo-info:hover .order-entry-tooltip,
+.order-entry-demo-info:focus-visible .order-entry-tooltip {
+  opacity: 1;
+  transform: translate(-50%, 0);
+}
+
+.order-entry-demo-note {
+  color: var(--flow-text-muted);
+  font-size: 12px;
+  line-height: 17px;
+}

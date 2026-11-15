@@ -154,6 +154,12 @@ public class MongoStepNarrationStore implements StepNarrationStore {
     }
 
     @Override
+    public Optional<StepNarration> findReadyByAudioUrl(String audioUrl) {
+        return Optional.ofNullable(mongoTemplate.findOne(
+                query(where("audioUrl").is(audioUrl).and("status").is(StepNarrationStatus.READY)), StepNarration.class));
+    }
+
+    @Override
     public boolean insertIfAbsent(StepNarration narration) {
         try {
             mongoTemplate.insert(narration);

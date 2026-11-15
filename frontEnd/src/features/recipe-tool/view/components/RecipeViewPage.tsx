@@ -1,15 +1,12 @@
-import { useMemo, useState } from 'react'
+import { useMemo } from 'react'
 import { Link } from 'react-router-dom'
 import '../../../../styles/flow-ui.css'
 import '../styles/recipe-view.css'
 import type { NutritionInfo, RecipeDetail } from '../../../../types/recipe'
 import { useRecipeSession } from '../../session/sessionContext'
-import { useReadinessGate } from '../../session/useRecipeReadiness'
-import type { ReadinessIssue } from '../../model/recipeReadiness'
 import { recipeToolPath } from '../../recipeToolRoutes'
 import { buildRecipePresentation } from '../model/recipeView'
-import { buildCookModeSlides } from '../model/cookModeSlides'
-import RecipeVisualizationSlideshow from '../../walkthrough/RecipeVisualizationSlideshow'
+import { useCookMode } from '../../page/useCookMode'
 import RecipeHero from './RecipeHero'
 import RecipeIngredientsList from './RecipeIngredientsList'
 import RecipeNutritionPanel from './RecipeNutritionPanel'
@@ -23,8 +20,6 @@ type RecipeViewPageProps = {
   /** Readers of someone else's public recipe: adding it to their kitchen (or opening the copy they have). */
   addToMyRecipes?: AddToMyRecipes | null
   onNutritionSaved: (nutrition: NutritionInfo | null) => void
-  /** Opens an issue that blocks cook mode in the editor (owners only). */
-  onShowIssue?: (issue: ReadinessIssue) => void
   /** Opens one step in the editor (owners only). */
   onOpenStep?: (processId: number, nodeId: string) => void
 }
@@ -41,9 +36,9 @@ const ANCHORS = {
  * recipe session the Recipe Editor edits (see buildRecipePresentation), so it always reflects the
  * editor's latest content, including edits that haven't been saved yet.
  */
-export default function RecipeViewPage({ recipe, isOwner, addToMyRecipes, onNutritionSaved, onShowIssue, onOpenStep }: RecipeViewPageProps) {
+export default function RecipeViewPage({ recipe, isOwner, addToMyRecipes, onNutritionSaved, onOpenStep }: RecipeViewPageProps) {
   const session = useRecipeSession()
-  const readinessGate = useReadinessGate(isOwner ? onShowIssue : undefined)
+  const cookMode = useCookMode(recipe.id)
 
   // `session` changes identity on every process edit (its `version` bumps), which is exactly
   // when this needs re-deriving.
@@ -51,15 +46,6 @@ export default function RecipeViewPage({ recipe, isOwner, addToMyRecipes, onNutr
     () => (session && !session.loading ? buildRecipePresentation(session.getProcesses()) : null),
     [session],
   )
-
-  // Cook mode: the whole recipe, one step at a time, narrated. It needs the whole structure (preparations
-  // feeding one connected main process), and narration is generated from the *saved* steps — the gate saves
-  // the owner's pending edits first, then refuses (explaining why) while the recipe has blockers.
-  const [cookMode, setCookMode] = useState<{ ready: Promise<boolean> } | null>(null)
-  const openCookMode = async () => {
-    if (!(await readinessGate('cooking'))) return
-    setCookMode({ ready: Promise.resolve(true) })
-  }
 
   if (session?.loadError) {
     return <div className="rp-page"><div className="rp-state">{session.loadError}</div></div>
@@ -134,7 +120,7 @@ export default function RecipeViewPage({ recipe, isOwner, addToMyRecipes, onNutr
               Recipe Steps
             </h2>
             {hasSteps && (
-              <button type="button" className="rp-button" onClick={() => void openCookMode()} title="Follow the recipe one step at a time, with narration">
+              <button type="button" className="rp-button" onClick={() => void cookMode.open()} title="Follow the recipe one step at a time, with narration">
                 <span aria-hidden>▶</span> Cook mode
               </button>
             )}
@@ -168,16 +154,7 @@ export default function RecipeViewPage({ recipe, isOwner, addToMyRecipes, onNutr
         </section>
       </div>
 
-      {cookMode && (
-        <RecipeVisualizationSlideshow
-          steps={buildCookModeSlides(presentation.sections)}
-          recipeId={recipe.id}
-          processId={null}
-          narrationReady={cookMode.ready}
-          heading="👩‍🍳 Cook mode"
-          onClose={() => setCookMode(null)}
-        />
-      )}
+      {cookMode.element}
     </div>
   )
 }

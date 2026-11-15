@@ -6,6 +6,7 @@ import org.springframework.data.mongodb.repository.MongoRepository;
 import org.springframework.data.mongodb.repository.Query;
 import org.springframework.data.mongodb.repository.Update;
 
+import java.time.LocalDateTime;
 import java.util.List;
 
 /**
@@ -81,4 +82,13 @@ public interface RecipeTemplateRepository extends MongoRepository<RecipeTemplate
     @Query("{ '_id': ?0, 'processRevision': ?1 }")
     @Update("{ '$inc': { 'processRevision': -1 } }")
     long releaseProcessRevision(Long recipeId, Long claimedRevision);
+
+    /**
+     * Marks a recipe as changed now — when one of its processes (its steps) is saved, which is not a save of the
+     * recipe document itself — so "recently updated" reflects editing the recipe's steps. Leaves {@code createdAt}
+     * alone.
+     */
+    @Query("{ '_id': ?0 }")
+    @Update("{ '$set': { 'updatedAt': ?1 } }")
+    long touchUpdatedAt(Long recipeId, LocalDateTime updatedAt);
 }

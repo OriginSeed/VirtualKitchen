@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import ListEnd from '../../../shared/components/ListEnd'
+import { EmptyState, ErrorState, SkeletonGrid } from '../../../shared/components/page'
 import PaymentGatewayOverlay from '../../../shared/components/payment/PaymentGatewayOverlay'
 import { formatMoney } from '../../../shared/format/money'
 import { useIncrementalReveal } from '../../../shared/hooks/useIncrementalReveal'
@@ -26,9 +27,13 @@ interface ShopViewProps {
     orderId: number
     orderCode?: string | null
   }
+  /** Which items to show first, e.g. "ingredients" when coming from an empty pantry. */
+  initialFilter?: ShopFilter
+  /** Changes each time something asks to show the cart (the navbar cart button); the drawer opens then. */
+  cartRequest?: string | null
 }
 
-type ShopFilter = 'all' | 'ingredients' | 'equipment'
+export type ShopFilter = 'all' | 'ingredients' | 'equipment'
 
 /** True while the element given to the returned ref callback is on screen. */
 function useOnScreen<T extends Element>() {
@@ -46,17 +51,29 @@ function useOnScreen<T extends Element>() {
 }
 
 /** The demo shop: browse the catalog, fill a cart kept in this browser, and pay through a simulated gateway. */
-export default function ShopView({ userId, onOrderPlaced, resumeRecipeOrder }: ShopViewProps) {
+export default function ShopView({ userId, onOrderPlaced, resumeRecipeOrder, initialFilter = 'all', cartRequest = null }: ShopViewProps) {
   const catalog = useShopCatalog()
   const cart = useCart(userId)
   const checkout = useCheckout({ userId, items: cart.items, total: cart.total, onPaid: cart.empty, onOrderPlaced })
 
   // The floating cart button shows once the header's cart button has scrolled away.
   const [headerCartRef, headerCartVisible] = useOnScreen<HTMLButtonElement>()
-  const [filter, setFilter] = useState<ShopFilter>('all')
+  const [filter, setFilter] = useState<ShopFilter>(initialFilter)
   const [search, setSearch] = useState('')
   // Coming from a recipe order, the cart already holds the missing ingredients: show it.
-  const [cartOpen, setCartOpen] = useState(Boolean(resumeRecipeOrder))
+  const [cartOpen, setCartOpen] = useState(Boolean(resumeRecipeOrder) || cartRequest != null)
+  // A new request while the shop is already open (the navbar cart clicked again) opens the drawer too.
+  const [seenCartRequest, setSeenCartRequest] = useState(cartRequest)
+  if (cartRequest !== seenCartRequest) {
+    setSeenCartRequest(cartRequest)
+    if (cartRequest != null) setCartOpen(true)
+  }
+  // The type filter follows the address too (e.g. "Shop ingredients" from an empty pantry).
+  const [seenInitialFilter, setSeenInitialFilter] = useState(initialFilter)
+  if (initialFilter !== seenInitialFilter) {
+    setSeenInitialFilter(initialFilter)
+    setFilter(initialFilter)
+  }
 
   const filteredItems = useMemo(() => {
     const query = search.trim().toLowerCase()
@@ -100,15 +117,18 @@ export default function ShopView({ userId, onOrderPlaced, resumeRecipeOrder }: S
           <ShopFilters filter={filter} onFilterChange={setFilter} />
 
           {catalog.loading && catalog.items.length === 0 ? (
-            <div className="shop-loading">Loading shop items...</div>
+            <SkeletonGrid count={8} label="Loading shop items…" />
           ) : catalog.error ? (
-            <div className="shop-error">{catalog.error}</div>
+            <ErrorState title="Couldn’t load the shop" message={catalog.error} onRetry={catalog.reload} />
           ) : filteredItems.length === 0 ? (
-            <div className="shop-empty">
-              <div className="shop-empty-icon">🔍</div>
-              <strong>{search ? 'No matching items' : 'No items available'}</strong>
-              <span>{search ? 'Try a different search term.' : 'There are currently no shop items available.'}</span>
-            </div>
+            <EmptyState
+              icon="🔍"
+              title={search ? 'No matching items' : 'No items available'}
+              text={search ? 'Try a different search term.' : 'There are currently no shop items available.'}
+              actions={search ? (
+                <button type="button" className="vk-btn vk-btn-secondary" onClick={() => setSearch('')}>Clear search</button>
+              ) : undefined}
+            />
           ) : (
             <>
               <div className="shop-results-count">

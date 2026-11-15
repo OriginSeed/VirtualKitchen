@@ -276,6 +276,66 @@ class DeepInfraImageClientTest {
         server.verify();
     }
 
+    @Test
+    void withAnEditEndpoint_referenceImagesAreSentThereAsMultipart() throws Exception {
+        properties.getImage().setEditEndpoint("/v1/images/edits");
+        server.expect(once(), requestTo(BASE_URL + "/v1/images/edits"))
+                .andExpect(method(HttpMethod.POST))
+                .andExpect(header(HttpHeaders.AUTHORIZATION, "Bearer " + API_KEY))
+                .andExpect(request -> {
+                    String contentType = String.valueOf(request.getHeaders().getContentType());
+                    assertTrue(contentType.startsWith(MediaType.MULTIPART_FORM_DATA_VALUE), contentType);
+                    String body = ((org.springframework.mock.http.client.MockClientHttpRequest) request).getBodyAsString();
+                    assertTrue(body.contains("name=\"prompt\""), body);
+                    assertTrue(body.contains(PROMPT));
+                    assertTrue(body.contains("name=\"model\""));
+                    assertTrue(body.contains(MODEL));
+                    assertTrue(body.contains("512x512"));
+                    assertTrue(body.contains("name=\"image\"; filename=\"reference-1.png\""), body);
+                    assertFalse(body.contains("reference-2"), "only as many images as the endpoint takes");
+                })
+                .andRespond(imageResponse(PNG));
+
+        DeepInfraImageClient client = client();
+        assertTrue(client.supportsReferenceImages());
+        assertEquals(1, client.maxReferenceImages());
+        GeneratedImage image = client.generate(PROMPT,
+                List.of(new ReferenceImage("image/png", PNG), new ReferenceImage("image/jpeg", JPEG)),
+                new ImageGenerationSettings(512, 512, null));
+
+        assertEquals("image/png", image.mimeType());
+        server.verify();
+    }
+
+    @Test
+    void withAnEditEndpoint_aRequestWithoutReferencesIsStillAPlainGeneration() throws Exception {
+        properties.getImage().setEditEndpoint("/v1/images/edits");
+        server.expect(once(), requestTo(IMAGES_URL))
+                .andExpect(jsonPath("$.prompt").value(PROMPT))
+                .andRespond(imageResponse(PNG));
+
+        client().generate(PROMPT, List.of(), new ImageGenerationSettings(512, 512, null));
+
+        server.verify();
+    }
+
+    @Test
+    void theSeedIsSentOnlyWhenSwitchedOn() throws Exception {
+        server.expect(once(), requestTo(IMAGES_URL))
+                .andExpect(jsonPath("$.seed").doesNotExist())
+                .andRespond(imageResponse(PNG));
+        client().generate(PROMPT, List.of(), new ImageGenerationSettings(512, 512, null).withSeed(42L));
+        server.verify();
+
+        server.reset();
+        properties.getImage().setSendSeed(true);
+        server.expect(once(), requestTo(IMAGES_URL))
+                .andExpect(jsonPath("$.seed").value(42))
+                .andRespond(imageResponse(PNG));
+        client().generate(PROMPT, List.of(), new ImageGenerationSettings(512, 512, null).withSeed(42L));
+        server.verify();
+    }
+
     private DeepInfraImageClient client() {
         return new DeepInfraImageClient(builder.build(), properties, new ObjectMapper());
     }

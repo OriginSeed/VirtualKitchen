@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
-import { Navigate, useNavigate } from 'react-router-dom'
+import { Link, Navigate, useNavigate } from 'react-router-dom'
 import { RecipeApi, RecipeDetailApi } from '../../../api'
 import type { NutritionInfo, RecipeDetail } from '../../../types/recipe'
 import { RecipeSessionProvider } from '../session/RecipeSessionProvider'
@@ -7,25 +7,40 @@ import '../editor/styles/RecipeProcessCanvas.css'
 import RecipeToolNavbar from './RecipeToolNavbar'
 import RecipeEditorView from '../editor/components/RecipeEditorView'
 import RecipeViewPage from '../view/components/RecipeViewPage'
-import { recipeToolPath, type RecipeToolView } from '../recipeToolRoutes'
+import { recipeShareUrl, recipeToolPath, type RecipeToolView } from '../recipeToolRoutes'
 import { useAddToMyRecipes } from './useAddToMyRecipes'
 import EditRecipeDetailsModal, { type RecipeDetailsDraft } from './EditRecipeDetailsModal'
 import { useConfirm } from '../../../shared/components/confirm/confirmContext'
 import { useNotifications } from '../../../shared/components/notifications/notificationContext'
 import { forgetRecipeLocalState } from '../session/forgetRecipeLocalState'
 import { errorMessage } from '../../../shared/errors'
+import { copyText } from '../../../shared/clipboard'
+import { ErrorState } from '../../../shared/components/page'
 import type { ReadinessIssue } from '../model/recipeReadiness'
+
+export type OrderRecipeRequest = {
+  recipeId: number
+  recipeName: string
+  servings?: number | null
+  ensureReady: () => Promise<boolean>
+}
 
 type RecipeToolPageProps = {
   recipeId: number
   currentUserId: number
   /** From the route; undefined on the bare `/tool` URL, which lands on the Recipe Process (read mode). */
   view?: RecipeToolView
-  onBack: () => void
-  /** Starts an order for this recipe; supplied by the app, since ordering is its own feature. Owners only. */
-  onOrderRecipe?: (recipeId: number, servings?: number | null) => void
+  /** Leaves the tool: owners back to My Recipes, readers back to Discover. */
+  onBack: (isOwner: boolean) => void
+  /**
+   * "Order" (owners only); supplied by the app, since ordering is its own feature. `ensureReady` saves and checks
+   * readiness — the app runs it before an order actually starts.
+   */
+  onOrderRecipe?: (order: OrderRecipeRequest) => void
   /** Id of the recipe an order is currently being started for, so the button can show progress. */
   orderingRecipeId?: number | null
+  /** Opened right after "New recipe → Describe it for AI": the editor opens AI Recipe Creation straight away. */
+  startAiCreation?: boolean
 }
 
 /**
@@ -39,7 +54,11 @@ type RecipeToolPageProps = {
  * Both read the one RecipeSessionProvider below, so there's a single source
  * of truth and the Recipe Process always reflects the editor's latest content.
  */
-export default function RecipeToolPage({ recipeId, currentUserId, view, onBack, onOrderRecipe, orderingRecipeId }: RecipeToolPageProps) {
+export default function RecipeToolPage({
+  recipeId, currentUserId, view, onBack, onOrderRecipe, orderingRecipeId, startAiCreation = false,
+}: RecipeToolPageProps) {
+  // Latched: the route drops `?start=ai` from the address straight away, before the editor has mounted.
+  const [openAiCreationOnStart] = useState(startAiCreation)
   const [recipe, setRecipe] = useState<RecipeDetail | null>(null)
   const [loading, setLoading] = useState(true)
   const [loadError, setLoadError] = useState<string | null>(null)
@@ -121,37 +140,41 @@ export default function RecipeToolPage({ recipeId, currentUserId, view, onBack, 
   }, [])
 
   const savePreparationNotes = useCallback(async (preparationNotes: string | null) => {
-    const updated = await RecipeApi.updatePreparationNotes(recipeId, currentUserId, preparationNotes)
+    const updated = await RecipeApi.updatePreparationNotes(recipeId, preparationNotes)
     setRecipe((current) => (current ? { ...current, preparationNotes: updated.preparationNotes ?? null } : current))
     notifySuccess(updated.preparationNotes ? 'Preparation notes saved for this recipe.' : 'Preparation notes reset to the default.')
-  }, [recipeId, currentUserId, notifySuccess])
+  }, [recipeId, notifySuccess])
 
   // --- owner actions (the header's ⋯ menu) ---
 
   const saveDetails = async (details: RecipeDetailsDraft) => {
-    const updated = await RecipeApi.updateRecipe(recipeId, currentUserId, details)
+    const updated = await RecipeApi.updateRecipe(recipeId, details)
     setRecipe((current) => (current ? { ...current, name: updated.name, description: updated.description } : current))
     setEditingDetails(false)
     notifySuccess('Recipe details saved.')
   }
 
-  const toggleVisibility = async () => {
+  const toggleVisibility = async (blockers: number) => {
     if (!recipe) return
     const makingPublic = recipe.visibility !== 'PUBLIC'
+    // Recipes are shared so others can reproduce them: say so when this one isn't finished yet.
+    const unfinished = makingPublic && blockers > 0
+      ? `\n\nHeads up: this recipe still has ${blockers} ${blockers === 1 ? 'issue' : 'issues'} to fix, so others may not be able to follow or cook it yet.`
+      : ''
     const confirmed = await confirm({
-      eyebrow: makingPublic ? 'Make public' : 'Make private',
-      title: makingPublic ? 'Make this recipe public?' : 'Make this recipe private?',
+      eyebrow: makingPublic ? 'Publish recipe' : 'Make private',
+      title: makingPublic ? 'Publish this recipe?' : 'Make this recipe private?',
       message: makingPublic
-        ? 'Anyone browsing Global Recipes will be able to view this recipe and add a copy of it to their own kitchen. You can make it private again at any time.'
-        : 'This recipe will be removed from Global Recipes and other users will no longer be able to find or add it. Copies already added to other kitchens will not be affected.',
-      confirmLabel: makingPublic ? 'Make public' : 'Make private',
+        ? `Anyone browsing Discover will be able to view this recipe and add a copy of it to their own kitchen. You can make it private again at any time.${unfinished}`
+        : 'This recipe will be removed from Discover and other users will no longer be able to find or add it. Copies already added to other kitchens will not be affected.',
+      confirmLabel: makingPublic ? (blockers > 0 ? 'Publish anyway' : 'Publish') : 'Make private',
       tone: 'default',
     })
     if (!confirmed) return
     try {
-      const updated = await RecipeApi.updateVisibility(recipeId, currentUserId, makingPublic ? 'PUBLIC' : 'PRIVATE')
+      const updated = await RecipeApi.updateVisibility(recipeId, makingPublic ? 'PUBLIC' : 'PRIVATE')
       setRecipe((current) => (current ? { ...current, visibility: updated.visibility } : current))
-      notifySuccess(makingPublic ? 'Recipe is now public.' : 'Recipe is now private.')
+      notifySuccess(makingPublic ? 'Recipe published — others can now find it in Discover.' : 'Recipe is now private.')
     } catch (error) {
       notifyError(errorMessage(error, 'Unable to update recipe visibility'))
     }
@@ -168,19 +191,24 @@ export default function RecipeToolPage({ recipeId, currentUserId, view, onBack, 
     })
     if (!confirmed) return
     try {
-      await RecipeApi.deleteRecipe(recipeId, currentUserId)
+      await RecipeApi.deleteRecipe(recipeId)
       // Unsaved Recipe Tool changes left on this device for a deleted recipe can never be recovered.
       forgetRecipeLocalState(recipeId)
       notifySuccess('Recipe deleted.')
-      onBack()
+      onBack(true)
     } catch (error) {
       notifyError(errorMessage(error, 'Unable to delete recipe'))
     }
   }
 
+  const copyLink = async () => {
+    if (await copyText(recipeShareUrl(recipeId))) notifySuccess('Link copied. Anyone signed in can open this public recipe.')
+    else notifyError('Couldn’t copy the link. Copy the address from your browser instead.')
+  }
+
   if (loading) {
     return (
-      <div className="flex h-full w-full items-center justify-center" style={{ color: 'var(--flow-text-muted)' }}>
+      <div className="flex h-full w-full items-center justify-center" role="status" style={{ color: 'var(--flow-text-muted)' }}>
         Loading recipe…
       </div>
     )
@@ -188,14 +216,16 @@ export default function RecipeToolPage({ recipeId, currentUserId, view, onBack, 
 
   if (loadError || !recipe) {
     return (
-      <div className="flex h-full w-full flex-col items-center justify-center gap-3" style={{ color: 'var(--flow-text-muted)' }}>
-        <div>{loadError ?? 'This recipe could not be loaded.'}</div>
-        <button
-          onClick={onBack}
-          style={{ padding: '8px 14px', borderRadius: 8, border: '1px solid var(--flow-border)', background: 'var(--flow-surface)', cursor: 'pointer' }}
-        >
-          ← Back to Recipes
-        </button>
+      <div className="flex h-full w-full items-center justify-center p-4">
+        <div style={{ width: 'min(100%, 520px)' }}>
+          <ErrorState
+            title="This recipe couldn’t be opened"
+            message={loadError ?? 'It may have been deleted, or made private by its author.'}
+          />
+          <div className="mt-4 flex justify-center">
+            <button type="button" className="vk-btn vk-btn-secondary" onClick={() => onBack(true)}>← Back to My Recipes</button>
+          </div>
+        </div>
       </div>
     )
   }
@@ -215,12 +245,15 @@ export default function RecipeToolPage({ recipeId, currentUserId, view, onBack, 
           recipe={recipe}
           readOnly={!isOwner}
           addToMyRecipes={addToMyRecipes}
-          onBack={onBack}
-          onOrderRecipe={isOwner && onOrderRecipe ? () => onOrderRecipe(recipe.id, recipe.nutrition?.servings) : undefined}
+          onBack={() => onBack(isOwner)}
+          onOrderRecipe={isOwner && onOrderRecipe
+            ? (ensureReady) => onOrderRecipe({ recipeId: recipe.id, recipeName: recipe.name, servings: recipe.nutrition?.servings, ensureReady })
+            : undefined}
           ordering={orderingRecipeId === recipe.id}
           onShowIssue={isOwner ? showIssue : undefined}
           onEditDetails={isOwner ? () => setEditingDetails(true) : undefined}
-          onToggleVisibility={isOwner ? () => void toggleVisibility() : undefined}
+          onToggleVisibility={isOwner ? (blockers) => void toggleVisibility(blockers) : undefined}
+          onCopyLink={() => void copyLink()}
           onDeleteRecipe={isOwner ? () => void deleteRecipe() : undefined}
         />
 
@@ -229,6 +262,14 @@ export default function RecipeToolPage({ recipeId, currentUserId, view, onBack, 
           onSave={saveDetails}
           onClose={() => setEditingDetails(false)}
         />
+
+        {view === 'editor' && isOwner && (
+          <div className="rt-small-screen-note" role="note">
+            <span aria-hidden>💻</span>
+            <span>Editing works best on a larger screen.</span>
+            <Link to={recipeToolPath(recipeId, 'process')}>View the Recipe Process →</Link>
+          </div>
+        )}
 
         {editorMounted && isOwner && (
           <div className="min-h-0 flex-1" style={{ display: view === 'editor' ? 'flex' : 'none', flexDirection: 'column' }}>
@@ -241,6 +282,7 @@ export default function RecipeToolPage({ recipeId, currentUserId, view, onBack, 
               onSavePreparationNotes={isOwner ? savePreparationNotes : undefined}
               issueFocusRequest={issueFocusRequest}
               stepFocusRequest={stepFocusRequest}
+              openAiCreationOnStart={openAiCreationOnStart}
             />
           </div>
         )}
@@ -251,7 +293,6 @@ export default function RecipeToolPage({ recipeId, currentUserId, view, onBack, 
             isOwner={isOwner}
             addToMyRecipes={addToMyRecipes}
             onNutritionSaved={handleNutritionSaved}
-            onShowIssue={showIssue}
             onOpenStep={openStep}
           />
         )}

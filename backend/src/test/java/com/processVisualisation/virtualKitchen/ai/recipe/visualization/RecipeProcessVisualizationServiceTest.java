@@ -63,6 +63,7 @@ class RecipeProcessVisualizationServiceTest {
 
     private ProcessRepository processRepository;
     private RecipeProcessVisualizationService service;
+    private VisualizationImageProperties imageProperties;
 
     @BeforeEach
     void setUp() {
@@ -128,11 +129,71 @@ class RecipeProcessVisualizationServiceTest {
                 new GeneratedImageCodec(),
                 consumer,
                 new RecipeStepVocabularyProvider(),
-                new VisualizationImageProfiles(new VisualizationImageProperties(), new RecipeStepVocabularyProvider()));
+                new VisualizationImageProfiles(imageProperties = new VisualizationImageProperties(), new RecipeStepVocabularyProvider()));
     }
 
     @Test
-    void prepareVisualTargets_givesAPreparationOneImagePerFlow_attachedToItsOutputStep() {
+    void prepareVisualTargets_focusedView_givesEachPreparationStepItsOwnTarget_groupedByFlow() {
+        Process preparation = new Process();
+        preparation.setId(5L);
+        preparation.setRecipeId(9L);
+        preparation.setType(ProcessType.SUBPROCESS);
+        Process.ProcessNode cut = stepNode("cut", "cut", List.of(ingredient("chicken", 500, "g", "bite-sized")), "Cut the chicken", "Cut Chicken");
+        Process.ProcessNode marinate = stepNode("marinate", "marinate", List.of(ingredient("yogurt", 1, "cup", null)), "Coat in yogurt", "Marinated Chicken");
+        Process.ProcessNode chop = stepNode("chop", "chop", List.of(ingredient("onion", 2, "piece", "chopped")), "Chop the onions", "Chopped Onions");
+        preparation.setNodes(new ArrayList<>(List.of(cut, marinate, chop)));
+        preparation.setEdges(new ArrayList<>(List.of(edge("cut", "marinate"))));
+        when(processRepository.findById(5L)).thenReturn(Optional.of(preparation));
+
+        RecipeProcessVisualizationService.VisualPreparation targets = service.prepareVisualTargets(5L);
+
+        assertEquals(List.of("cut", "marinate", "chop").stream().sorted().toList(),
+                targets.targets().stream().map(RecipeProcessVisualizationService.VisualTarget::nodeId).sorted().toList());
+        assertTrue(targets.targets().stream().allMatch(target -> target.isPreparationStep() && target.flow() == null));
+        RecipeProcessVisualizationService.VisualTarget marinateTarget = targets.targets().stream()
+                .filter(target -> target.nodeId().equals("marinate")).findFirst().orElseThrow();
+        assertEquals(new RecipeProcessVisualizationService.PrepFlow("marinate", "Marinated Chicken"), marinateTarget.prepFlow());
+        assertEquals("Cut Chicken", marinateTarget.step().previousExpectedOutput());
+        RecipeProcessVisualizationService.VisualTarget cutTarget = targets.targets().stream()
+                .filter(target -> target.nodeId().equals("cut")).findFirst().orElseThrow();
+        assertEquals("marinate", cutTarget.prepFlow().id(), "a flow is named by its output step");
+        RecipeProcessVisualizationService.VisualTarget chopTarget = targets.targets().stream()
+                .filter(target -> target.nodeId().equals("chop")).findFirst().orElseThrow();
+        assertNull(chopTarget.step().previousExpectedOutput(), "an independent flow doesn't continue from another");
+    }
+
+    @Test
+    void missingImageCalls_countsSharedPanelImages_notSteps() {
+        Process preparation = new Process();
+        preparation.setId(5L);
+        preparation.setType(ProcessType.SUBPROCESS);
+        preparation.setNodes(new ArrayList<>(List.of(
+                stepNode("cut", "cut", List.of(), "Cut the chicken", "Cut Chicken"),
+                stepNode("marinate", "marinate", List.of(), "Coat in yogurt", "Marinated Chicken"),
+                stepNode("chop", "chop", List.of(), "Chop the onions", "Chopped Onions"))));
+        preparation.setEdges(new ArrayList<>(List.of(edge("cut", "marinate"))));
+
+        // Two flows: cut+marinate share one image, chop has its own.
+        assertEquals(2, service.missingImageCalls(9L, preparation, java.util.Set.of()));
+        assertEquals(1, service.missingImageCalls(9L, preparation, java.util.Set.of("cut", "marinate")));
+        imageProperties.setPreparationStepsPerImage(1);
+        assertEquals(3, service.missingImageCalls(9L, preparation, java.util.Set.of()));
+        imageProperties.setFocusedViewEnabled(false);
+        assertEquals(2, service.missingImageCalls(9L, preparation, java.util.Set.of()), "one image per flow, as before");
+    }
+
+    @Test
+    void chunkSizes_splitsIntoGroupsOfFourTwoAndOne_neverLargerThanTheSetting() {
+        assertEquals(List.of(4, 2, 1), RecipeProcessVisualizationService.chunkSizes(7, 4));
+        assertEquals(List.of(4, 4), RecipeProcessVisualizationService.chunkSizes(8, 4));
+        assertEquals(List.of(2, 2, 1), RecipeProcessVisualizationService.chunkSizes(5, 2));
+        assertEquals(List.of(1, 1, 1), RecipeProcessVisualizationService.chunkSizes(3, 1));
+        assertEquals(List.of(), RecipeProcessVisualizationService.chunkSizes(0, 4));
+    }
+
+    @Test
+    void prepareVisualTargets_focusedViewOff_givesAPreparationOneImagePerFlow_attachedToItsOutputStep() {
+        imageProperties.setFocusedViewEnabled(false);
         Process preparation = new Process();
         preparation.setId(5L);
         preparation.setRecipeId(9L);

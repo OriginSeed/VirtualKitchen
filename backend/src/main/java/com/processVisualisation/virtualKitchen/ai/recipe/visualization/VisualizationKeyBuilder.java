@@ -45,6 +45,16 @@ public final class VisualizationKeyBuilder {
     }
 
     /**
+     * Builds the asset key for one shared panel image: several Preparation steps drawn as equal panels of one image,
+     * which is then cut into each step's own image: {@code recipeId::grid::stepA+stepB+...}. The steps' ids, in panel
+     * order, are part of the key, so a different grouping never reuses the image.
+     */
+    public static String buildGrid(String recipeId, java.util.List<String> stepIds) {
+        return normalize(recipeId) + SEPARATOR + "grid" + SEPARATOR
+                + String.join("+", stepIds.stream().map(VisualizationKeyBuilder::normalize).toList());
+    }
+
+    /**
      * Builds the asset key for a recipe's scene anchor: one image of its empty setting (counter, cookware, lighting,
      * no food) that every step image of the recipe is drawn against: {@code recipeId::scene}.
      */

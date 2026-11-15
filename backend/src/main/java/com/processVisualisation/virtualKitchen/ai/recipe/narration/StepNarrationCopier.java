@@ -84,31 +84,58 @@ public class StepNarrationCopier {
             log.debug("event=narration_copy_skipped narrationKey={} reason=step_not_copied", source.getNarrationKey());
             return false;
         }
-        String key = StepNarrationService.narrationKey(event.targetRecipeId(), target.get().stepId());
+        // Audio held by a storage backend this instance no longer writes to is shared by URL here: the
+        // copy of a public recipe may keep pointing at it, as its path is left unset and so never deleted.
+        return copyTo(source, event.targetRecipeId(), target.get().processId(), target.get().stepId(),
+                source.getSourceTextHash(), true) == CopyOutcome.COPIED;
+    }
+
+    /** What became of one narration copy. */
+    public enum CopyOutcome {
+        COPIED,
+        /** The source's audio could not be read (deleted, or held by another storage backend). */
+        AUDIO_UNAVAILABLE,
+        /** The target step already has narration; it is kept. */
+        ALREADY_NARRATED
+    }
+
+    /**
+     * Copies one READY narration onto another recipe's step: its audio is stored again as a new object and a
+     * new record is written for the target step. Nothing of the source is changed.
+     *
+     * @param sourceTextHash the fingerprint of the target step's spoken text; the copy reads as READY only
+     *                       while the target step still says the same thing
+     * @param allowSharedUrl whether audio that cannot be read back may be shared by URL instead of failing
+     *                       (never for an import, whose recipe must own every file it plays)
+     */
+    public CopyOutcome copyTo(StepNarration source, Long targetRecipeId, Long targetProcessId, String targetStepId,
+                              String sourceTextHash, boolean allowSharedUrl) {
+        String key = StepNarrationService.narrationKey(targetRecipeId, targetStepId);
 
         StoredAudio audio;
         if (source.getStoragePath() != null && storage.backendName().equals(source.getStorageBackend())) {
             Optional<byte[]> data = storage.read(source.getStoragePath());
             if (data.isEmpty() || data.get().length == 0) {
                 log.debug("event=narration_copy_skipped narrationKey={} reason=audio_missing", source.getNarrationKey());
-                return false;
+                return CopyOutcome.AUDIO_UNAVAILABLE;
             }
             audio = storage.store(data.get(), formatOf(source), key);
-        } else {
-            // Audio held by a storage backend this instance no longer writes to: share the URL, but
-            // leave the path unset so deleting the copy can never delete the original's object.
+        } else if (allowSharedUrl) {
+            // Leave the path unset so deleting the copy can never delete the original's object.
             audio = new StoredAudio(source.getAudioUrl(), source.getStorageBackend(), null);
+        } else {
+            return CopyOutcome.AUDIO_UNAVAILABLE;
         }
 
         Instant now = Instant.now(clock);
         StepNarration copy = new StepNarration();
         copy.setId(UUID.randomUUID().toString());
         copy.setNarrationKey(key);
-        copy.setRecipeId(event.targetRecipeId());
-        copy.setProcessId(target.get().processId());
-        copy.setStepId(target.get().stepId());
+        copy.setRecipeId(targetRecipeId);
+        copy.setProcessId(targetProcessId);
+        copy.setStepId(targetStepId);
         copy.setStatus(StepNarrationStatus.READY);
-        copy.setSourceTextHash(source.getSourceTextHash());
+        copy.setSourceTextHash(sourceTextHash);
         copy.setAudioUrl(audio.url());
         copy.setStorageBackend(audio.backend());
         copy.setStoragePath(audio.path());
@@ -132,9 +159,9 @@ public class StepNarrationCopier {
             if (audio.path() != null) {
                 storage.delete(audio.path());
             }
-            return false;
+            return CopyOutcome.ALREADY_NARRATED;
         }
-        return true;
+        return CopyOutcome.COPIED;
     }
 
     /**

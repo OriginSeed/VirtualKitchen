@@ -22,6 +22,9 @@ spring.data.mongodb.gridfs.bucket=${MONGODB_GRIDFS_BUCKET:ai_artifacts}
 app.jwt.secret=${JWT_SECRET:REPLACE_WITH_A_LONG_RANDOM_SECRET}
 app.jwt.expiration-ms=${JWT_EXPIRATION_MS:86400000}
 
+# Swagger UI / OpenAPI docs without signing in. Handy locally; set to false in production.
+app.security.api-docs-public=${API_DOCS_PUBLIC:true}
+
 # OAuth client ID from Google Cloud Console (Credentials > OAuth 2.0 Client IDs > Web application).
 # Must match the frontend's VITE_GOOGLE_CLIENT_ID.
 google.oauth.client-id=${GOOGLE_CLIENT_ID:REPLACE_WITH_GOOGLE_OAUTH_CLIENT_ID}
@@ -172,8 +175,48 @@ ai.deepinfra.jsonSchemaEnabled=${DEEPINFRA_JSON_SCHEMA_ENABLED:true}
 # ====================================================================================================
 #ai.gemini.imageModel=gemini-2.5-flash-image
 
-# Scene anchor: one empty-scene image per recipe, sent as a reference image with every step image (default true).
-#ai.visualization.scene-anchor.enabled=true
+# Scene anchor: one empty-scene image per recipe, sent as a reference image with every step image (Gemini only;
+# prompt-only providers get just the dish context line). false = steps use their own prompt alone.
+# Admin-changeable at runtime: Admin > Config > Images > Scene anchor.
+ai.visualization.scene-anchor.enabled=true
+
+# Focused Cooking View: close-up step images. The text model names the recipe's equipment once and describes only
+# the food and the action of each step; the equipment, camera, lighting and style below are written into every
+# image by the backend, and the framing follows the step's action (cutting board, cooking vessel, bowl, plate).
+# false = images are made exactly as before it existed (full-kitchen prompts, every step generated in parallel).
+# Admin-changeable at runtime: Admin > Config > Images > Focused cooking view.
+ai.visualization.image.focused-view-enabled=true
+# Draw each cooking step against the previous image of the same focus (needs the focused view, and an image model
+# that takes reference images: Gemini, or DeepInfra with ai.deepinfra.image.edit-endpoint set). Those steps run one
+# after another instead of in parallel.
+ai.visualization.image.reference-chain-enabled=true
+# Image cost (Admin > Config > Images > Image cost). With the focused view on, this many Preparation steps (1, 2 or 4)
+# are drawn as equal panels of ONE image (2x2 grid, or two stacked panels), which the backend cuts into one image per
+# step. 4 costs about a quarter of an image per step; 1 draws every step on its own.
+ai.visualization.image.preparation-steps-per-image=4
+# Steps the prompt writer marks as looking the same as the step before (resting, setting aside, keeping warm) reuse
+# the previous step's image instead of a new one. Preparation and cooking steps.
+ai.visualization.image.skip-look-alike-steps=true
+# What a focused image centres on, per image purpose (CUTTING_BOARD, COOKING_VESSEL, PREP_BOWL, PLATE). Built-in:
+# ingredient-preparation=CUTTING_BOARD, serving=PLATE, everything else default-focus. focus-by-category wins over it
+# (built-in: coating=PREP_BOWL, dough=PREP_BOWL).
+#ai.visualization.image.focus-by-purpose.mixing=PREP_BOWL
+#ai.visualization.image.default-focus=COOKING_VESSEL
+# The same for every recipe; the equipment lines are only used where a recipe names none.
+#ai.visualization.image.scene.camera-angle=50
+#ai.visualization.image.scene.lighting=soft natural light
+#ai.visualization.image.scene.style=photorealistic
+#ai.visualization.image.scene.environment=minimal home cooking setup, plain uncluttered background
+#ai.visualization.image.scene.vessel=a black round frying pan
+#ai.visualization.image.scene.stove=a black gas stove
+#ai.visualization.image.scene.surface=a light grey stone countertop
+
+# DeepInfra reference images (off by default). Set the edit endpoint only for a model that accepts image input on
+# it; requests that carry reference images then go there as multipart, and fall back to a plain generation if the
+# call fails. send-seed adds the recipe's seed to generation requests.
+#ai.deepinfra.image.edit-endpoint=/v1/images/edits
+#ai.deepinfra.image.max-reference-images=1
+#ai.deepinfra.image.send-seed=false
 
 # Step image profiles (AI_MODEL_MANAGEMENT_DESIGN.md section 26). Each step's action picks a purpose, through its
 # catalog category or a per-action override, and the purpose's profile sets the image size and inference steps. A

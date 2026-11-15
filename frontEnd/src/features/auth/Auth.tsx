@@ -12,6 +12,10 @@ import './Auth.css'
 interface LoginPageProps {
   onLoginSuccess: (user: User, kitchen: Kitchen) => void
   onClose?: () => void
+  /** The tab to open on ("Log in" vs "Get started"); a step already in progress this page load wins. */
+  initialMode?: 'signup' | 'login'
+  /** Shown above the form, e.g. why the user has to sign in again. */
+  notice?: string
 }
 
 type View =
@@ -42,9 +46,9 @@ const clearAuthDrafts = () => {
 
 const isTab = (view: View): view is AuthDraft['view'] => view === 'signup' || view === 'login'
 
-export default function Auth({ onLoginSuccess, onClose }: LoginPageProps) {
+export default function Auth({ onLoginSuccess, onClose, initialMode, notice }: LoginPageProps) {
   const [initialDraft] = useState(() => readDraft<Partial<AuthDraft>>(draftKeys.auth()))
-  const [view, setView] = useState<View>(secretsDraft.view ?? initialDraft?.view ?? 'signup')
+  const [view, setView] = useState<View>(secretsDraft.view ?? initialMode ?? initialDraft?.view ?? 'signup')
 
   const [name, setName] = useState(initialDraft?.name ?? '')
   const [email, setEmail] = useState(initialDraft?.email ?? '')
@@ -258,14 +262,20 @@ export default function Auth({ onLoginSuccess, onClose }: LoginPageProps) {
         <p className="auth-subtitle">Welcome to Your Digital Culinary Studio</p>
 
         {(view === 'signup' || view === 'login') && (
-          <div className="auth-toggle">
+          <div className="auth-toggle" role="tablist" aria-label="Sign up or log in">
             <button
+              type="button"
+              role="tab"
+              aria-selected={view === 'signup'}
               className={`auth-toggle-btn ${view === 'signup' ? 'active' : ''}`}
               onClick={() => switchMode('signup')}
             >
               Sign Up
             </button>
             <button
+              type="button"
+              role="tab"
+              aria-selected={view === 'login'}
               className={`auth-toggle-btn ${view === 'login' ? 'active' : ''}`}
               onClick={() => switchMode('login')}
             >
@@ -274,8 +284,9 @@ export default function Auth({ onLoginSuccess, onClose }: LoginPageProps) {
           </div>
         )}
 
-        {info && <div className="auth-info">{info}</div>}
-        {error && <div className="auth-error">{error}</div>}
+        {notice && !info && !error && <div className="auth-info" role="status">{notice}</div>}
+        {info && <div className="auth-info" role="status">{info}</div>}
+        {error && <div className="auth-error" role="alert">{error}</div>}
 
         {view === 'signup' && (
           <div className="auth-form">
@@ -404,9 +415,14 @@ export default function Auth({ onLoginSuccess, onClose }: LoginPageProps) {
               {loading ? 'Verifying...' : 'Verify & Continue'}
             </button>
 
-            <button className="auth-link-btn" onClick={handleResendSignupOtp} disabled={loading}>
-              Resend code
-            </button>
+            <div className="auth-link-row">
+              <button type="button" className="auth-link-btn" onClick={handleResendSignupOtp} disabled={loading}>
+                Resend code
+              </button>
+              <button type="button" className="auth-link-btn" onClick={() => switchMode('signup')} disabled={loading}>
+                Back to sign up
+              </button>
+            </div>
           </div>
         )}
 
@@ -457,9 +473,14 @@ export default function Auth({ onLoginSuccess, onClose }: LoginPageProps) {
               {loading ? 'Verifying...' : 'Verify & Login'}
             </button>
 
-            <button className="auth-link-btn" onClick={handleRequestLoginOtp} disabled={loading}>
-              Resend code
-            </button>
+            <div className="auth-link-row">
+              <button type="button" className="auth-link-btn" onClick={handleRequestLoginOtp} disabled={loading}>
+                Resend code
+              </button>
+              <button type="button" className="auth-link-btn" onClick={() => switchMode('login')} disabled={loading}>
+                Back to login
+              </button>
+            </div>
           </div>
         )}
 
@@ -510,9 +531,14 @@ export default function Auth({ onLoginSuccess, onClose }: LoginPageProps) {
               {loading ? 'Verifying...' : 'Verify code'}
             </button>
 
-            <button className="auth-link-btn" onClick={handleRequestPasswordReset} disabled={loading}>
-              Resend code
-            </button>
+            <div className="auth-link-row">
+              <button type="button" className="auth-link-btn" onClick={handleRequestPasswordReset} disabled={loading}>
+                Resend code
+              </button>
+              <button type="button" className="auth-link-btn" onClick={() => switchMode('login')} disabled={loading}>
+                Back to login
+              </button>
+            </div>
           </div>
         )}
 
@@ -544,7 +570,11 @@ export default function Auth({ onLoginSuccess, onClose }: LoginPageProps) {
             </div>
 
             <button className="auth-submit-btn" onClick={handleResetPassword} disabled={loading}>
-              {loading ? 'Updating...' : 'Set new password & sign in'}
+              {loading ? 'Updating...' : 'Set new password'}
+            </button>
+
+            <button type="button" className="auth-link-btn" onClick={() => switchMode('login')} disabled={loading}>
+              Back to login
             </button>
           </div>
         )}

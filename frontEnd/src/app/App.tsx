@@ -1,5 +1,5 @@
-import { useState, type ReactNode } from 'react'
-import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom'
+import type { ReactNode } from 'react'
+import { BrowserRouter, Navigate, Route, Routes, useLocation, useSearchParams } from 'react-router-dom'
 import AiAnalyticsPage from '../features/admin/ai-analytics/AiAnalyticsPage'
 import AiEvaluationPage from '../features/admin/ai-evaluation/AiEvaluationPage'
 import ConfigLayout from '../features/admin/config/ConfigLayout'
@@ -8,24 +8,36 @@ import AddModelPage from '../features/admin/config/models/AddModelPage'
 import AdminLayout from '../features/admin/layout/AdminLayout'
 import { ADMIN_SECTIONS } from '../features/admin/layout/adminSections'
 import Auth from '../features/auth/Auth'
-import InventoryView from '../features/kitchen/inventory/InventoryView'
+import InventoryView, { type InventoryFilter } from '../features/kitchen/inventory/InventoryView'
 import KitchenLayout from '../features/kitchen/layout/KitchenLayout'
+import KitchenWorkspaceLayout from '../features/kitchen/layout/KitchenWorkspaceLayout'
 import OrderHistoryView from '../features/kitchen/orders/OrderHistoryView'
+import { AiJobIndicator } from '../features/recipe-tool'
 import AccountSettingsPage from '../features/settings/AccountSettingsPage'
 import IngredientCatalogGate from '../shared/catalog/IngredientCatalogGate'
+import type { Kitchen } from '../types/kitchen'
+import type { User } from '../types/User'
+import AppSplash from './AppSplash'
+import NotFoundPage from './NotFoundPage'
 import HomeRoute from './routes/HomeRoute'
+import OverviewRoute from './routes/OverviewRoute'
 import RecipeOrderRoute from './routes/RecipeOrderRoute'
-import { RecipeProcessEditorRoute, RecipeProcessListRoute, RecipesRoute, RecipeToolRoute } from './routes/RecipeRoutes'
+import { DiscoverRoute, LegacyProcessRedirect, MyRecipesRoute, RecipeToolRoute } from './routes/RecipeRoutes'
 import ShopRoute from './routes/ShopRoute'
+import { authPathFor, RETURN_PARAM, returnPathOr } from './session/returnPath'
 import { SignedInContext, useSignedIn, type SignedInSession } from './session/signedIn'
 import { useAppSession } from './session/useAppSession'
 
-/** The kitchen area: only for a signed-in user (else back to the landing page), inside the kitchen layout. */
+/**
+ * The kitchen area: only for a signed-in user, inside the kitchen layout. A signed-out visitor goes to sign-in and
+ * comes back to the page they asked for afterwards.
+ */
 function SignedInArea({ session, onLogout }: { session: SignedInSession | null; onLogout: () => void }) {
-  if (!session) return <Navigate to="/" replace />
+  const location = useLocation()
+  if (!session) return <Navigate to={authPathFor(location.pathname + location.search + location.hash)} replace />
   return (
     <SignedInContext.Provider value={session}>
-      <KitchenLayout user={session.user} kitchen={session.kitchen} onLogout={onLogout} />
+      <KitchenLayout user={session.user} onLogout={onLogout} navbarExtras={<AiJobIndicator />} />
     </SignedInContext.Provider>
   )
 }
@@ -33,14 +45,17 @@ function SignedInArea({ session, onLogout }: { session: SignedInSession | null; 
 /** Admin-only pages; the backend enforces the ADMIN role on every call too. */
 function AdminOnly({ children }: { children: ReactNode }) {
   const { user } = useSignedIn()
-  return user.userType === 'ADMIN' ? children : <Navigate to="/kitchen/inventory" replace />
+  return user.userType === 'ADMIN' ? children : <Navigate to="/kitchen" replace />
 }
 
-type InventoryFilter = 'ingredients' | 'equipment'
-
-function InventoryRoute({ filter, onFilterChange }: { filter: InventoryFilter; onFilterChange: (filter: InventoryFilter) => void }) {
+function InventoryRoute({ filter }: { filter: InventoryFilter }) {
   const { kitchen } = useSignedIn()
-  return <InventoryView kitchenId={kitchen.id} filter={filter} onFilterChange={onFilterChange} />
+  return <InventoryView kitchenId={kitchen.id} filter={filter} />
+}
+
+function SettingsRoute() {
+  const { user } = useSignedIn()
+  return <AccountSettingsPage account={{ name: user.name, email: user.email }} />
 }
 
 function OrdersRoute() {
@@ -48,34 +63,71 @@ function OrdersRoute() {
   return <OrderHistoryView userId={user.id} />
 }
 
+/** The standalone sign-in page; once signed in, it forwards to the page the user was sent here from. */
+function AuthRoute({ signedIn, notice, onLoginSuccess }: {
+  signedIn: boolean
+  notice: string | null
+  onLoginSuccess: (user: User, kitchen: Kitchen) => void
+}) {
+  const [params] = useSearchParams()
+  const from = params.get(RETURN_PARAM)
+  if (signedIn) return <Navigate to={returnPathOr(from)} replace />
+  const mode = params.get('mode')
+  return (
+    <Auth
+      onLoginSuccess={onLoginSuccess}
+      // Someone sent here from a page (or an expired session) already has an account.
+      initialMode={mode === 'signup' || mode === 'login' ? mode : from || notice ? 'login' : undefined}
+      notice={notice ?? (from ? 'Log in to continue.' : undefined)}
+    />
+  )
+}
+
+/**
+ * The route table.
+ *
+ *   /                  landing page (sign-in dialog)        /auth   sign-in page (returns to ?from=)
+ *   /kitchen           My Kitchen: Overview, My Recipes, Ingredients, Equipment, Shop, Orders (side nav)
+ *   /kitchen/discover  public recipes
+ *   /kitchen/recipes/:id/tool/:view   Recipe Editor / Recipe Process (full screen)
+ *   /kitchen/recipe-orders/:id/:view  demo recipe order (full screen)
+ *   /kitchen/settings, /kitchen/admin/*
+ */
 function App() {
-  const { session, restoring, login, logout } = useAppSession()
-  // Kept here so the inventory tab remembers its filter while the user visits other kitchen pages.
-  const [inventoryFilter, setInventoryFilter] = useState<InventoryFilter>('ingredients')
+  const { session, restoring, notice, login, logout } = useAppSession()
 
   if (restoring) {
-    return null
+    return <AppSplash />
   }
 
   return (
     <BrowserRouter>
       <Routes>
         <Route path="/" element={<HomeRoute signedIn={session != null} onLoginSuccess={login} />} />
-        <Route path="/auth" element={session ? <Navigate to="/kitchen/inventory" replace /> : <Auth onLoginSuccess={login} />} />
+        <Route path="/auth" element={<AuthRoute signedIn={session != null} notice={notice} onLoginSuccess={login} />} />
 
         <Route path="/kitchen" element={<SignedInArea session={session} onLogout={logout} />}>
-          <Route index element={<Navigate to="inventory" replace />} />
-          <Route path="inventory" element={<InventoryRoute filter={inventoryFilter} onFilterChange={setInventoryFilter} />} />
-          <Route path="shop" element={<ShopRoute />} />
-          <Route path="orders" element={<OrdersRoute />} />
-          <Route path="settings" element={<AccountSettingsPage />} />
+          {/* My Kitchen's own pages, around its side navigation. */}
+          <Route element={<KitchenWorkspaceLayout />}>
+            <Route index element={<OverviewRoute />} />
+            <Route path="recipes" element={<MyRecipesRoute />} />
+            <Route path="ingredients" element={<InventoryRoute filter="ingredients" />} />
+            <Route path="equipment" element={<InventoryRoute filter="equipment" />} />
+            <Route path="shop" element={<ShopRoute />} />
+            <Route path="orders" element={<OrdersRoute />} />
+          </Route>
+          {/* The pantry used to be one page. */}
+          <Route path="inventory" element={<Navigate to="/kitchen/ingredients" replace />} />
 
-          <Route path="recipes" element={<RecipesRoute />} />
+          <Route path="discover" element={<DiscoverRoute />} />
+          <Route path="settings" element={<SettingsRoute />} />
+
           {/* Old links to a recipe (this path used to open a separate editor) land in the Recipe Tool. */}
           <Route path="recipes/:recipeId" element={<Navigate to="tool" replace />} />
           <Route path="recipes/:recipeId/tool/:view?" element={<IngredientCatalogGate><RecipeToolRoute /></IngredientCatalogGate>} />
-          <Route path="recipes/:recipeId/processes" element={<IngredientCatalogGate><RecipeProcessListRoute /></IngredientCatalogGate>} />
-          <Route path="recipes/:recipeId/process/:processId" element={<IngredientCatalogGate><RecipeProcessEditorRoute /></IngredientCatalogGate>} />
+          {/* The standalone process pages were folded into the Recipe Editor. */}
+          <Route path="recipes/:recipeId/processes" element={<LegacyProcessRedirect />} />
+          <Route path="recipes/:recipeId/process/:processId" element={<LegacyProcessRedirect />} />
 
           {/* Recipe orders: confirm -> ingredients -> payment -> receipt -> track (see features/recipe-order). */}
           <Route path="recipe-orders/:orderId/:view?" element={<IngredientCatalogGate><RecipeOrderRoute /></IngredientCatalogGate>} />
@@ -94,9 +146,11 @@ function App() {
               <Route path=":sectionId" element={<ConfigSectionPage />} />
             </Route>
           </Route>
+
+          <Route path="*" element={<NotFoundPage signedIn />} />
         </Route>
 
-        <Route path="*" element={<Navigate to={session ? '/kitchen/inventory' : '/auth'} replace />} />
+        <Route path="*" element={<NotFoundPage signedIn={false} />} />
       </Routes>
     </BrowserRouter>
   )

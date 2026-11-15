@@ -1,9 +1,11 @@
 package com.processVisualisation.virtualKitchen.kitchen.controller;
 
+import com.processVisualisation.virtualKitchen.auth.security.CurrentUser;
 import com.processVisualisation.virtualKitchen.common.web.ApiResponse;
 import com.processVisualisation.virtualKitchen.kitchen.dto.InventoryRequestDTO;
 import com.processVisualisation.virtualKitchen.kitchen.dto.InventoryResponseDTO;
 import com.processVisualisation.virtualKitchen.kitchen.service.InventoryService;
+import com.processVisualisation.virtualKitchen.kitchen.service.KitchenAccess;
 
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.*;
@@ -23,6 +25,9 @@ public class InventoryController {
 
     @Autowired
     private InventoryService service;
+
+    @Autowired
+    private KitchenAccess kitchenAccess;
 
     /**
      * Adds a new inventory item or increments the quantity of a matching
@@ -46,6 +51,7 @@ public class InventoryController {
      */
     @GetMapping("/{userId}")
     public ApiResponse<List<InventoryResponseDTO>> get(@PathVariable Long userId){
+        CurrentUser.requireSelfOrAdmin(userId);
         return build(service.getByUser(userId), "fetched");
     }
 
@@ -58,6 +64,7 @@ public class InventoryController {
      */
     @GetMapping("/kitchen/{kitchenId}")
     public ApiResponse<List<InventoryResponseDTO>> getByKitchen(@PathVariable Long kitchenId){
+        kitchenAccess.requireAccess(kitchenId);
         return build(service.getByKitchen(kitchenId), "fetched");
     }
 

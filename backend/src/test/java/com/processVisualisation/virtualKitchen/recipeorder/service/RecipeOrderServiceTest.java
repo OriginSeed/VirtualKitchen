@@ -25,6 +25,9 @@ import com.processVisualisation.virtualKitchen.store.model.Ingredient;
 import com.processVisualisation.virtualKitchen.store.repository.IngredientRepository;
 import com.processVisualisation.virtualKitchen.store.units.UnitConversionService;
 import com.processVisualisation.virtualKitchen.store.units.UnitType;
+import ch.qos.logback.classic.Level;
+import ch.qos.logback.classic.spi.ILoggingEvent;
+import com.processVisualisation.virtualKitchen.common.logging.LogCapture;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.HttpStatus;
@@ -561,6 +564,28 @@ class RecipeOrderServiceTest {
         RecipeOrder stored = service.get(USER, order.getId());
         assertEquals(PREPARING, stored.getStatus());
         assertEquals(0, stored.getCurrentStepIndex());
+    }
+
+    // --- logging ---
+
+    @Test
+    void cancellingLogsOneEventWithIdsAndStatusOnly() {
+        RecipeOrder order = service.reserve(USER, createConfirmed(2).getId());
+
+        try (LogCapture logs = LogCapture.of(RecipeOrderService.class)) {
+            service.cancel(USER, order.getId());
+
+            List<ILoggingEvent> cancelled = logs.events("recipe_order_cancelled");
+            assertEquals(1, cancelled.size(), logs.allMessages());
+            assertEquals(Level.INFO, cancelled.get(0).getLevel());
+            String message = cancelled.get(0).getFormattedMessage();
+            assertTrue(message.contains("orderId=" + order.getId()), message);
+            assertTrue(message.contains("fromStatus=AWAITING_PAYMENT"), message);
+            assertTrue(message.contains("status=CANCELLED"), message);
+            assertTrue(message.contains("refunded=false"), message);
+            assertFalse(logs.allMessages().contains("Pancakes"), "no recipe text in the logs");
+            assertFalse(logs.allMessages().contains("Baker Street"), "no address in the logs");
+        }
     }
 
     // --- security ---

@@ -36,11 +36,18 @@ export default function ShopRoute() {
 
   const resumeOrderCode = stateCode ?? (fetchedCode?.orderId === resumeOrderId ? fetchedCode.code : null)
 
+  const typeParam = searchParams.get('type')
+  const initialFilter = typeParam === 'ingredients' || typeParam === 'equipment' ? typeParam : 'all'
+  // Every visit to `?cart=open` (the navbar cart) opens the drawer, even when the shop is already showing.
+  const cartRequest = searchParams.get('cart') === 'open' ? location.key : null
+
   return (
     <ShopView
       // Remount when the resume target changes, so the cart is re-read from storage.
       key={resumeOrderId ?? 'shop'}
       userId={user.id}
+      initialFilter={initialFilter}
+      cartRequest={cartRequest}
       resumeRecipeOrder={resumeOrderId != null ? { orderId: resumeOrderId, orderCode: resumeOrderCode } : undefined}
       // Back to the order's ingredient check (which re-checks stock) instead of the order list.
       onOrderPlaced={() => navigate(resumeOrderId != null ? recipeOrderPath(resumeOrderId, 'ingredients') : '/kitchen/orders')}

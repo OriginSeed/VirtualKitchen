@@ -1,0 +1,12 @@
+{
+  "name": "ai-bench",
+  "private": true,
+  "type": "module",
+  "description": "Runs recipes through AI model combinations and reports latency, cost and quality. No dependencies of its own: it builds with the frontend's toolchain.",
+  "scripts": {
+    "build": "node ../../frontEnd/node_modules/rolldown/bin/cli.mjs -c rolldown.config.mjs",
+    "typecheck": "node ../../frontEnd/node_modules/typescript/bin/tsc -p tsconfig.json",
+    "bench": "node dist/bench.mjs",
+    "test": "node --test \"tests/**/*.test.ts\""
+  }
+}

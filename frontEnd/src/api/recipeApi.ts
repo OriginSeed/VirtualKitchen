@@ -5,8 +5,10 @@
  */
 
 import { apiGet, apiPost, apiDelete, apiPut } from './client'
+import type { UiActionOptions } from './client'
 import { API } from './endpoints'
 import type { Process, ProcessBatchUpdateItem, ProcessBatchUpdateResult, ProcessCreateRequest, ProcessUpdateRequest } from '../types/process'
+import type { RecipeAssetImportRequest, RecipeAssetImportResponse } from '../types/recipe'
 import type { NutritionInfo, RecipeActiveJobsResponse, RecipeProcessGenerationJobResponse, RecipeProcessGenerationRequest, RecipeProcessVisualizationJobResponse, RecipeDetail, RecipeIngredient } from '../types/recipe'
 import type { UnitType } from '../types/kitchen'
 
@@ -17,6 +19,8 @@ export interface Recipe {
   name: string
   description?: string
   createdAt?: string
+  /** Last change to the recipe or any of its processes. Absent on recipes saved before dates were recorded. */
+  updatedAt?: string
   createdBy?: number
   visibility?: RecipeVisibility
   /** The public recipe this one was copied from ("Add to My Recipes"); null when it wasn't copied. */
@@ -28,7 +32,6 @@ export interface Recipe {
 export interface RecipeCreateRequest {
   name: string
   description?: string
-  createdBy: number
 }
 
 export interface RecipeUpdateRequest {
@@ -45,7 +48,7 @@ export const RecipeApi = {
   },
 
   /**
-   * Get public recipes owned by other users (Global Recipes)
+   * Get public recipes owned by other users (shown in Discover)
    */
   async getGlobalRecipes(userId: number): Promise<Recipe[]> {
     return apiGet<Recipe[]>(API.recipes.global(userId))
@@ -61,45 +64,43 @@ export const RecipeApi = {
   /**
    * Update a recipe's name/description. Only the owner may update.
    */
-  async updateRecipe(recipeId: number, userId: number, data: RecipeUpdateRequest): Promise<Recipe> {
-    return apiPut<Recipe>(API.recipes.byId(recipeId), data, { params: { userId } })
+  async updateRecipe(recipeId: number, data: RecipeUpdateRequest): Promise<Recipe> {
+    return apiPut<Recipe>(API.recipes.byId(recipeId), data)
   },
 
   /**
    * Publish/unpublish a recipe. Only the owner may change visibility.
    */
-  async updateVisibility(recipeId: number, userId: number, visibility: RecipeVisibility): Promise<Recipe> {
-    return apiPut<Recipe>(API.recipes.visibility(recipeId), undefined, { params: { userId, visibility } })
+  async updateVisibility(recipeId: number, visibility: RecipeVisibility): Promise<Recipe> {
+    return apiPut<Recipe>(API.recipes.visibility(recipeId), undefined, { params: { visibility } })
   },
 
   /**
    * Set the recipe's default preparation guidance; null or blank goes back to the app's default. Only the owner may change it.
    */
-  async updatePreparationNotes(recipeId: number, userId: number, preparationNotes: string | null): Promise<RecipeDetail> {
-    return apiPut<RecipeDetail>(API.recipes.preparationNotes(recipeId), { preparationNotes }, { params: { userId } })
+  async updatePreparationNotes(recipeId: number, preparationNotes: string | null): Promise<RecipeDetail> {
+    return apiPut<RecipeDetail>(API.recipes.preparationNotes(recipeId), { preparationNotes })
   },
 
   /**
    * Copy a public recipe into the current user's My Recipes as an independent recipe.
    */
-  async copyRecipe(recipeId: number, userId: number): Promise<Recipe> {
-    return apiPost<Recipe>(API.recipes.copy(recipeId), undefined, { params: { userId } })
+  async copyRecipe(recipeId: number): Promise<Recipe> {
+    return apiPost<Recipe>(API.recipes.copy(recipeId))
   },
 
   /**
    * Delete a recipe. Only the owner may delete.
    */
-  async deleteRecipe(recipeId: number, userId: number): Promise<void> {
-    return apiDelete<void>(API.recipes.byId(recipeId), { params: { userId } })
+  async deleteRecipe(recipeId: number): Promise<void> {
+    return apiDelete<void>(API.recipes.byId(recipeId))
   },
 }
 
 /**
  * A recipe's ingredients/nutrition/main-process, backed by `/api/v1/recipes/{recipeId}/**`
- * ({@link RecipeApi} above serves the recipe list/create/publish/copy endpoints). The
- * authenticated user is resolved by the backend from the request's JWT, so
- * — unlike {@link RecipeApi}'s mutating methods — none of these take a
- * userId parameter.
+ * ({@link RecipeApi} above serves the recipe list/create/publish/copy endpoints). As everywhere,
+ * the authenticated user is resolved by the backend from the request's JWT.
  */
 export const RecipeDetailApi = {
   /**
@@ -121,6 +122,14 @@ export const RecipeDetailApi = {
    */
   async updateNutrition(recipeId: number, nutrition: NutritionInfo): Promise<RecipeDetail> {
     return apiPut<RecipeDetail>(API.recipeDetail.nutrition(recipeId), nutrition)
+  },
+
+  /**
+   * Copies the images and narration audio a recipe file links to into this recipe, as its own files. Each
+   * file is copied or reported alone; the call only fails as a whole when the recipe isn't the caller's.
+   */
+  async importAssets(recipeId: number, request: RecipeAssetImportRequest): Promise<RecipeAssetImportResponse> {
+    return apiPost<RecipeAssetImportResponse>(API.recipeDetail.importAssets(recipeId), request)
   },
 
   /**
@@ -191,10 +200,15 @@ export const ProcessApi = {
    * every item before persisting any of them, so one invalid process rejects the whole batch.
    * `baseRevision` is the recipe process revision the snapshot was based on: if the recipe was saved
    * elsewhere since, the save is rejected with 409. Resolves with the recipe's new revision.
-   * Requires ownership.
+   * Requires ownership. `options.uiAction` tags the request with the click that caused it.
    */
-  async updateAll(recipeId: number, items: ProcessBatchUpdateItem[], baseRevision?: number): Promise<ProcessBatchUpdateResult> {
-    return apiPut<ProcessBatchUpdateResult>(API.processes.list(recipeId), { processes: items, baseRevision })
+  async updateAll(
+    recipeId: number,
+    items: ProcessBatchUpdateItem[],
+    baseRevision?: number,
+    options?: UiActionOptions,
+  ): Promise<ProcessBatchUpdateResult> {
+    return apiPut<ProcessBatchUpdateResult>(API.processes.list(recipeId), { processes: items, baseRevision }, options)
   },
 
   /**
@@ -250,8 +264,20 @@ export const RecipeJobsApi = {
  * process at a time: visualizing a process only generates images for its own STEP nodes.
  */
 export const RecipeProcessVisualizationApi = {
-  async startJob(recipeId: number, processId: number): Promise<RecipeProcessVisualizationJobResponse> {
-    return apiPost<RecipeProcessVisualizationJobResponse>(API.recipeProcessVisualization.startJob(recipeId, processId), {})
+  /**
+   * `modelKeys`: the models picked for this run (text for the image prompts, image for the pictures).
+   * `overwriteExisting`: regenerate and replace images the steps already have (default: keep them, draw only missing).
+   */
+  async startJob(
+    recipeId: number,
+    processId: number,
+    modelKeys?: RecipeProcessGenerationRequest['modelKeys'],
+    overwriteExisting = false,
+  ): Promise<RecipeProcessVisualizationJobResponse> {
+    return apiPost<RecipeProcessVisualizationJobResponse>(API.recipeProcessVisualization.startJob(recipeId, processId), {
+      ...(modelKeys && Object.keys(modelKeys).length > 0 ? { modelKeys } : {}),
+      ...(overwriteExisting ? { overwriteExisting: true } : {}),
+    })
   },
 
   async getJobStatus(recipeId: number, processId: number, jobId: string, signal?: AbortSignal): Promise<RecipeProcessVisualizationJobResponse> {

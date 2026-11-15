@@ -43,6 +43,9 @@ public interface StepNarrationStore {
     /** Every READY narration of the recipe, whatever process it belongs to. */
     List<StepNarration> findReadyByRecipeId(Long recipeId);
 
+    /** The READY narration whose audio is at {@code audioUrl}, if there still is one. */
+    Optional<StepNarration> findReadyByAudioUrl(String audioUrl);
+
     /**
      * Inserts a complete record (a copied narration) unless one already exists for its key.
      *

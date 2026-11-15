@@ -61,8 +61,8 @@ export default function ConfirmVisibilityModal({
         <div className="recipe-modal-body">
           <p className="text-sm text-[var(--flow-text-muted)]">
             {makingPublic
-              ? 'Anyone browsing Global Recipes will be able to view this recipe and add a copy of it to their own kitchen. You can make it private again at any time.'
-              : 'This recipe will be removed from Global Recipes and other users will no longer be able to find or add it. Copies already added to other kitchens will not be affected.'}
+              ? 'Anyone browsing Discover will be able to view this recipe and add a copy of it to their own kitchen. You can make it private again at any time.'
+              : 'This recipe will be removed from Discover and other users will no longer be able to find or add it. Copies already added to other kitchens will not be affected.'}
           </p>
         </div>
 

@@ -1,39 +1,44 @@
 import { useMemo, useState } from 'react'
+import { Link } from 'react-router-dom'
 import { InventoryApi, type InventoryItem } from '../../../api'
+import { EmptyState, ErrorState, PageHeader } from '../../../shared/components/page'
 import { formatDate } from '../../../shared/format/date'
 import { formatNumber } from '../../../shared/format/number'
 import { useApiData } from '../../../shared/hooks/useApiData'
 import CatalogItemImage from '../components/CatalogItemImage'
+import { isInKitchen, stockLevels } from './inventoryVisibility'
 import './InventoryView.css'
+
+export type InventoryFilter = 'ingredients' | 'equipment'
 
 interface InventoryViewProps {
   kitchenId: number
-  filter: 'ingredients' | 'equipment'
-  onFilterChange: (filter: 'ingredients' | 'equipment') => void
+  /** Which half of the pantry this page shows (its own route: /kitchen/ingredients or /kitchen/equipment). */
+  filter: InventoryFilter
 }
 
-function InventoryHeader() {
-  return (
-    <div className="inventory-title">
-      <div className="inventory-eyebrow">
-        My Kitchen
-      </div>
-
-      <h1>Kitchen Inventory</h1>
-
-      <p>
-        View the ingredients and equipment currently
-        available in your kitchen.
-      </p>
-    </div>
-  )
+const COPY: Record<InventoryFilter, { title: string; subtitle: string; search: string; icon: string }> = {
+  ingredients: {
+    title: 'Ingredients',
+    subtitle: 'What is in your pantry right now. Buy more in the shop; recipe orders reserve and use what they need.',
+    search: 'Search ingredients...',
+    icon: '🥕',
+  },
+  equipment: {
+    title: 'Equipment',
+    subtitle: 'The tools in your kitchen. Buy more in the shop.',
+    search: 'Search equipment...',
+    icon: '🍳',
+  },
 }
 
 function InventorySearch({
   search,
+  placeholder,
   onSearchChange,
 }: {
   search: string
+  placeholder: string
   onSearchChange: (value: string) => void
 }) {
   return (
@@ -51,8 +56,8 @@ function InventorySearch({
         onChange={event =>
           onSearchChange(event.target.value)
         }
-        placeholder="Search ingredients or equipment..."
-        aria-label="Search inventory"
+        placeholder={placeholder}
+        aria-label={placeholder.replace(/\.+$/, '')}
       />
 
       {search && (
@@ -68,44 +73,6 @@ function InventorySearch({
   )
 }
 
-function InventoryFilters({
-  filter,
-  onFilterChange,
-}: {
-  filter: 'ingredients' | 'equipment'
-  onFilterChange: (
-    filter: 'ingredients' | 'equipment',
-  ) => void
-}) {
-  return (
-    <div className="inventory-filters">
-      <button
-        className={`inventory-filter-btn ${
-          filter === 'ingredients' ? 'active' : ''
-        }`}
-        onClick={() =>
-          onFilterChange('ingredients')
-        }
-      >
-        <span>🥘</span>
-        Ingredients
-      </button>
-
-      <button
-        className={`inventory-filter-btn ${
-          filter === 'equipment' ? 'active' : ''
-        }`}
-        onClick={() =>
-          onFilterChange('equipment')
-        }
-      >
-        <span>⚙️</span>
-        Equipment
-      </button>
-    </div>
-  )
-}
-
 function InventoryCard({
   item,
 }: {
@@ -114,15 +81,8 @@ function InventoryCard({
   const isIngredient =
     item.itemType === 'INGREDIENT'
 
-  const quantity =
-    item.quantity !== undefined
-      ? item.quantity
-      : 0
-
   // Part of the stock can be held for recipe orders awaiting payment or in preparation.
-  const reserved = item.reservedQuantity ?? 0
-  const free =
-    item.availableQuantity ?? Math.max(0, quantity - reserved)
+  const { inStock, reserved, free } = stockLevels(item)
   return (
     <article className="inventory-card">
       <div className="inventory-card-image">
@@ -146,11 +106,11 @@ function InventoryCard({
 
         <div className="inventory-quantity-box">
           <span className="inventory-quantity-label">
-            Available quantity
+            In stock
           </span>
 
           <span className="inventory-quantity-value">
-            {quantity}
+            {formatNumber(inStock)}
             {item.unit && (
               <small>{item.unit}</small>
             )}
@@ -185,45 +145,30 @@ function InventoryCard({
 function InventoryEmptyState({
   searching,
   filter,
+  onClearSearch,
 }: {
   searching: boolean
-  filter: 'ingredients' | 'equipment'
+  filter: InventoryFilter
+  onClearSearch: () => void
 }) {
   if (searching) {
     return (
-      <div className="inventory-empty-state">
-        <div className="inventory-empty-icon">
-          🔍
-        </div>
-
-        <h3>No matching items</h3>
-
-        <p>
-          Try searching with a different ingredient
-          or equipment name.
-        </p>
-      </div>
+      <EmptyState
+        icon="🔍"
+        title="No matching items"
+        text={`Try a different ${filter === 'ingredients' ? 'ingredient' : 'equipment'} name.`}
+        actions={<button type="button" className="vk-btn vk-btn-secondary" onClick={onClearSearch}>Clear search</button>}
+      />
     )
   }
 
   return (
-    <div className="inventory-empty-state">
-      <div className="inventory-empty-icon">
-        {filter === 'ingredients' ? '🥘' : '⚙️'}
-      </div>
-
-      <h3>
-        No {filter} in your kitchen
-      </h3>
-
-      <p>
-        Visit the shop to add{' '}
-        {filter === 'ingredients'
-          ? 'ingredients'
-          : 'equipment'}{' '}
-        to your inventory.
-      </p>
-    </div>
+    <EmptyState
+      icon={COPY[filter].icon}
+      title={`No ${filter} in your kitchen`}
+      text={`Your pantry fills up as you buy ${filter} in the shop.`}
+      actions={<Link className="vk-btn vk-btn-primary" to={`/kitchen/shop?type=${filter}`}>Shop {filter}</Link>}
+    />
   )
 }
 
@@ -254,7 +199,6 @@ const NO_ITEMS: InventoryItem[] = []
 export default function InventoryView({
   kitchenId,
   filter,
-  onFilterChange,
 }: InventoryViewProps) {
   const [search, setSearch] = useState('')
   const inventory = useApiData(`kitchen-${kitchenId}`, async () => {
@@ -264,12 +208,17 @@ export default function InventoryView({
   })
   const items = inventory.data ?? NO_ITEMS
   const loading = inventory.loading
-  const error = inventory.error ? `Failed to load inventory: ${inventory.error}` : ''
+  const error = inventory.error ?? ''
 
   const filteredItems = useMemo(() => {
     const query = search.trim().toLowerCase()
 
     return items.filter(item => {
+      // Used-up rows stay in the backend at 0; they are no longer in the kitchen.
+      if (!isInKitchen(item)) {
+        return false
+      }
+
       const matchesFilter =
         filter === 'ingredients'
           ? item.itemType === 'INGREDIENT'
@@ -293,19 +242,22 @@ export default function InventoryView({
 
   return (
     <div className="inventory-view">
-      <div className="inventory-header">
-        <InventoryHeader />
-      </div>
-
-      <InventorySearch
-        search={search}
-        onSearchChange={setSearch}
+      <PageHeader
+        eyebrow="Pantry"
+        title={COPY[filter].title}
+        subtitle={COPY[filter].subtitle}
+        actions={
+          <Link className="vk-btn vk-btn-secondary" to={`/kitchen/shop?type=${filter}`}>
+            <span aria-hidden="true">🛒</span> Buy more
+          </Link>
+        }
       />
 
       <div className="inventory-toolbar">
-        <InventoryFilters
-          filter={filter}
-          onFilterChange={onFilterChange}
+        <InventorySearch
+          search={search}
+          placeholder={COPY[filter].search}
+          onSearchChange={setSearch}
         />
 
         {!loading && !error && (
@@ -321,24 +273,12 @@ export default function InventoryView({
       {loading && items.length === 0 ? (
         <InventoryLoading />
       ) : error ? (
-        <div className="inventory-error-state">
-          <strong>
-            Unable to load inventory
-          </strong>
-
-          <span>{error}</span>
-
-          <button
-            onClick={inventory.reload}
-            className="inventory-retry-button"
-          >
-            Try again
-          </button>
-        </div>
+        <ErrorState title="Unable to load your pantry" message={error} onRetry={inventory.reload} />
       ) : filteredItems.length === 0 ? (
         <InventoryEmptyState
           searching={Boolean(search.trim())}
           filter={filter}
+          onClearSearch={() => setSearch('')}
         />
       ) : (
         <div className="inventory-grid">

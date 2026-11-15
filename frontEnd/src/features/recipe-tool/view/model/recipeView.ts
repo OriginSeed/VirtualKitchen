@@ -144,8 +144,13 @@ export type RecipeTimelineFlow = {
   /** Where "Open in editor" goes: the step that makes the flow's output (else its first node). */
   processId: number
   nodeId: string
-  /** The flow's one generated image (stored on the step that makes its output), if any. */
+  /** The image stored on the step that makes the flow's output, if any (older recipes: one image for the whole flow). */
   imageUrl?: string
+  /**
+   * Whether the flow's steps have images of their own (drawn per step, or cut from a shared panel image) rather than
+   * one image for the whole flow: then each point shows its own image.
+   */
+  stepImages: boolean
   /** "Prepare <output>" (or "Preparation flow N" while the flow has no named output). */
   title: string
   outputName: string
@@ -676,6 +681,8 @@ export const buildRecipePresentation = (processes: Process[]): RecipePresentatio
         processId: process.id,
         nodeId: flow.outputNodeId ?? flow.nodeIds[0],
         imageUrl: outputItem?.kind === 'step' ? outputItem.imageUrl : undefined,
+        // Older recipes have one image, on the output step; any other step with an image means per-step images.
+        stepImages: flowItems.some((item) => item.kind === 'step' && item.nodeId !== flow.outputNodeId && Boolean(item.imageUrl)),
         title: flow.title,
         outputName: flow.outputName,
         stepCount: flowItems.filter((item) => item.kind === 'step').length,

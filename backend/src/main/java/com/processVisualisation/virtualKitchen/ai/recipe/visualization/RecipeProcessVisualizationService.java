@@ -1,5 +1,7 @@
 package com.processVisualisation.virtualKitchen.ai.recipe.visualization;
 
+import com.processVisualisation.virtualKitchen.common.logging.UsageLedger;
+
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.processVisualisation.virtualKitchen.ai.platform.config.AiGenerationParamsProperties;
@@ -18,6 +20,7 @@ import com.processVisualisation.virtualKitchen.ai.platform.registry.AiCapability
 import com.processVisualisation.virtualKitchen.ai.platform.routing.ModelSelectionOutcome;
 import com.processVisualisation.virtualKitchen.ai.provider.AiClient;
 import com.processVisualisation.virtualKitchen.ai.provider.ImageGenerationClient;
+import com.processVisualisation.virtualKitchen.ai.provider.ImageStorageClient;
 import com.processVisualisation.virtualKitchen.ai.provider.dto.AiRequest;
 import com.processVisualisation.virtualKitchen.ai.provider.dto.AiResponse;
 import com.processVisualisation.virtualKitchen.ai.recipe.RecipeProcessAiException;
@@ -141,7 +144,7 @@ public class RecipeProcessVisualizationService {
      */
     public VisualizationAsset resolveVisualizationAsset(Long userId, Long recipeId, String stepId, RecipeProcessVisualizationInput input) {
         return resolveAsset(userId, VisualizationKeyBuilder.build(String.valueOf(recipeId), stepId),
-                () -> promptBuilder.buildUserPrompt(input), null,
+                () -> promptBuilder.buildUserPrompt(input), null, null, null,
                 imageProfiles.settingsFor(input == null ? null : input.actionId()));
     }
 
@@ -160,11 +163,79 @@ public class RecipeProcessVisualizationService {
      * @param scene the recipe's scene anchor, or null to generate from the prompt alone
      */
     public VisualizationAsset resolveTarget(Long userId, Long recipeId, VisualTarget target, SceneReference scene) {
-        Supplier<String> userPrompt = target.flow() == null
-                ? () -> promptBuilder.buildUserPrompt(target.step())
-                : () -> promptBuilder.buildFlowUserPrompt(target.flow().outputName(), target.flow().steps());
-        return resolveAsset(userId, visualizationKey(recipeId, target), userPrompt, scene,
+        return resolveTarget(userId, recipeId, target, scene, null);
+    }
+
+    /**
+     * Same as {@link #resolveTarget(Long, Long, VisualTarget, SceneReference)}, also drawing a focused image against
+     * the previous image of its chain where the provider takes reference images.
+     *
+     * @param previous the previous step's image, or null when this image starts a chain or stands alone
+     */
+    public VisualizationAsset resolveTarget(Long userId, Long recipeId, VisualTarget target, SceneReference scene,
+                                            PreviousStep previous) {
+        // A prompt this step has to write for itself is a focused one only while the focused view is on.
+        VisualFocus fallbackFocus = focusedViewEnabled() ? defaultFocus(target) : null;
+        Supplier<String> userPrompt;
+        if (target.flow() == null) {
+            userPrompt = fallbackFocus == null
+                    ? () -> promptBuilder.buildUserPrompt(target.step())
+                    : () -> promptBuilder.buildFocusedUserPrompt(target.step());
+        } else {
+            userPrompt = fallbackFocus == null
+                    ? () -> promptBuilder.buildFlowUserPrompt(target.flow().outputName(), target.flow().steps())
+                    : () -> promptBuilder.buildFocusedFlowUserPrompt(target.flow().outputName(), target.flow().steps());
+        }
+        return resolveAsset(userId, visualizationKey(recipeId, target), userPrompt, fallbackFocus, scene, previous,
                 imageProfiles.settingsFor(profileActionId(target)));
+    }
+
+    /** Whether new prompts are written for the Focused Cooking View (an admin can switch it off at runtime). */
+    public boolean focusedViewEnabled() {
+        return imageProfiles.focusedViewEnabled();
+    }
+
+    /** Whether focused main steps are drawn against the previous image of the same focus. */
+    public boolean referenceChainEnabled() {
+        return imageProfiles.referenceChainEnabled();
+    }
+
+    /**
+     * What a focused image of this target centres on unless the prompt writer says otherwise: a step's action
+     * decides; a multi-step preparation is a storyboard.
+     */
+    public VisualFocus defaultFocus(VisualTarget target) {
+        // Only a whole flow (focused view off) is a storyboard; a Preparation step is framed like any other step.
+        if (target.flow() != null && target.flow().steps() != null && target.flow().steps().size() > 1) {
+            return VisualFocus.STORYBOARD;
+        }
+        return imageProfiles.focusFor(profileActionId(target));
+    }
+
+    /**
+     * The focus a main step's image continues its chain with: the focus stored with its prompt, or (when the step
+     * will still write its own prompt) its default focus. Empty for preparation flows, for prompts written before
+     * the focused view, and whenever the focused view is off for a step without a prompt.
+     */
+    public Optional<VisualFocus> chainFocus(Long recipeId, VisualTarget target) {
+        // Preparation steps continue only within their own flow (see the job's preparation runner).
+        if (target.flow() != null || target.isPreparationStep()) {
+            return Optional.empty();
+        }
+        Optional<VisualizationAsset> asset = assetRepository.findByVisualizationKey(visualizationKey(recipeId, target))
+                .filter(found -> StringUtils.hasText(found.getImagePrompt()));
+        VisualFocus focus = asset.isPresent()
+                ? asset.get().getFocus()
+                : (focusedViewEnabled() ? defaultFocus(target) : null);
+        return Optional.ofNullable(focus).filter(VisualFocus::chains);
+    }
+
+    /**
+     * The previous image of a chain, as the next step's reference.
+     *
+     * @param key identifies the image ({@code assetId:imageUrl}); part of the next image's artifact key
+     */
+    public record PreviousStep(String key, ImageGenerationClient.ReferenceImage image) {
     }
 
     /**
@@ -186,8 +257,15 @@ public class RecipeProcessVisualizationService {
      *                  so an image drawn against an older anchor is never reused for a new one. Null without an image.
      * @param dishContext the one-line dish context sent with every step image, or null
      * @param image the empty-scene image sent as a reference, or null when there is none
+     * @param sceneContext the recipe's equipment for focused images, or null to use the configured defaults
      */
-    public record SceneReference(String anchorKey, String dishContext, ImageGenerationClient.ReferenceImage image) {
+    public record SceneReference(String anchorKey, String dishContext, ImageGenerationClient.ReferenceImage image,
+                                 SceneContext sceneContext) {
+
+        /** A scene written before the focused view: no equipment of its own. */
+        public SceneReference(String anchorKey, String dishContext, ImageGenerationClient.ReferenceImage image) {
+            this(anchorKey, dishContext, image, null);
+        }
     }
 
     /** The recipe's scene anchor asset, if one exists (it may still lack a prompt or an image). */
@@ -211,11 +289,33 @@ public class RecipeProcessVisualizationService {
     }
 
     /**
+     * Stores the recipe's equipment for focused images, with its dish context. A recipe without a scene gets one
+     * whose prompt is the empty focused setup ({@link RecipeProcessVisualizationPromptBuilder#buildFocusedScenePrompt});
+     * an existing scene keeps its prompt and image and only gains what it lacks.
+     */
+    public VisualizationAsset saveSceneContext(Long recipeId, SceneContext sceneContext, String dishContext) {
+        VisualizationImageProperties.Scene style = imageProfiles.scene();
+        SceneContext equipment = SceneContext.orDefaults(sceneContext, style.equipment());
+        VisualizationAsset scene = saveScenePrompt(recipeId,
+                promptBuilder.buildFocusedScenePrompt(equipment, style), dishContext);
+        boolean changed = false;
+        if (scene.getSceneContext() == null) {
+            scene.setSceneContext(equipment);
+            changed = true;
+        }
+        if (!StringUtils.hasText(scene.getDishContext()) && StringUtils.hasText(dishContext)) {
+            scene.setDishContext(dishContext.trim());
+            changed = true;
+        }
+        return changed ? assetRepository.save(scene) : scene;
+    }
+
+    /**
      * Generates the scene anchor's image from its prompt (no reference of its own) and stores it, like a step image.
      * Returns the asset with {@code imageUrl} set, or null when generation or upload failed.
      */
     public VisualizationAsset generateSceneImage(Long userId, VisualizationAsset scene) {
-        VisualizationAsset generated = generateImage(userId, scene, null, SCENE_CORRELATION_TYPE,
+        VisualizationAsset generated = generateImage(userId, scene, null, null, SCENE_CORRELATION_TYPE,
                 ImageGenerationClient.ImageGenerationSettings.NONE);
         return StringUtils.hasText(generated.getImageUrl()) ? generated : null;
     }
@@ -227,6 +327,39 @@ public class RecipeProcessVisualizationService {
         return target.flow() == null
                 ? VisualizationKeyBuilder.build(String.valueOf(recipeId), target.nodeId())
                 : VisualizationKeyBuilder.buildFlow(String.valueOf(recipeId), target.nodeId());
+    }
+
+    /**
+     * "Regenerate and replace": forgets the stored prompt and image of every target, and of the shared panel images
+     * any of them was cut from, so the next run writes new prompts (from the steps as they are now) and draws new
+     * images instead of reusing them. The recipe's scene anchor is kept, so new images stay consistent with the rest
+     * of the recipe. The process nodes keep their current image until the new one is attached.
+     *
+     * @return how many assets were cleared
+     */
+    public int clearForRegeneration(Long recipeId, List<VisualTarget> targets) {
+        List<String> keys = targets.stream().map(target -> visualizationKey(recipeId, target)).toList();
+        List<VisualizationAsset> cleared = new ArrayList<>(assetRepository.findByVisualizationKeyIn(keys));
+
+        Set<String> stepIds = new HashSet<>();
+        targets.forEach(target -> stepIds.add(target.nodeId()));
+        String gridPrefix = VisualizationKeyBuilder.buildGrid(String.valueOf(recipeId), List.of());
+        for (VisualizationAsset grid : assetRepository.findByVisualizationKeyStartingWith(gridPrefix)) {
+            String panels = grid.getVisualizationKey().substring(gridPrefix.length());
+            if (Arrays.stream(panels.split("\\+")).anyMatch(stepIds::contains)) {
+                cleared.add(grid);
+            }
+        }
+
+        for (VisualizationAsset asset : cleared) {
+            asset.setImagePrompt(null);
+            asset.setImageUrl(null);
+            asset.setImageFailureReason(null);
+            asset.setReusesPrevious(null);
+            asset.setSourceGridKey(null);
+        }
+        assetRepository.saveAll(cleared);
+        return cleared.size();
     }
 
     /** Whether the asset under this key already has its image (so no image call is made for it). */
@@ -250,6 +383,23 @@ public class RecipeProcessVisualizationService {
      * generates the image. An asset that already has a prompt is left unchanged.
      */
     public VisualizationAsset savePrompt(String visualizationKey, String imagePrompt) {
+        return savePrompt(visualizationKey, imagePrompt, null);
+    }
+
+    /**
+     * Same as {@link #savePrompt(String, String)} for a focused image: {@code imagePrompt} is the step's own text and
+     * {@code focus} what the image centres on. A null focus stores a self-contained prompt, as before.
+     */
+    public VisualizationAsset savePrompt(String visualizationKey, String imagePrompt, VisualFocus focus) {
+        return savePrompt(visualizationKey, imagePrompt, focus, null);
+    }
+
+    /**
+     * Same as {@link #savePrompt(String, String, VisualFocus)}, also storing whether the step looks the same as the
+     * step before it ({@link VisualizationAsset#getReusesPrevious()}); null leaves it unknown.
+     */
+    public VisualizationAsset savePrompt(String visualizationKey, String imagePrompt, VisualFocus focus,
+                                         Boolean reusesPrevious) {
         Optional<VisualizationAsset> existing = assetRepository.findByVisualizationKey(visualizationKey);
         if (existing.isPresent() && StringUtils.hasText(existing.get().getImagePrompt())) {
             return existing.get();
@@ -262,28 +412,34 @@ public class RecipeProcessVisualizationService {
             return created;
         });
         asset.setImagePrompt(imagePrompt);
+        asset.setFocus(focus);
+        asset.setReusesPrevious(reusesPrevious);
         asset.setVideoPrompt(null);
         asset.setVideoUrl(null);
         return assetRepository.save(asset);
     }
 
-    private VisualizationAsset resolveAsset(Long userId, String visualizationKey, Supplier<String> userPrompt, SceneReference scene,
+    /**
+     * @param fallbackFocus the focus of a prompt this call has to write itself, or null to write a self-contained one
+     */
+    private VisualizationAsset resolveAsset(Long userId, String visualizationKey, Supplier<String> userPrompt,
+                                            VisualFocus fallbackFocus, SceneReference scene, PreviousStep previous,
                                             ImageGenerationClient.ImageGenerationSettings settings) {
         Optional<VisualizationAsset> existingAsset = assetRepository.findByVisualizationKey(visualizationKey);
         VisualizationAsset asset;
         if (existingAsset.isPresent()) {
             asset = existingAsset.get();
             if (asset.getImagePrompt() == null || asset.getImagePrompt().isEmpty()) {
-                asset = generatePrompt(userId, visualizationKey, userPrompt);
+                asset = generatePrompt(userId, visualizationKey, userPrompt, fallbackFocus);
             }
             requirePrompted(asset, visualizationKey);
             if (asset.getImageUrl() == null || asset.getImageUrl().isEmpty()) {
-                asset = generateImage(userId, asset, scene, STEP_IMAGE_CORRELATION_TYPE, settings);
+                asset = generateImage(userId, asset, scene, previous, STEP_IMAGE_CORRELATION_TYPE, settings);
             }
         } else {
-            asset = generatePrompt(userId, visualizationKey, userPrompt);
+            asset = generatePrompt(userId, visualizationKey, userPrompt, fallbackFocus);
             requirePrompted(asset, visualizationKey);
-            asset = generateImage(userId, asset, scene, STEP_IMAGE_CORRELATION_TYPE, settings);
+            asset = generateImage(userId, asset, scene, previous, STEP_IMAGE_CORRELATION_TYPE, settings);
         }
         return asset;
     }
@@ -303,9 +459,280 @@ public class RecipeProcessVisualizationService {
                 process.getId(), stepId, asset.getId(), asset.getImagePrompt(), asset.getImageUrl()));
     }
 
+    // ---------------------------------------------------------------------------------------------------------
+    // Image cost: Preparation steps drawn as panels of one shared image, and look-alike steps reusing an image.
+    // ---------------------------------------------------------------------------------------------------------
+
+    /** The side of a shared panel image, for providers that take a size (Gemini ignores it). */
+    static final int GRID_SIZE = 1024;
+
+    /** Reads a stored panel image back when its steps still need cutting; optional so tests can leave it out. */
+    private ImageStorageClient imageStorageClient;
+
+    @Autowired(required = false)
+    void setImageStorageClient(ImageStorageClient imageStorageClient) {
+        this.imageStorageClient = imageStorageClient;
+    }
+
+    /** How many Preparation steps share one generated image (1, 2 or 4); read for every job. */
+    public int preparationStepsPerImage() {
+        return imageProfiles.preparationStepsPerImage();
+    }
+
+    /** Whether steps marked as looking like the previous one reuse its image; read for every job. */
+    public boolean skipLookAlikeSteps() {
+        return imageProfiles.skipLookAlikeSteps();
+    }
+
     /**
-     * What a visualization job generates for one process: one image per MAIN step, but ONE image per Preparation
-     * flow (attached to the step that makes the flow's output), never one per preparation step.
+     * How a run of {@code steps} Preparation steps is split into images of at most {@code perImage} steps: groups of
+     * 4, 2 or 1 in order, never larger than {@code perImage} (7 steps at 4 per image: 4, 2, 1).
+     */
+    public static List<Integer> chunkSizes(int steps, int perImage) {
+        List<Integer> sizes = new ArrayList<>();
+        int left = steps;
+        while (left > 0) {
+            int size = perImage >= 4 && left >= 4 ? 4 : perImage >= 2 && left >= 2 ? 2 : 1;
+            sizes.add(size);
+            left -= size;
+        }
+        return sizes;
+    }
+
+    /** Whether this step, still without an image, was marked by the prompt writer as looking like the step before. */
+    public boolean marksLookAlike(Long recipeId, VisualTarget target) {
+        return assetRepository.findByVisualizationKey(visualizationKey(recipeId, target))
+                .filter(asset -> !StringUtils.hasText(asset.getImageUrl()))
+                .map(asset -> Boolean.TRUE.equals(asset.getReusesPrevious()))
+                .orElse(false);
+    }
+
+    /**
+     * Gives a look-alike step the image of the step before it, without an image call. Returns the step's asset with
+     * {@code imageUrl} set.
+     */
+    public VisualizationAsset reuseImage(Long recipeId, VisualTarget target, VisualizationAsset source) {
+        String key = visualizationKey(recipeId, target);
+        VisualizationAsset asset = assetRepository.findByVisualizationKey(key)
+                .orElseThrow(() -> new RecipeProcessAiException("No visualization asset for key " + key));
+        asset.setImageUrl(source.getImageUrl());
+        asset.setImageFailureReason(null);
+        asset.setResolvedModelKey(source.getResolvedModelKey());
+        asset.setResolvedTier(source.getResolvedTier());
+        asset.setUsedFallback(source.isUsedFallback());
+        asset.setSourceGridKey(source.getSourceGridKey());
+        UsageLedger.increment(UsageLedger.Counter.ARTIFACTS_REUSED);
+        logger.debug("event=visualization_image_reused visualizationKey={} sourceKey={}", key, source.getVisualizationKey());
+        return assetRepository.save(asset);
+    }
+
+    /** The step's asset with its focused prompt, writing the prompt when the batch left it without one. */
+    private VisualizationAsset ensurePrompted(Long userId, Long recipeId, VisualTarget target) {
+        String key = visualizationKey(recipeId, target);
+        Optional<VisualizationAsset> existing = assetRepository.findByVisualizationKey(key);
+        if (existing.isPresent() && StringUtils.hasText(existing.get().getImagePrompt())) {
+            return existing.get();
+        }
+        VisualizationAsset asset = generatePrompt(userId, key, () -> promptBuilder.buildFocusedUserPrompt(target.step()),
+                defaultFocus(target));
+        requirePrompted(asset, key);
+        return asset;
+    }
+
+    /**
+     * Draws 2 or 4 Preparation steps as equal panels of ONE image (stored as its own asset, see
+     * {@link VisualizationKeyBuilder#buildGrid}), then cuts it into each step's own image. A panel image that already
+     * exists is only cut again, never paid for twice. Returns the steps' assets in order; a step without
+     * {@code imageUrl} carries the failure reason.
+     *
+     * @param previous the image before these steps in their preparation, or null
+     */
+    public List<VisualizationAsset> resolveGrid(Long userId, Long recipeId, List<VisualTarget> targets,
+                                                SceneReference scene, PreviousStep previous) {
+        if (!VisualizationGridSlicer.isPanelCount(targets.size())) {
+            throw new IllegalArgumentException("A panel image has 2 or 4 steps, not " + targets.size());
+        }
+        List<VisualizationAsset> steps = new ArrayList<>();
+        List<RecipeProcessVisualizationPromptBuilder.GridPanel> panels = new ArrayList<>();
+        for (VisualTarget target : targets) {
+            VisualizationAsset step = ensurePrompted(userId, recipeId, target);
+            steps.add(step);
+            VisualFocus focus = step.getFocus() != null && step.getFocus() != VisualFocus.STORYBOARD
+                    ? step.getFocus() : defaultFocus(target);
+            panels.add(new RecipeProcessVisualizationPromptBuilder.GridPanel(step.getImagePrompt(), focus));
+        }
+
+        VisualizationAsset grid = gridAsset(recipeId, targets, panels);
+        byte[][] generatedBytes = new byte[1][];
+        if (!StringUtils.hasText(grid.getImageUrl())) {
+            ImageGenerationClient.ImageGenerationSettings base = imageProfiles.settingsFor(targets.get(0).step().actionId());
+            ImageGenerationClient.ImageGenerationSettings requested =
+                    new ImageGenerationClient.ImageGenerationSettings(GRID_SIZE, GRID_SIZE, base.steps());
+            VisualizationAsset pending = grid;
+            grid = generateImage(pending, STEP_IMAGE_CORRELATION_TYPE,
+                    () -> requestGridImage(userId, pending, panels, scene, previous, requested),
+                    image -> generatedBytes[0] = image.data());
+        }
+        if (!StringUtils.hasText(grid.getImageUrl())) {
+            String reason = grid.getImageFailureReason() != null ? grid.getImageFailureReason()
+                    : "Panel image generation failed";
+            return steps.stream().map(step -> failStep(step, reason)).toList();
+        }
+
+        try {
+            byte[] data = generatedBytes[0] != null ? generatedBytes[0] : downloadImage(grid.getImageUrl());
+            List<byte[]> parts = VisualizationGridSlicer.slice(data, targets.size());
+            List<VisualizationAsset> cut = new ArrayList<>();
+            for (int i = 0; i < steps.size(); i++) {
+                cut.add(storePanel(steps.get(i), grid, parts.get(i)));
+            }
+            logger.debug("event=visualization_grid_cut gridKey={} panels={}", grid.getVisualizationKey(), parts.size());
+            return cut;
+        } catch (Exception e) {
+            // The panel image stays stored: the next job only cuts it again.
+            FailureLogger.logFailure(logger, "visualization_grid_cut_failed", e, "gridKey=" + grid.getVisualizationKey());
+            String reason = "Could not cut the panel image: " + describeFailure(e);
+            return steps.stream().map(step -> failStep(step, reason)).toList();
+        }
+    }
+
+    /** The shared panel image's asset for these steps, created (with the panels' text as its prompt) when new. */
+    private VisualizationAsset gridAsset(Long recipeId, List<VisualTarget> targets,
+                                         List<RecipeProcessVisualizationPromptBuilder.GridPanel> panels) {
+        String key = VisualizationKeyBuilder.buildGrid(String.valueOf(recipeId),
+                targets.stream().map(VisualTarget::nodeId).toList());
+        Optional<VisualizationAsset> existing = assetRepository.findByVisualizationKey(key);
+        if (existing.isPresent()) {
+            return existing.get();
+        }
+        VisualizationAsset grid = new VisualizationAsset();
+        grid.setId(sequenceGeneratorService.generateSequence(VisualizationAsset.SEQUENCE_NAME));
+        grid.setVisualizationKey(key);
+        grid.setType(VisualizationAssetType.ATOMIC);
+        grid.setImagePrompt(panels.stream().map(RecipeProcessVisualizationPromptBuilder.GridPanel::stepText)
+                .collect(Collectors.joining("\n")));
+        return assetRepository.save(grid);
+    }
+
+    private byte[] downloadImage(String url) {
+        if (imageStorageClient == null) {
+            throw new IllegalStateException("No image storage to read the panel image back from");
+        }
+        return imageStorageClient.download(url).data();
+    }
+
+    /** Uploads one cut panel as the step's own image. */
+    private VisualizationAsset storePanel(VisualizationAsset step, VisualizationAsset grid, byte[] panel) {
+        if (imageStorageClient == null) {
+            throw new IllegalStateException("No image storage to store the step's panel in");
+        }
+        String path = String.format("visualizations/%s/%s/%s.png", step.getVisualizationKey(), step.getId(),
+                UUID.randomUUID());
+        step.setImageUrl(imageStorageClient.upload(panel, "image/png", path));
+        step.setImageFailureReason(null);
+        step.setSourceGridKey(grid.getVisualizationKey());
+        step.setResolvedModelKey(grid.getResolvedModelKey());
+        step.setResolvedTier(grid.getResolvedTier());
+        step.setUsedFallback(grid.isUsedFallback());
+        step.setVideoUrl(null);
+        return assetRepository.save(step);
+    }
+
+    private VisualizationAsset failStep(VisualizationAsset step, String reason) {
+        step.setImageUrl(null);
+        step.setImageFailureReason(reason);
+        return assetRepository.save(step);
+    }
+
+    /**
+     * The request of a shared panel image, drawn against the image before it in the preparation where the provider
+     * takes reference images. When that fails, it is requested once more from its text alone.
+     */
+    private AiRequestOutcome<ImageGenerationClient.GeneratedImage> requestGridImage(
+            Long userId, VisualizationAsset grid, List<RecipeProcessVisualizationPromptBuilder.GridPanel> panels,
+            SceneReference scene, PreviousStep previous, ImageGenerationClient.ImageGenerationSettings requested) {
+        if (previous != null && previous.image() != null) {
+            try {
+                return requestGridImage(userId, grid, panels, scene, requested, previous);
+            } catch (Exception e) {
+                FailureLogger.logFailure(logger, "visualization_image_reference_failed", e,
+                        "visualizationKey=" + grid.getVisualizationKey() + " fallback=prompt_only");
+            }
+        }
+        return requestGridImage(userId, grid, panels, scene, requested, null);
+    }
+
+    private AiRequestOutcome<ImageGenerationClient.GeneratedImage> requestGridImage(
+            Long userId, VisualizationAsset grid, List<RecipeProcessVisualizationPromptBuilder.GridPanel> panels,
+            SceneReference scene, ImageGenerationClient.ImageGenerationSettings requested, PreviousStep previous) {
+        String visualizationKey = grid.getVisualizationKey();
+        VisualizationImageProperties.Scene style = imageProfiles.scene();
+        SceneContext equipment = SceneContext.orDefaults(
+                scene != null ? scene.sceneContext() : storedSceneContext(visualizationKey), style.equipment());
+        String dishContext = scene == null ? null : scene.dishContext();
+
+        List<String> keyInputs = new ArrayList<>();
+        keyInputs.add(promptBuilder.buildGridImageRequestText(panels, equipment, style, dishContext, false));
+        keyInputs.add(previous == null ? "" : orBlank(previous.key()));
+        keyInputs.add("image:" + requested.width() + "x" + requested.height() + ";steps=" + requested.steps());
+        ImageGenerationClient.ImageGenerationSettings seeded = requested.withSeed(recipeSeed(visualizationKey));
+        return queueService.executeInline(
+                userId,
+                AiCapability.TEXT_TO_IMAGE,
+                null,
+                null,
+                STEP_IMAGE_CORRELATION_TYPE,
+                visualizationKey,
+                imageArtifactSpec(STEP_IMAGE_CORRELATION_TYPE, visualizationKey, keyInputs),
+                selection -> {
+                    ImageGenerationClient client = clientResolver.resolveImageClient(selection.model());
+                    boolean sendPrevious = previous != null && client.supportsReferenceImages();
+                    String text = promptBuilder.buildGridImageRequestText(panels, equipment, style, dishContext,
+                            sendPrevious);
+                    return client.generate(text, sendPrevious ? List.of(previous.image()) : List.of(),
+                            seeded.withModel(selection.model().getProviderModelId()));
+                }
+        );
+    }
+
+    /**
+     * How many image calls this process still needs: one per MAIN step without an image, and, with the focused view
+     * on, one per group of Preparation steps sharing an image ({@link #chunkSizes}); steps already marked as looking
+     * like the step before are free while look-alike skipping is on. With the focused view off, one per Preparation
+     * flow without its image, as before.
+     *
+     * @param withImage the node ids that already show an image
+     */
+    public int missingImageCalls(Long recipeId, Process process, Set<String> withImage) {
+        if (process.getType() == ProcessType.SUBPROCESS && !focusedViewEnabled()) {
+            return (int) visualTargetNodeIds(process).stream().filter(id -> !withImage.contains(id)).count();
+        }
+        boolean skip = skipLookAlikeSteps();
+        if (process.getType() != ProcessType.SUBPROCESS) {
+            return (int) ProcessStepOrder.orderedSteps(process).stream()
+                    .filter(node -> !withImage.contains(node.getId()))
+                    .filter(node -> !(skip && marksLookAlike(recipeId, new VisualTarget(node.getId(), null, null))))
+                    .count();
+        }
+        List<Process.ProcessNode> ordered = ProcessStepOrder.orderedSteps(process);
+        int calls = 0;
+        for (PreparationFlows.Flow flow : PreparationFlows.flowsOf(process)) {
+            Set<String> nodeIds = new HashSet<>();
+            flow.nodes().forEach(node -> nodeIds.add(node.getId()));
+            int missing = (int) ordered.stream()
+                    .filter(node -> nodeIds.contains(node.getId()) && !withImage.contains(node.getId()))
+                    .filter(node -> !(skip && marksLookAlike(recipeId, new VisualTarget(node.getId(), null, null))))
+                    .count();
+            calls += chunkSizes(missing, preparationStepsPerImage()).size();
+        }
+        return calls;
+    }
+
+    /**
+     * What a visualization job generates for one process: one image per MAIN step. A Preparation gets one image per
+     * step with the focused view on (its steps grouped by flow, so a flow's steps can share one panel image, see
+     * {@code preparationStepsPerImage}), or ONE image per flow with it off (attached to the step that makes the flow's
+     * output), exactly as before.
      */
     public VisualPreparation prepareVisualTargets(Long processId) {
         ProcessStepPreparation prepared = prepareStepContexts(processId);
@@ -317,22 +744,30 @@ public class RecipeProcessVisualizationService {
         List<Process.ProcessNode> orderedSteps = ProcessStepOrder.orderedSteps(process);
         Map<String, String> preparedNameByKey = resolvePreparedNames(orderedSteps);
         List<VisualTarget> targets = new ArrayList<>();
+        boolean perStep = focusedViewEnabled();
         for (PreparationFlows.Flow flow : PreparationFlows.flowsOf(process)) {
             if (flow.output() == null) continue;
             Set<String> nodeIds = new HashSet<>();
             flow.nodes().forEach(node -> nodeIds.add(node.getId()));
             // Continuity stays inside the flow: independent flows don't continue from one another.
             List<RecipeProcessVisualizationInput> inputs = new ArrayList<>();
+            List<VisualTarget> stepTargets = new ArrayList<>();
+            PrepFlow prepFlow = new PrepFlow(flow.output().getId(), flow.outputName());
             String previousExpectedOutput = null;
             for (Process.ProcessNode node : orderedSteps) {
                 if (!nodeIds.contains(node.getId())) continue;
                 Map<String, Object> data = node.getData() != null ? node.getData() : new LinkedHashMap<>();
                 RecipeProcessVisualizationInput input = extractVisualizationInput(data, preparedNameByKey, previousExpectedOutput);
                 inputs.add(input);
+                stepTargets.add(new VisualTarget(node.getId(), input, null, prepFlow));
                 previousExpectedOutput = input.expectedOutput();
             }
             if (inputs.isEmpty()) continue;
-            targets.add(new VisualTarget(flow.output().getId(), null, new FlowContext(flow.outputName(), inputs)));
+            if (perStep) {
+                targets.addAll(stepTargets);
+            } else {
+                targets.add(new VisualTarget(flow.output().getId(), null, new FlowContext(flow.outputName(), inputs)));
+            }
         }
         return new VisualPreparation(process, targets);
     }
@@ -351,8 +786,25 @@ public class RecipeProcessVisualizationService {
                 .toList();
     }
 
-    /** One image to generate: a MAIN step ({@code step}) or a whole Preparation flow ({@code flow}), attached to {@code nodeId}. */
-    public record VisualTarget(String nodeId, RecipeProcessVisualizationInput step, FlowContext flow) {
+    /**
+     * One image to generate, attached to {@code nodeId}: a MAIN step ({@code step}), a whole Preparation flow
+     * ({@code flow}, with the focused view off), or one Preparation step ({@code step} with {@code prepFlow}, the flow
+     * it belongs to: its steps may share one panel image).
+     */
+    public record VisualTarget(String nodeId, RecipeProcessVisualizationInput step, FlowContext flow, PrepFlow prepFlow) {
+
+        public VisualTarget(String nodeId, RecipeProcessVisualizationInput step, FlowContext flow) {
+            this(nodeId, step, flow, null);
+        }
+
+        /** Whether this is one step of a Preparation flow (drawn alone, or as a panel of a shared image). */
+        public boolean isPreparationStep() {
+            return prepFlow != null;
+        }
+    }
+
+    /** The Preparation flow a step belongs to: its id (the flow's output step) and its named output. */
+    public record PrepFlow(String id, String outputName) {
     }
 
     /** A Preparation flow's single image: its named output and its steps in cooking order. */
@@ -371,7 +823,8 @@ public class RecipeProcessVisualizationService {
     public record ProcessStepPreparation(Process process, List<StepContext> steps) {
     }
 
-    private VisualizationAsset generatePrompt(Long userId, String visualizationKey, Supplier<String> userPrompt) {
+    private VisualizationAsset generatePrompt(Long userId, String visualizationKey, Supplier<String> userPrompt,
+                                              VisualFocus focus) {
         try {
             AiRequestOutcome<String> outcome = queueService.executeInline(
                     userId,
@@ -400,6 +853,8 @@ public class RecipeProcessVisualizationService {
             asset.setVisualizationKey(visualizationKey);
             asset.setType(VisualizationAssetType.ATOMIC);
             asset.setImagePrompt(outcome.value());
+            // Only a prompt that was actually written is a focused one; an empty answer stays unmarked.
+            asset.setFocus(StringUtils.hasText(outcome.value()) ? focus : null);
             asset.setVideoPrompt(null);
             asset.setVideoUrl(null);
             return assetRepository.save(asset);
@@ -417,52 +872,28 @@ public class RecipeProcessVisualizationService {
      * of paying for a new one. Reuses {@link VisualizationImageArtifactConsumer} unchanged, since it
      * only depends on the (generic) {@code visualizationKey}, not on which model produced the asset.
      */
-    private VisualizationAsset generateImage(Long userId, VisualizationAsset asset, SceneReference scene, String correlationType,
-                                             ImageGenerationClient.ImageGenerationSettings settings) {
-        String visualizationKey = asset.getVisualizationKey();
-        String dishContext = scene == null ? null : scene.dishContext();
-        ImageGenerationClient.ReferenceImage reference = scene == null ? null : scene.image();
+    private VisualizationAsset generateImage(Long userId, VisualizationAsset asset, SceneReference scene, PreviousStep previous,
+                                             String correlationType, ImageGenerationClient.ImageGenerationSettings settings) {
         ImageGenerationClient.ImageGenerationSettings requested =
                 settings == null ? ImageGenerationClient.ImageGenerationSettings.NONE : settings;
-        try {
-            // Without a scene the key is exactly as before, so payloads retained before scene anchors stay reusable.
-            List<String> keyInputs = new ArrayList<>();
-            keyInputs.add(asset.getImagePrompt());
-            if (scene != null) {
-                keyInputs.add(orBlank(dishContext));
-                keyInputs.add(orBlank(scene.anchorKey()));
-            }
-            // Likewise only profiled images carry their settings, so an image of another size is never reused.
-            if (!requested.isNone()) {
-                keyInputs.add("image:" + requested.width() + "x" + requested.height() + ";steps=" + requested.steps());
-            }
-            AiArtifactSpec<ImageGenerationClient.GeneratedImage> artifactSpec = AiArtifactSpec.of(
-                    AiArtifactKeyBuilder.build(
-                            AiCapability.TEXT_TO_IMAGE,
-                            correlationType,
-                            visualizationKey,
-                            keyInputs.toArray(String[]::new)),
-                    generatedImageCodec,
-                    VisualizationImageArtifactConsumer.CONSUMER_ID
-            );
+        // A prompt without a focus is self-contained (written before the focused view, or with it off) and is
+        // requested exactly as it always was.
+        return generateImage(asset, correlationType, () -> asset.getFocus() == null
+                ? requestImage(userId, asset, scene, correlationType, requested)
+                : requestFocusedImage(userId, asset, scene, previous, correlationType, requested), null);
+    }
 
-            AiRequestOutcome<ImageGenerationClient.GeneratedImage> outcome = queueService.executeInline(
-                    userId,
-                    AiCapability.TEXT_TO_IMAGE,
-                    null,
-                    null,
-                    correlationType,
-                    visualizationKey,
-                    artifactSpec,
-                    selection -> {
-                        ImageGenerationClient client = clientResolver.resolveImageClient(selection.model());
-                        // Only a provider that really sends the reference is told about it.
-                        boolean withReference = reference != null && client.supportsReferenceImages();
-                        String text = promptBuilder.buildImageRequestText(asset.getImagePrompt(), dishContext, withReference);
-                        return client.generate(text, withReference ? List.of(reference) : List.of(),
-                                requested.withModel(selection.model().getProviderModelId()));
-                    }
-            );
+    /**
+     * Runs {@code request} and stores its image on {@code asset} (see the 6-argument form).
+     *
+     * @param generated receives the generated image when it is stored (the bytes a panel image is cut from), or null
+     */
+    private VisualizationAsset generateImage(VisualizationAsset asset, String correlationType,
+                                             Supplier<AiRequestOutcome<ImageGenerationClient.GeneratedImage>> request,
+                                             java.util.function.Consumer<ImageGenerationClient.GeneratedImage> generated) {
+        String visualizationKey = asset.getVisualizationKey();
+        try {
+            AiRequestOutcome<ImageGenerationClient.GeneratedImage> outcome = request.get();
 
             // The payload is durable from here on, whether it was just generated or reused.
             AiArtifact artifact = artifactOrTransient(outcome, visualizationKey, correlationType);
@@ -475,6 +906,7 @@ public class RecipeProcessVisualizationService {
             asset.setResolvedModelKey(selection.model().getKey());
             asset.setResolvedTier(selection.model().getTier());
             asset.setUsedFallback(selection.usedFallback());
+            if (generated != null) generated.accept(outcome.value());
         } catch (Exception e) {
             asset.setImageUrl(null);
             asset.setImageFailureReason(describeFailure(e));
@@ -484,6 +916,147 @@ public class RecipeProcessVisualizationService {
         }
         asset.setVideoUrl(null);
         return assetRepository.save(asset);
+    }
+
+    /** The request of a self-contained prompt: the dish context line, the scene anchor as a reference, the prompt. */
+    private AiRequestOutcome<ImageGenerationClient.GeneratedImage> requestImage(
+            Long userId, VisualizationAsset asset, SceneReference scene, String correlationType,
+            ImageGenerationClient.ImageGenerationSettings requested) {
+        String visualizationKey = asset.getVisualizationKey();
+        String dishContext = scene == null ? null : scene.dishContext();
+        ImageGenerationClient.ReferenceImage reference = scene == null ? null : scene.image();
+        // Without a scene the key is exactly as before, so payloads retained before scene anchors stay reusable.
+        List<String> keyInputs = new ArrayList<>();
+        keyInputs.add(asset.getImagePrompt());
+        if (scene != null) {
+            keyInputs.add(orBlank(dishContext));
+            keyInputs.add(orBlank(scene.anchorKey()));
+        }
+        // Likewise only profiled images carry their settings, so an image of another size is never reused.
+        if (!requested.isNone()) {
+            keyInputs.add("image:" + requested.width() + "x" + requested.height() + ";steps=" + requested.steps());
+        }
+        return queueService.executeInline(
+                userId,
+                AiCapability.TEXT_TO_IMAGE,
+                null,
+                null,
+                correlationType,
+                visualizationKey,
+                imageArtifactSpec(correlationType, visualizationKey, keyInputs),
+                selection -> {
+                    ImageGenerationClient client = clientResolver.resolveImageClient(selection.model());
+                    // Only a provider that really sends the reference is told about it.
+                    boolean withReference = reference != null && client.supportsReferenceImages();
+                    String text = promptBuilder.buildImageRequestText(asset.getImagePrompt(), dishContext, withReference);
+                    return client.generate(text, withReference ? List.of(reference) : List.of(),
+                            requested.withModel(selection.model().getProviderModelId()));
+                }
+        );
+    }
+
+    /**
+     * The request of a focused image: the scene is written around the step's own text, and the image is drawn
+     * against the scene anchor (for a focus the anchor shows) and the previous image of its chain. When a request
+     * with references fails, the image is requested once more from its prompt alone, so a reference the provider
+     * cannot use never costs the step its image.
+     */
+    private AiRequestOutcome<ImageGenerationClient.GeneratedImage> requestFocusedImage(
+            Long userId, VisualizationAsset asset, SceneReference scene, PreviousStep previous, String correlationType,
+            ImageGenerationClient.ImageGenerationSettings requested) {
+        boolean withAnchor = scene != null && scene.image() != null && asset.getFocus().usesSceneAnchor();
+        boolean withPrevious = previous != null && previous.image() != null;
+        if (withAnchor || withPrevious) {
+            try {
+                return requestFocusedImage(userId, asset, scene, correlationType, requested,
+                        withAnchor ? scene : null, withPrevious ? previous : null);
+            } catch (Exception e) {
+                FailureLogger.logFailure(logger, "visualization_image_reference_failed", e,
+                        "visualizationKey=" + asset.getVisualizationKey() + " fallback=prompt_only");
+            }
+        }
+        return requestFocusedImage(userId, asset, scene, correlationType, requested, null, null);
+    }
+
+    private AiRequestOutcome<ImageGenerationClient.GeneratedImage> requestFocusedImage(
+            Long userId, VisualizationAsset asset, SceneReference scene, String correlationType,
+            ImageGenerationClient.ImageGenerationSettings requested, SceneReference anchor, PreviousStep previous) {
+        String visualizationKey = asset.getVisualizationKey();
+        VisualFocus focus = asset.getFocus();
+        VisualizationImageProperties.Scene style = imageProfiles.scene();
+        // The equipment is part of the prompt, not of the anchor: it is used with scene anchors switched off too.
+        SceneContext equipment = SceneContext.orDefaults(
+                scene != null ? scene.sceneContext() : storedSceneContext(visualizationKey), style.equipment());
+        String dishContext = scene == null ? null : scene.dishContext();
+
+        // The whole assembled text is part of the key: a changed scene or framing never reuses an older image.
+        List<String> keyInputs = new ArrayList<>();
+        keyInputs.add(promptBuilder.buildFocusedImageRequestText(asset.getImagePrompt(), focus, equipment, style,
+                dishContext, RecipeProcessVisualizationPromptBuilder.References.NONE));
+        keyInputs.add(anchor == null ? "" : orBlank(anchor.anchorKey()));
+        keyInputs.add(previous == null ? "" : orBlank(previous.key()));
+        if (!requested.isNone()) {
+            keyInputs.add("image:" + requested.width() + "x" + requested.height() + ";steps=" + requested.steps());
+        }
+        // One seed per recipe: a small aid for providers that take one, never the consistency mechanism itself.
+        ImageGenerationClient.ImageGenerationSettings seeded = requested.withSeed(recipeSeed(visualizationKey));
+        return queueService.executeInline(
+                userId,
+                AiCapability.TEXT_TO_IMAGE,
+                null,
+                null,
+                correlationType,
+                visualizationKey,
+                imageArtifactSpec(correlationType, visualizationKey, keyInputs),
+                selection -> {
+                    ImageGenerationClient client = clientResolver.resolveImageClient(selection.model());
+                    List<ImageGenerationClient.ReferenceImage> references = new ArrayList<>();
+                    boolean sendPrevious = false;
+                    boolean sendAnchor = false;
+                    if (client.supportsReferenceImages()) {
+                        // The previous step already shows the equipment, so it wins when only one image fits.
+                        sendPrevious = previous != null;
+                        sendAnchor = anchor != null && (!sendPrevious || client.maxReferenceImages() >= 2);
+                        if (sendAnchor) references.add(anchor.image());
+                        if (sendPrevious) references.add(previous.image());
+                    }
+                    String text = promptBuilder.buildFocusedImageRequestText(asset.getImagePrompt(), focus, equipment,
+                            style, dishContext,
+                            new RecipeProcessVisualizationPromptBuilder.References(sendAnchor, sendPrevious));
+                    return client.generate(text, references, seeded.withModel(selection.model().getProviderModelId()));
+                }
+        );
+    }
+
+    private AiArtifactSpec<ImageGenerationClient.GeneratedImage> imageArtifactSpec(
+            String correlationType, String visualizationKey, List<String> keyInputs) {
+        return AiArtifactSpec.of(
+                AiArtifactKeyBuilder.build(
+                        AiCapability.TEXT_TO_IMAGE,
+                        correlationType,
+                        visualizationKey,
+                        keyInputs.toArray(String[]::new)),
+                generatedImageCodec,
+                VisualizationImageArtifactConsumer.CONSUMER_ID
+        );
+    }
+
+    /** The equipment stored on the recipe's scene asset, or null when it has none (the defaults then apply). */
+    private SceneContext storedSceneContext(String visualizationKey) {
+        int separator = visualizationKey.indexOf("::");
+        if (separator < 0) {
+            return null;
+        }
+        return assetRepository.findByVisualizationKey(VisualizationKeyBuilder.buildScene(visualizationKey.substring(0, separator)))
+                .map(VisualizationAsset::getSceneContext)
+                .orElse(null);
+    }
+
+    /** A stable seed for every image of one recipe, from the recipe part of the key ({@code recipeId::...}). */
+    static long recipeSeed(String visualizationKey) {
+        int separator = visualizationKey.indexOf("::");
+        String recipe = separator < 0 ? visualizationKey : visualizationKey.substring(0, separator);
+        return Integer.toUnsignedLong(recipe.hashCode());
     }
 
     private AiArtifact artifactOrTransient(

@@ -130,7 +130,8 @@ public class DrawThingsImageClient implements ImageGenerationClient {
 
     /**
      * Same as {@link #generate(String)}, with the settings' width, height and step count (A1111 {@code steps})
-     * replacing the configured ones where set. Draw Things takes no reference images, so they are ignored.
+     * replacing the configured ones where set, and a fixed {@code seed} when one is given. Draw Things takes no
+     * reference images, so they are ignored.
      */
     @Override
     public GeneratedImage generate(String prompt, List<ReferenceImage> references, ImageGenerationSettings settings) {
@@ -144,6 +145,10 @@ public class DrawThingsImageClient implements ImageGenerationClient {
         request.put("height", height);
         if (requested.steps() != null) {
             request.put("steps", requested.steps());
+        }
+        if (requested.seed() != null) {
+            // A1111-style txt2img takes a fixed seed.
+            request.put("seed", requested.seed());
         }
 
         try {

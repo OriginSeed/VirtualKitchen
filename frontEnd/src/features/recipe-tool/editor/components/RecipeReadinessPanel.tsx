@@ -23,7 +23,8 @@ export default function RecipeReadinessPanel({ readiness, onNavigate, openToken 
   }
 
   const { blockers, warnings, issues } = readiness
-  // Collapsed, issues are just a small amber ⚠ chip with their count — a nudge, not an alarm; the list opens on click.
+  const blocked = blockers.length > 0
+  // Collapsed, issues are just a small chip with their count — a nudge, not an alarm; the list opens on click.
   const label = issues.length === 0
     ? 'Ready to cook'
     : [blockers.length > 0 ? `${blockers.length} to fix` : '', warnings.length > 0 ? `${warnings.length} warning${warnings.length === 1 ? '' : 's'}` : ''].filter(Boolean).join(' · ')
@@ -45,11 +46,13 @@ export default function RecipeReadinessPanel({ readiness, onNavigate, openToken 
             style={{
               display: 'inline-flex', alignItems: 'center', gap: 4,
               padding: '2px 8px', borderRadius: 999, cursor: 'pointer',
-              border: '1px solid var(--flow-warning-border)', background: 'var(--flow-warning-soft)',
-              fontSize: 11, fontWeight: 700, color: 'var(--flow-warning)',
+              // Red while something blocks cooking/ordering; amber when only warnings remain.
+              border: `1px solid ${blocked ? 'var(--flow-danger-border)' : 'var(--flow-warning-border)'}`,
+              background: blocked ? 'var(--flow-danger-soft)' : 'var(--flow-warning-soft)',
+              fontSize: 11, fontWeight: 700, color: blocked ? 'var(--flow-danger)' : 'var(--flow-warning)',
             }}
           >
-            <span aria-hidden>⚠</span>
+            <span aria-hidden>{blocked ? '✖' : '⚠'}</span>
             <span aria-hidden>{issues.length}</span>
             <span aria-hidden style={{ fontSize: 9, color: 'var(--flow-text-subtle)' }}>{expanded ? '▾' : '▸'}</span>
           </button>

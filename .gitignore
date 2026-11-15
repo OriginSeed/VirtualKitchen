@@ -2,3 +2,9 @@
 .vscode/
 .DS_Store
 .env
+# Team setup guide - contains real secrets, share directly only
+TEAM_SETUP_GUIDE.md
+# AI bench run output and build
+tools/ai-bench/out/
+tools/ai-bench/dist/
+tools/ai-bench/bench.json

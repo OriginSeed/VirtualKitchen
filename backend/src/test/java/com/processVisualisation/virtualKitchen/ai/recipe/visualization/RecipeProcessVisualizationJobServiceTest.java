@@ -55,6 +55,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicLong;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
@@ -77,6 +78,8 @@ class RecipeProcessVisualizationJobServiceTest {
     private AiClient aiClient;
     private ImageStorageClient imageStorageClient;
     private RecipeProcessVisualizationJobService service;
+    private VisualizationImageProperties imageProperties;
+    private VisualizationSceneAnchorService sceneAnchorService;
 
     @BeforeEach
     void setUp() {
@@ -97,6 +100,10 @@ class RecipeProcessVisualizationJobServiceTest {
             assetStore.put(saved.getVisualizationKey(), saved);
             return saved;
         });
+        when(assetRepository.findByVisualizationKeyIn(any())).thenAnswer(inv -> inv.<java.util.Collection<String>>getArgument(0).stream()
+                .map(assetStore::get).filter(java.util.Objects::nonNull).toList());
+        when(assetRepository.findByVisualizationKeyStartingWith(anyString())).thenAnswer(inv -> assetStore.values().stream()
+                .filter(asset -> asset.getVisualizationKey().startsWith(inv.getArgument(0))).toList());
         when(aiClient.chat(any())).thenReturn(AiResponse.builder().content("{\"imagePrompt\":\"p\"}").build());
         when(imageStorageClient.upload(any(), anyString(), anyString())).thenReturn("https://cdn.example/img.png");
 
@@ -134,6 +141,10 @@ class RecipeProcessVisualizationJobServiceTest {
         VisualizationImageArtifactConsumer imageArtifactConsumer = new VisualizationImageArtifactConsumer(
                 imageStorageClient, assetRepository, mock(MongoTemplate.class));
 
+        // These tests pin down image generation as it was before the Focused Cooking View: with the view switched
+        // off, every prompt, reference and request must be exactly what it always was.
+        imageProperties = new VisualizationImageProperties();
+        imageProperties.setFocusedViewEnabled(false);
         RecipeProcessVisualizationService recipeProcessVisualizationService = new RecipeProcessVisualizationService(
                 processRepository,
                 assetRepository,
@@ -145,7 +156,8 @@ class RecipeProcessVisualizationJobServiceTest {
                 new GeneratedImageCodec(),
                 imageArtifactConsumer,
                 new RecipeStepVocabularyProvider(),
-                new VisualizationImageProfiles(new VisualizationImageProperties(), new RecipeStepVocabularyProvider()));
+                new VisualizationImageProfiles(imageProperties, new RecipeStepVocabularyProvider()));
+        recipeProcessVisualizationService.setImageStorageClient(imageStorageClient);
 
         visualizationJobRepository = mock(VisualizationJobRepository.class);
         when(visualizationJobRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
@@ -153,7 +165,7 @@ class RecipeProcessVisualizationJobServiceTest {
         mongoTemplate = mock(MongoTemplate.class);
 
         RecipeProcessVisualizationPromptBuilder promptBuilder = new RecipeProcessVisualizationPromptBuilder();
-        VisualizationSceneAnchorService sceneAnchorService = new VisualizationSceneAnchorService(
+        sceneAnchorService = new VisualizationSceneAnchorService(
                 recipeProcessVisualizationService, imageStorageClient, true);
         VisualizationPromptBatchService promptBatchService = new VisualizationPromptBatchService(
                 recipeProcessVisualizationService, promptBuilder, queueService, clientResolver,
@@ -318,6 +330,34 @@ class RecipeProcessVisualizationJobServiceTest {
     }
 
     @Test
+    void startJob_keepsExistingImagesByDefault_andRedrawsThemWhenAskedToRegenerate() throws Exception {
+        when(imageGenerationClient.generate(anyString()))
+                .thenReturn(new ImageGenerationClient.GeneratedImage("image/png", new byte[]{1, 2, 3}));
+        when(processRepository.findById(1L)).thenReturn(Optional.of(processWithSteps(1L, 2)));
+
+        service.startJob(1L, 100L, 1L);
+        verify(processRepository, timeout(5000).times(2)).setStepVisualization(eq(1L), anyString(), any(), any(), any());
+        int drawnFirst = imageCalls();
+        assertTrue(drawnFirst >= 2, "both steps drawn");
+
+        // Default: the steps already have images, so nothing is drawn again.
+        service.startJob(1L, 100L, 1L);
+        verify(processRepository, timeout(5000).times(4)).setStepVisualization(eq(1L), anyString(), any(), any(), any());
+        assertEquals(drawnFirst, imageCalls(), "existing images are kept");
+
+        // Regenerate and replace: both steps are drawn again (the scene anchor is kept, so exactly 2 more).
+        service.startJob(1L, 100L, 1L, true);
+        verify(processRepository, timeout(5000).times(6)).setStepVisualization(eq(1L), anyString(), any(), any(), any());
+        assertEquals(drawnFirst + 2, imageCalls());
+    }
+
+    private int imageCalls() {
+        return (int) org.mockito.Mockito.mockingDetails(imageGenerationClient).getInvocations().stream()
+                .filter(invocation -> invocation.getMethod().getName().startsWith("generate"))
+                .count();
+    }
+
+    @Test
     void startJob_processNotFound_throwsSynchronouslyWithoutCreatingAJob() {
         when(processRepository.findById(999L)).thenReturn(Optional.empty());
 
@@ -468,6 +508,411 @@ class RecipeProcessVisualizationJobServiceTest {
         verify(processRepository, never()).setStepVisualization(eq(50L), anyString(), any(), any(), any());
         verify(processRepository, never()).save(any());
         verify(processRepository, never()).findById(50L);
+    }
+
+    // --- Focused Cooking View: the six-step tomato recipe ------------------------------------------------
+
+    private static final String TOMATO_ANSWER = "{\"dishContext\":\"Part of making Tomato Masala\","
+            + "\"scene\":{\"vessel\":\"a steel kadai\",\"stove\":\"a black gas stove\",\"surface\":\"a granite countertop\","
+            + "\"cuttingBoard\":\"a wooden cutting board\",\"prepBowl\":\"a steel bowl\",\"servingDish\":\"a white plate\"},"
+            + "\"prompts\":["
+            + "{\"id\":\"m1\",\"focus\":\"CUTTING_BOARD\",\"state\":\"STEP1 half an onion in small dice\",\"action\":\"a knife chopping\"},"
+            + "{\"id\":\"m2\",\"focus\":\"COOKING_VESSEL\",\"state\":\"STEP2 oil shimmering in the pan\",\"action\":\"oil being poured\"},"
+            + "{\"id\":\"m3\",\"focus\":\"COOKING_VESSEL\",\"state\":\"STEP3 raw chopped onions in oil\",\"action\":\"onions being tipped in\"},"
+            + "{\"id\":\"m4\",\"focus\":\"COOKING_VESSEL\",\"state\":\"STEP4 softened onions in oil\",\"action\":\"tomatoes being tipped in\"},"
+            + "{\"id\":\"m5\",\"focus\":\"COOKING_VESSEL\",\"state\":\"STEP5 onions and tomatoes with turmeric\",\"action\":\"a spatula stirring\"},"
+            + "{\"id\":\"m6\",\"focus\":\"COOKING_VESSEL\",\"state\":\"STEP6 a soft thick tomato mixture\",\"action\":\"gentle bubbling\"}]}";
+
+    /** Every upload gets its own URL, and reading a URL back returns its number, so references can be told apart. */
+    private void givenFocusedTomatoRecipe() throws Exception {
+        imageProperties.setFocusedViewEnabled(true);
+        when(aiClient.chat(any())).thenReturn(AiResponse.builder().content(TOMATO_ANSWER).build());
+        AtomicLong uploads = new AtomicLong();
+        when(imageStorageClient.upload(any(), anyString(), anyString()))
+                .thenAnswer(inv -> "https://cdn.example/" + uploads.incrementAndGet() + ".png");
+        when(imageStorageClient.download(anyString())).thenAnswer(inv -> {
+            String url = inv.getArgument(0);
+            byte number = Byte.parseByte(url.substring(url.lastIndexOf('/') + 1, url.lastIndexOf('.')));
+            return new ImageStorageClient.StoredImage("image/png", new byte[]{number});
+        });
+        // The scene anchor is a plain generation; focused steps carry settings (the recipe's seed).
+        when(imageGenerationClient.generate(anyString()))
+                .thenReturn(new ImageGenerationClient.GeneratedImage("image/png", new byte[]{9}));
+        when(imageGenerationClient.generate(anyString(), anyList(), any()))
+                .thenReturn(new ImageGenerationClient.GeneratedImage("image/png", new byte[]{1, 2, 3}));
+        when(processRepository.findById(1L)).thenReturn(Optional.of(
+                processWithActions(1L, "chop", "add", "add", "add", "stir", "cook")));
+    }
+
+    private record FocusedCall(String text, List<ImageGenerationClient.ReferenceImage> references,
+                               ImageGenerationClient.ImageGenerationSettings settings) {
+    }
+
+    /** The focused image requests in the order they were made, once all six steps are attached. */
+    private List<FocusedCall> focusedCalls(int expected) throws Exception {
+        verify(processRepository, timeout(10000).times(6)).setStepVisualization(eq(1L), anyString(), any(), any(), any());
+        ArgumentCaptor<String> texts = ArgumentCaptor.forClass(String.class);
+        @SuppressWarnings("unchecked")
+        ArgumentCaptor<List<ImageGenerationClient.ReferenceImage>> references = ArgumentCaptor.forClass(List.class);
+        ArgumentCaptor<ImageGenerationClient.ImageGenerationSettings> settings =
+                ArgumentCaptor.forClass(ImageGenerationClient.ImageGenerationSettings.class);
+        verify(imageGenerationClient, times(expected)).generate(texts.capture(), references.capture(), settings.capture());
+        List<FocusedCall> calls = new ArrayList<>();
+        for (int i = 0; i < expected; i++) {
+            calls.add(new FocusedCall(texts.getAllValues().get(i), references.getAllValues().get(i), settings.getAllValues().get(i)));
+        }
+        return calls;
+    }
+
+    private static FocusedCall callFor(List<FocusedCall> calls, String marker) {
+        return calls.stream().filter(call -> call.text().contains(marker)).findFirst().orElseThrow();
+    }
+
+    @Test
+    void focusedView_drawsCookingStepsInOrder_eachAgainstTheAnchorAndThePreviousStep() throws Exception {
+        givenFocusedTomatoRecipe();
+        when(imageGenerationClient.supportsReferenceImages()).thenReturn(true);
+        when(imageGenerationClient.maxReferenceImages()).thenReturn(2);
+
+        service.startJob(1L, 100L, 1L);
+        List<FocusedCall> calls = focusedCalls(6);
+
+        // The anchor is the empty kadai, drawn once, uploaded first (so it reads back as image 1).
+        ArgumentCaptor<String> anchorPrompt = ArgumentCaptor.forClass(String.class);
+        verify(imageGenerationClient, times(1)).generate(anchorPrompt.capture());
+        assertTrue(anchorPrompt.getValue().contains("A steel kadai on a black gas stove fills most of the frame"), anchorPrompt.getValue());
+        assertTrue(anchorPrompt.getValue().contains("absolutely no food"));
+
+        // Chopping looks at the board: no pan, and the pan anchor is not its reference.
+        FocusedCall chop = callFor(calls, "STEP1");
+        assertTrue(chop.text().contains("A wooden cutting board on a granite countertop fills most of the frame."), chop.text());
+        assertFalse(chop.text().contains("kadai"), chop.text());
+        assertTrue(chop.references().isEmpty());
+
+        // The first cooking step is drawn against the anchor alone.
+        FocusedCall oil = callFor(calls, "STEP2");
+        assertEquals(1, oil.references().size());
+        assertEquals(1, oil.references().get(0).data()[0], "the anchor");
+        assertTrue(oil.text().endsWith(RecipeProcessVisualizationPromptBuilder.REFERENCE_INSTRUCTION), oil.text());
+
+        // Every later cooking step continues from the one before it, in cooking order.
+        List<String> order = calls.stream().map(FocusedCall::text).filter(text -> !text.contains("STEP1")).toList();
+        String framing = oil.text().split("\n")[0];
+        for (int step = 3; step <= 6; step++) {
+            FocusedCall call = callFor(calls, "STEP" + step);
+            assertEquals(order.indexOf(callFor(calls, "STEP" + (step - 1)).text()) + 1, order.indexOf(call.text()),
+                    "step " + step + " runs right after step " + (step - 1));
+            assertEquals(2, call.references().size(), "anchor and previous step");
+            assertEquals(1, call.references().get(0).data()[0], "the anchor comes first");
+            assertTrue(call.references().get(1).data()[0] > 1, "then the previous step's stored image");
+            assertTrue(call.text().endsWith(RecipeProcessVisualizationPromptBuilder.ANCHOR_AND_PREVIOUS_INSTRUCTION), call.text());
+            assertEquals(framing, call.text().split("\n")[0], "the same pan, stove and camera in every cooking step");
+        }
+        assertTrue(framing.contains("A steel kadai on a black gas stove"), framing);
+        // Consecutive steps reference different images: each one's own predecessor.
+        assertEquals(4, calls.stream().filter(call -> call.references().size() == 2)
+                .map(call -> call.references().get(1).data()[0]).distinct().count());
+        // One seed for the whole recipe.
+        assertEquals(1, calls.stream().map(call -> call.settings().seed()).distinct().count());
+        assertTrue(calls.get(0).settings().seed() != null);
+        verify(aiClient, times(1)).chat(any());
+    }
+
+    @Test
+    void focusedView_promptOnlyProvider_getsTheSameSceneTextAndNoReferences() throws Exception {
+        givenFocusedTomatoRecipe();
+
+        service.startJob(1L, 100L, 1L);
+        List<FocusedCall> calls = focusedCalls(6);
+
+        for (FocusedCall call : calls) {
+            assertTrue(call.references().isEmpty());
+            assertFalse(call.text().contains("reference image"), call.text());
+            assertTrue(call.text().contains("Context: Part of making Tomato Masala"), call.text());
+        }
+        assertEquals(1, calls.stream().filter(call -> !call.text().contains("STEP1"))
+                .map(call -> call.text().split("\n")[0]).distinct().count(), "one framing for all cooking steps");
+    }
+
+    @Test
+    void focusedView_referenceChainSwitchedOff_usesTheAnchorAlone() throws Exception {
+        givenFocusedTomatoRecipe();
+        imageProperties.setReferenceChainEnabled(false);
+        when(imageGenerationClient.supportsReferenceImages()).thenReturn(true);
+        when(imageGenerationClient.maxReferenceImages()).thenReturn(2);
+
+        service.startJob(1L, 100L, 1L);
+        List<FocusedCall> calls = focusedCalls(6);
+
+        for (int step = 2; step <= 6; step++) {
+            FocusedCall call = callFor(calls, "STEP" + step);
+            assertEquals(1, call.references().size());
+            assertEquals(1, call.references().get(0).data()[0], "the anchor");
+        }
+    }
+
+    @Test
+    void focusedView_providerThatTakesOneReference_getsThePreviousStepRatherThanTheAnchor() throws Exception {
+        givenFocusedTomatoRecipe();
+        when(imageGenerationClient.supportsReferenceImages()).thenReturn(true);
+        when(imageGenerationClient.maxReferenceImages()).thenReturn(1);
+
+        service.startJob(1L, 100L, 1L);
+        List<FocusedCall> calls = focusedCalls(6);
+
+        assertEquals(1, callFor(calls, "STEP2").references().get(0).data()[0], "the first cooking step has only the anchor");
+        FocusedCall tomatoes = callFor(calls, "STEP4");
+        assertEquals(1, tomatoes.references().size());
+        assertTrue(tomatoes.references().get(0).data()[0] > 1, "the previous step");
+        assertTrue(tomatoes.text().endsWith(RecipeProcessVisualizationPromptBuilder.PREVIOUS_INSTRUCTION), tomatoes.text());
+    }
+
+    @Test
+    void focusedView_aRequestWithReferencesThatFails_isMadeAgainFromThePromptAlone() throws Exception {
+        givenFocusedTomatoRecipe();
+        when(imageGenerationClient.supportsReferenceImages()).thenReturn(true);
+        when(imageGenerationClient.maxReferenceImages()).thenReturn(2);
+        when(imageGenerationClient.generate(anyString(), anyList(), any())).thenAnswer(inv -> {
+            List<?> references = inv.getArgument(1);
+            if (!references.isEmpty()) {
+                throw new com.processVisualisation.virtualKitchen.ai.provider.exception.AiInvalidResponseException(
+                        "model does not accept image input");
+            }
+            return new ImageGenerationClient.GeneratedImage("image/png", new byte[]{1, 2, 3});
+        });
+
+        service.startJob(1L, 100L, 1L);
+
+        // Every step still gets its image.
+        verify(processRepository, timeout(15000).times(6))
+                .setStepVisualization(eq(1L), anyString(), any(), any(), org.mockito.ArgumentMatchers.startsWith("https://cdn.example/"));
+        ArgumentCaptor<String> texts = ArgumentCaptor.forClass(String.class);
+        @SuppressWarnings("unchecked")
+        ArgumentCaptor<List<ImageGenerationClient.ReferenceImage>> references = ArgumentCaptor.forClass(List.class);
+        verify(imageGenerationClient, org.mockito.Mockito.atLeast(6)).generate(texts.capture(), references.capture(), any());
+        for (int i = 0; i < texts.getAllValues().size(); i++) {
+            if (references.getAllValues().get(i).isEmpty()) {
+                assertFalse(texts.getAllValues().get(i).contains("reference image"), "the retry does not mention a reference");
+            }
+        }
+    }
+
+    @Test
+    void focusedView_sceneAnchorOffAndChainOn_continuesFromThePreviousStepAlone() throws Exception {
+        givenFocusedTomatoRecipe();
+        sceneAnchorService.setEnabled(false);
+        when(imageGenerationClient.supportsReferenceImages()).thenReturn(true);
+        when(imageGenerationClient.maxReferenceImages()).thenReturn(2);
+
+        service.startJob(1L, 100L, 1L);
+        List<FocusedCall> calls = focusedCalls(6);
+
+        // No anchor image is drawn at all.
+        verify(imageGenerationClient, never()).generate(anyString());
+        // The first cooking step starts the chain from its prompt alone.
+        FocusedCall oil = callFor(calls, "STEP2");
+        assertTrue(oil.references().isEmpty());
+        assertFalse(oil.text().contains("reference image"), oil.text());
+        // Every later one is drawn against its predecessor only, still in cooking order.
+        List<String> order = calls.stream().map(FocusedCall::text).filter(text -> !text.contains("STEP1")).toList();
+        for (int step = 3; step <= 6; step++) {
+            FocusedCall call = callFor(calls, "STEP" + step);
+            assertEquals(step - 2, order.indexOf(call.text()), "cooking steps run one after another");
+            assertEquals(1, call.references().size(), "the previous step only");
+            assertTrue(call.text().endsWith(RecipeProcessVisualizationPromptBuilder.PREVIOUS_INSTRUCTION), call.text());
+        }
+        // The recipe's equipment is part of the prompt, so it survives the anchor being off.
+        assertTrue(oil.text().contains("A steel kadai on a black gas stove"), oil.text());
+    }
+
+    @Test
+    void focusedView_sceneAnchorOffAndChainOff_isPromptOnly_andRunsWithoutWaitingOnEarlierSteps() throws Exception {
+        givenFocusedTomatoRecipe();
+        sceneAnchorService.setEnabled(false);
+        imageProperties.setReferenceChainEnabled(false);
+        when(imageGenerationClient.supportsReferenceImages()).thenReturn(true);
+        when(imageGenerationClient.maxReferenceImages()).thenReturn(2);
+
+        service.startJob(1L, 100L, 1L);
+        List<FocusedCall> calls = focusedCalls(6);
+
+        verify(imageGenerationClient, never()).generate(anyString());
+        verify(imageStorageClient, never()).download(anyString());
+        for (FocusedCall call : calls) {
+            assertTrue(call.references().isEmpty());
+            assertFalse(call.text().contains("reference image"), call.text());
+        }
+    }
+
+    @Test
+    void focusedView_aStepThatFails_doesNotStopItsChain_theNextStepUsesTheAnchorAlone() throws Exception {
+        givenFocusedTomatoRecipe();
+        when(imageGenerationClient.supportsReferenceImages()).thenReturn(true);
+        when(imageGenerationClient.maxReferenceImages()).thenReturn(2);
+        when(imageGenerationClient.generate(anyString(), anyList(), any())).thenAnswer(inv -> {
+            String text = inv.getArgument(0);
+            if (text.contains("STEP3")) {
+                throw new com.processVisualisation.virtualKitchen.ai.provider.exception.AiInvalidResponseException("no image");
+            }
+            return new ImageGenerationClient.GeneratedImage("image/png", new byte[]{1, 2, 3});
+        });
+
+        service.startJob(1L, 100L, 1L);
+
+        // Five steps get an image; the failed one is attached without a URL.
+        verify(processRepository, timeout(15000).times(5))
+                .setStepVisualization(eq(1L), anyString(), any(), any(), org.mockito.ArgumentMatchers.startsWith("https://cdn.example/"));
+        verify(processRepository, timeout(15000)).setStepVisualization(eq(1L), eq("node-2"), any(), any(), org.mockito.ArgumentMatchers.isNull());
+        ArgumentCaptor<String> texts = ArgumentCaptor.forClass(String.class);
+        @SuppressWarnings("unchecked")
+        ArgumentCaptor<List<ImageGenerationClient.ReferenceImage>> references = ArgumentCaptor.forClass(List.class);
+        verify(imageGenerationClient, org.mockito.Mockito.atLeast(6)).generate(texts.capture(), references.capture(), any());
+        for (int i = 0; i < texts.getAllValues().size(); i++) {
+            String text = texts.getAllValues().get(i);
+            if (text.contains("STEP4")) {
+                assertEquals(1, references.getAllValues().get(i).size(), "the step after the failure has only the anchor");
+                assertEquals(1, references.getAllValues().get(i).get(0).data()[0]);
+            }
+            if (text.contains("STEP5")) {
+                assertEquals(2, references.getAllValues().get(i).size(), "and the chain picks up again after it");
+            }
+        }
+    }
+
+    // --- Preparation steps sharing one panel image, and look-alike steps ------------------------------
+
+    /** The focused batch answer for a five-step preparation; the last step only rests, like the one before it. */
+    private static final String MARINADE_ANSWER = "{\"prompts\":["
+            + "{\"id\":\"p1\",\"focus\":\"CUTTING_BOARD\",\"state\":\"PREP1 raw chicken\",\"action\":\"a knife cutting\",\"sameAsPrevious\":false},"
+            + "{\"id\":\"p2\",\"focus\":\"PREP_BOWL\",\"state\":\"PREP2 chicken pieces\",\"action\":\"yogurt poured\",\"sameAsPrevious\":false},"
+            + "{\"id\":\"p3\",\"focus\":\"PREP_BOWL\",\"state\":\"PREP3 chicken in yogurt\",\"action\":\"spices added\",\"sameAsPrevious\":false},"
+            + "{\"id\":\"p4\",\"focus\":\"PREP_BOWL\",\"state\":\"PREP4 coated chicken\",\"action\":\"a spoon mixing\",\"sameAsPrevious\":false},"
+            + "{\"id\":\"p5\",\"focus\":\"PREP_BOWL\",\"state\":\"PREP5 coated chicken\",\"action\":\"\",\"sameAsPrevious\":true}]}";
+
+    /** A 2x2 panel image with a plain white gutter cross, as a provider would return it. */
+    private static byte[] panelImage() throws Exception {
+        java.awt.image.BufferedImage image = new java.awt.image.BufferedImage(64, 64, java.awt.image.BufferedImage.TYPE_INT_RGB);
+        java.awt.Graphics2D g = image.createGraphics();
+        g.setColor(java.awt.Color.WHITE);
+        g.fillRect(0, 0, 64, 64);
+        g.setColor(new java.awt.Color(120, 60, 20));
+        g.fillRect(0, 0, 30, 30);
+        g.fillRect(34, 0, 30, 30);
+        g.fillRect(0, 34, 30, 30);
+        g.fillRect(34, 34, 30, 30);
+        g.dispose();
+        java.io.ByteArrayOutputStream out = new java.io.ByteArrayOutputStream();
+        javax.imageio.ImageIO.write(image, "png", out);
+        return out.toByteArray();
+    }
+
+    private Map<String, String> givenMarinadePreparation(int stepsPerImage, boolean skipLookAlike) throws Exception {
+        imageProperties.setFocusedViewEnabled(true);
+        imageProperties.setPreparationStepsPerImage(stepsPerImage);
+        imageProperties.setSkipLookAlikeSteps(skipLookAlike);
+        when(aiClient.chat(any())).thenReturn(AiResponse.builder().content(MARINADE_ANSWER).build());
+        AtomicLong uploads = new AtomicLong();
+        Map<String, String> uploadedPaths = new ConcurrentHashMap<>();
+        when(imageStorageClient.upload(any(), anyString(), anyString())).thenAnswer(inv -> {
+            String url = "https://cdn.example/" + uploads.incrementAndGet() + ".png";
+            uploadedPaths.put(url, inv.getArgument(2));
+            return url;
+        });
+        byte[] panels = panelImage();
+        when(imageStorageClient.download(anyString())).thenReturn(new ImageStorageClient.StoredImage("image/png", panels));
+        when(imageGenerationClient.generate(anyString()))
+                .thenReturn(new ImageGenerationClient.GeneratedImage("image/png", panels));
+        when(imageGenerationClient.generate(anyString(), anyList(), any()))
+                .thenReturn(new ImageGenerationClient.GeneratedImage("image/png", panels));
+        Process preparation = processWithSteps(3L, 5);
+        preparation.setType(ProcessType.SUBPROCESS);
+        List<Process.ProcessEdge> edges = new ArrayList<>();
+        for (int i = 0; i < 4; i++) {
+            Process.ProcessEdge edge = new Process.ProcessEdge();
+            edge.setId("e" + i);
+            edge.setSource("node-" + i);
+            edge.setTarget("node-" + (i + 1));
+            edges.add(edge);
+        }
+        preparation.setEdges(edges);
+        when(processRepository.findById(3L)).thenReturn(Optional.of(preparation));
+        return uploadedPaths;
+    }
+
+    /** The image URL attached to each step, once all five are attached. */
+    private Map<String, String> attachedUrls() {
+        ArgumentCaptor<String> nodes = ArgumentCaptor.forClass(String.class);
+        ArgumentCaptor<String> urls = ArgumentCaptor.forClass(String.class);
+        verify(processRepository, timeout(10000).times(5)).setStepVisualization(eq(3L), nodes.capture(), any(), any(), urls.capture());
+        Map<String, String> byNode = new LinkedHashMap<>();
+        for (int i = 0; i < nodes.getAllValues().size(); i++) {
+            byNode.put(nodes.getAllValues().get(i), urls.getAllValues().get(i));
+        }
+        return byNode;
+    }
+
+    @Test
+    void preparation_fourStepsShareOnePanelImage_cutIntoEachStepsOwnImage_andALookAlikeStepReusesTheOneBefore() throws Exception {
+        Map<String, String> uploadedPaths = givenMarinadePreparation(4, true);
+
+        service.startJob(1L, 100L, 3L);
+        Map<String, String> urls = attachedUrls();
+
+        // One image call for five steps: steps 1-4 as panels, step 5 copies step 4.
+        ArgumentCaptor<String> texts = ArgumentCaptor.forClass(String.class);
+        verify(imageGenerationClient, times(1)).generate(texts.capture(), anyList(), any());
+        String text = texts.getValue();
+        assertTrue(text.contains("4 equal square panels in a 2x2 grid"), text);
+        assertTrue(text.contains("Top-left panel: A wooden cutting board"), text);
+        assertTrue(text.indexOf("PREP1") < text.indexOf("PREP2") && text.indexOf("PREP3") < text.indexOf("PREP4"), text);
+        assertFalse(text.contains("PREP5"), text);
+
+        // The panel image is stored once, then each panel as its own step image.
+        assertEquals(5, uploadedPaths.size(), "the panel image plus four cut panels");
+        assertEquals(4, java.util.stream.IntStream.range(0, 4).mapToObj(i -> urls.get("node-" + i)).distinct().count());
+        for (int i = 0; i < 4; i++) {
+            assertTrue(uploadedPaths.get(urls.get("node-" + i)).startsWith("visualizations/100::node-" + i + "/"),
+                    uploadedPaths.get(urls.get("node-" + i)));
+        }
+        assertEquals(urls.get("node-3"), urls.get("node-4"), "the resting step shows the image of the step before");
+    }
+
+    @Test
+    void preparation_onePerImage_drawsEveryStepOnItsOwn() throws Exception {
+        givenMarinadePreparation(1, true);
+
+        service.startJob(1L, 100L, 3L);
+        Map<String, String> urls = attachedUrls();
+
+        ArgumentCaptor<String> texts = ArgumentCaptor.forClass(String.class);
+        verify(imageGenerationClient, times(4)).generate(texts.capture(), anyList(), any());
+        texts.getAllValues().forEach(text -> assertFalse(text.contains("panels"), text));
+        assertEquals(urls.get("node-3"), urls.get("node-4"));
+    }
+
+    @Test
+    void preparation_lookAlikeSkippingOff_drawsTheRestingStepToo() throws Exception {
+        givenMarinadePreparation(4, false);
+
+        service.startJob(1L, 100L, 3L);
+        Map<String, String> urls = attachedUrls();
+
+        // Four steps as one panel image, the fifth on its own.
+        ArgumentCaptor<String> texts = ArgumentCaptor.forClass(String.class);
+        verify(imageGenerationClient, times(2)).generate(texts.capture(), anyList(), any());
+        assertEquals(1, texts.getAllValues().stream().filter(text -> text.contains("2x2 grid")).count());
+        assertTrue(texts.getAllValues().stream().anyMatch(text -> text.contains("PREP5") && !text.contains("panel")));
+        assertEquals(5, urls.values().stream().distinct().count());
+    }
+
+    private Process processWithActions(Long id, String... actions) {
+        Process process = processWithSteps(id, actions.length);
+        for (int i = 0; i < actions.length; i++) {
+            @SuppressWarnings("unchecked")
+            Map<String, Object> step = (Map<String, Object>) process.getNodes().get(i).getData().get("step");
+            step.put("action", actions[i]);
+        }
+        return process;
     }
 
     private Process processWithSteps(Long id, int count) {

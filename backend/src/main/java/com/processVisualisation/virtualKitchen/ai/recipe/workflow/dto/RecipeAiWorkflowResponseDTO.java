@@ -10,6 +10,7 @@ import lombok.Data;
 
 import java.time.Instant;
 import java.util.List;
+import java.util.Map;
 
 /**
  * Current state of an AI Recipe Creation workflow, with every task's status and progress derived
@@ -48,6 +49,14 @@ public class RecipeAiWorkflowResponseDTO {
     private Instant completedAt;
     /** True when create joined the recipe's already-open workflow instead of starting another. */
     private boolean reused;
+    /**
+     * The models this run uses (capability name to model key) where it overrides the user's account setting; what
+     * the approval and retry pickers start from. Empty: the account setting for everything.
+     */
+    private Map<String, String> modelKeys;
+
+    /** Whether the run regenerates and replaces images and narration the steps already have. */
+    private boolean overwriteExisting;
 
     @Data
     @Builder

@@ -38,11 +38,30 @@ public final class CurrentUser {
      */
     public static Long requireAdmin() {
         Long userId = requireUserId();
-        boolean isAdmin = SecurityContextHolder.getContext().getAuthentication().getAuthorities().stream()
+        if (!isAdmin()) {
+            throw new AuthException("Admin privileges required", HttpStatus.FORBIDDEN);
+        }
+        return userId;
+    }
+
+    /** Whether the authenticated caller has the ADMIN role (false when unauthenticated). */
+    public static boolean isAdmin() {
+        Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
+        return authentication != null && authentication.getAuthorities().stream()
                 .map(GrantedAuthority::getAuthority)
                 .anyMatch(ADMIN_AUTHORITY::equals);
-        if (!isAdmin) {
-            throw new AuthException("Admin privileges required", HttpStatus.FORBIDDEN);
+    }
+
+    /**
+     * For endpoints that name a user in the path: allows the caller themself (or an ADMIN) and returns the
+     * caller's id.
+     *
+     * @throws AuthException 401 when unauthenticated, 403 when the path names someone else
+     */
+    public static Long requireSelfOrAdmin(Long pathUserId) {
+        Long userId = requireUserId();
+        if (!userId.equals(pathUserId) && !isAdmin()) {
+            throw new AuthException("You can only access your own data", HttpStatus.FORBIDDEN);
         }
         return userId;
     }

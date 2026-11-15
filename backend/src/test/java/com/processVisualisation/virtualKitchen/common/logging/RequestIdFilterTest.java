@@ -117,6 +117,47 @@ class RequestIdFilterTest {
     }
 
     @Test
+    void stateChangingRequestWritesOneActionCompletedLineWithOutcomeAndUsage() throws Exception {
+        MockHttpServletRequest request = new MockHttpServletRequest("PUT", "/api/v1/recipes/63");
+        request.addHeader(RequestIdFilter.UI_ACTION_HEADER, "editor.save");
+
+        try (LogCapture app = LogCapture.of(RequestIdFilter.class)) {
+            filter.doFilter(request, new MockHttpServletResponse(), (req, res) -> {
+                MDC.put(MdcKeys.ACTION, "recipe.update");
+                UsageLedger.increment(UsageLedger.Counter.DB_WRITES);
+                ((HttpServletResponse) res).setStatus(409);
+            });
+
+            List<ILoggingEvent> completed = app.events("action_completed");
+            assertThat(completed).hasSize(1);
+            assertThat(completed.get(0).getLevel()).isEqualTo(Level.INFO);
+            assertThat(completed.get(0).getFormattedMessage())
+                    .contains("method=PUT", "status=409", "outcome=rejected", "durationMs=", "aiRequests=0", "dbWrites=1");
+            assertThat(completed.get(0).getMDCPropertyMap())
+                    .containsEntry(MdcKeys.ACTION, "recipe.update")
+                    .containsEntry(MdcKeys.UI_ACTION, "editor.save");
+        }
+    }
+
+    @Test
+    void rejectsAUiActionHeaderThatCouldForgeLogText() throws Exception {
+        MockHttpServletRequest request = new MockHttpServletRequest("POST", "/api/x");
+        request.addHeader(RequestIdFilter.UI_ACTION_HEADER, "save\nINFO forged");
+        String[] seen = new String[1];
+
+        filter.doFilter(request, new MockHttpServletResponse(), (req, res) -> seen[0] = MDC.get(MdcKeys.UI_ACTION));
+
+        assertThat(seen[0]).isNull();
+    }
+
+    @Test
+    void outcomeFollowsTheStatusClass() {
+        assertThat(RequestIdFilter.outcomeOf(201)).isEqualTo("success");
+        assertThat(RequestIdFilter.outcomeOf(404)).isEqualTo("rejected");
+        assertThat(RequestIdFilter.outcomeOf(502)).isEqualTo("failed");
+    }
+
+    @Test
     void slowRequestIsAlsoReportedToTheApplicationLog() throws Exception {
         ReflectionTestUtils.setField(filter, "slowRequestMs", 0L);
         try (LogCapture app = LogCapture.of(RequestIdFilter.class)) {

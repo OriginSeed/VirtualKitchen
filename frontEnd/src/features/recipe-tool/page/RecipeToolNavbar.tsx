@@ -1,15 +1,23 @@
 import { useState } from 'react'
 import { NavLink } from 'react-router-dom'
 import '../../../styles/flow-ui.css'
+import './RecipeToolNavbar.css'
 import type { RecipeDetail } from '../../../types/recipe'
 import { recipeToolPath, type RecipeToolView } from '../recipeToolRoutes'
 import RecipeSummarySection from './RecipeSummarySection'
-import RecipePreviewButton from './RecipePreviewButton'
 import AddToMyRecipesButton from './AddToMyRecipesButton'
 import type { AddToMyRecipes } from './useAddToMyRecipes'
 import ActionMenu, { type ActionMenuItem } from '../../../shared/components/ActionMenu'
-import { useReadinessGate } from '../session/useRecipeReadiness'
+import { useReadinessGate, useRecipeReadiness } from '../session/useRecipeReadiness'
+import { useRecipeSession } from '../session/sessionContext'
+import { useResolveConflict } from '../session/useResolveConflict'
+import RecipeSaveStatus from '../editor/components/RecipeSaveStatus'
 import type { ReadinessIssue } from '../model/recipeReadiness'
+import { readinessChip } from './readinessChip'
+import { useCookMode } from './useCookMode'
+import { downloadTextFile, exportRecipeFile } from '../session/recipeFile'
+import { useNotifications } from '../../../shared/components/notifications/notificationContext'
+import { errorMessage } from '../../../shared/errors'
 
 const TABS: { id: RecipeToolView; label: string; icon: string }[] = [
   { id: 'editor', label: 'Recipe Editor', icon: '🧩' },
@@ -23,194 +31,213 @@ type RecipeToolNavbarProps = {
   /** Readers of a public recipe: "Add to My Recipes" / "Open your copy". */
   addToMyRecipes?: AddToMyRecipes | null
   onBack: () => void
-  /** Owners only: "Order Recipe" starts a recipe order (of the last saved version) and opens it — once the recipe is saved and ready. */
-  onOrderRecipe?: () => void
-  /** Opens an issue that blocks ordering in the editor (from the blocked-order dialog). */
+  /**
+   * Owners only: "Order". The app shows its ordering dialog; `ensureReady` (save, then refuse while the recipe has
+   * blockers) runs before a (demo) order actually starts.
+   */
+  onOrderRecipe?: (ensureReady: () => Promise<boolean>) => void
+  /** Opens a readiness issue in the editor. */
   onShowIssue?: (issue: ReadinessIssue) => void
   /** The order is being created. */
   ordering?: boolean
-  /** Owners only: the ⋯ menu's recipe actions. */
+  /** Owners only: publish / unpublish; `blockers` lets the confirmation warn about an unfinished recipe. */
+  onToggleVisibility?: (blockers: number) => void
+  /** Public recipes: copy a link others can open. */
+  onCopyLink?: () => void
+  /** Owners only: the ⋯ menu's other recipe actions. */
   onEditDetails?: () => void
-  onToggleVisibility?: () => void
   onDeleteRecipe?: () => void
 }
 
+/** The readiness badge: green / amber / red, opening the first issue in the editor. */
+function ReadinessBadge({ onShowIssue }: { onShowIssue?: (issue: ReadinessIssue) => void }) {
+  const readiness = useRecipeReadiness()
+  if (!readiness) return null
+  const chip = readinessChip({ blockers: readiness.blockers.length, warnings: readiness.warnings.length })
+  const firstIssue = readiness.blockers[0] ?? readiness.warnings[0]
+  const clickable = Boolean(onShowIssue && firstIssue)
+  return (
+    <button
+      type="button"
+      className={`rt-readiness is-${chip.tone}`}
+      onClick={clickable ? () => onShowIssue?.(firstIssue) : undefined}
+      disabled={!clickable}
+      title={chip.title}
+      aria-label={chip.title}
+    >
+      <span aria-hidden>{chip.tone === 'ready' ? '✓' : chip.tone === 'blocked' ? '✖' : '⚠'}</span>
+      <span className="rt-readiness-label">{chip.label}</span>
+    </button>
+  )
+}
+
+/** The save status, from either tab (owners only: readers never save). */
+function SaveStatus() {
+  const session = useRecipeSession()
+  const resolveConflict = useResolveConflict()
+  if (!session?.canEdit || session.loading) return null
+  return (
+    <span className={`rt-save-status${session.saveState.status === 'conflict' ? ' is-conflict' : ''}`}>
+      <RecipeSaveStatus saveState={session.saveState} onResolveConflict={(choice) => void resolveConflict(choice)} />
+    </span>
+  )
+}
+
 /**
- * The Recipe Tool's own internal top navbar: compact recipe metadata on the
- * left (collapsing to just an icon button on narrow viewports, via Tailwind
- * responsive classes rather than a resize listener) and the two tool tabs
- * on the right (owners only — a reader of someone else's recipe gets a "Read only" marker and
- * "Add to My Recipes" instead). Each tab is its own route (see recipeToolRoutes.ts), so the
- * active tab is whichever route is current — NavLink marks it.
- * There is no recipe-level image in the current backend model (only
- * ingredients have one), so the compact metadata uses a plain icon rather
- * than fabricating a thumbnail.
+ * The Recipe Tool's header, the one place for the recipe as a whole on both tabs:
+ * - left — Back, the recipe (details on click), its readiness and save status;
+ * - centre — the Editor / Process tabs (owners) or a Read-only marker, and Cook mode;
+ * - right — Publish / Copy link, Order (owners) or Add to My Recipes (readers), and the ⋯ menu.
+ * Labels collapse to icons on narrow screens (Tailwind breakpoints), keeping tooltips and accessible names.
  */
 export default function RecipeToolNavbar({
-  recipe, readOnly = false, addToMyRecipes, onBack, onOrderRecipe, ordering = false, onShowIssue, onEditDetails, onToggleVisibility, onDeleteRecipe,
+  recipe, readOnly = false, addToMyRecipes, onBack, onOrderRecipe, ordering = false, onShowIssue,
+  onToggleVisibility, onCopyLink, onEditDetails, onDeleteRecipe,
 }: RecipeToolNavbarProps) {
   const [showDetails, setShowDetails] = useState(false)
-  const [checking, setChecking] = useState(false)
-  // Ordering reads the saved recipe and cooks it as structured: save first, and only order a ready recipe.
   const readinessGate = useReadinessGate(onShowIssue)
-  const startOrder = async () => {
-    if (!onOrderRecipe || checking) return
-    setChecking(true)
+  const readiness = useRecipeReadiness()
+  const cookMode = useCookMode(recipe.id)
+  const isPublic = recipe.visibility === 'PUBLIC'
+  const session = useRecipeSession()
+  const { notifySuccess, notifyError } = useNotifications()
+
+  // Owners only: the recipe as a file anyone can import from "New recipe". Saved first, so the file holds
+  // what is on screen.
+  const exportRecipe = async () => {
+    if (!session) return
     try {
-      if (await readinessGate('ordering')) onOrderRecipe()
-    } finally {
-      setChecking(false)
+      await session.saveNow()
+      const file = await exportRecipeFile(recipe.id, session.getProcesses())
+      downloadTextFile(file.json, file.fileName)
+      notifySuccess(`Recipe exported as ${file.fileName}. Share it, or import it from New recipe.`)
+    } catch (error) {
+      notifyError(errorMessage(error, 'Unable to export this recipe right now'))
     }
   }
+
   const menuItems: ActionMenuItem[] = [
     ...(onEditDetails ? [{ label: '✏️ Edit name & description', onSelect: onEditDetails }] : []),
-    ...(onToggleVisibility
-      ? [{ label: recipe.visibility === 'PUBLIC' ? '🔒 Make private' : '🌐 Make public', onSelect: onToggleVisibility }]
+    ...(session?.canEdit && !session.loading ? [{ label: '⤓ Export recipe', onSelect: () => void exportRecipe() }] : []),
+    ...(onToggleVisibility && isPublic
+      ? [{ label: '🔒 Make private', onSelect: () => onToggleVisibility(readiness?.blockers.length ?? 0) }]
       : []),
     ...(onDeleteRecipe ? [{ label: '🗑️ Delete recipe', onSelect: onDeleteRecipe, danger: true }] : []),
   ]
 
   return (
-    <div
-      className="recipe-tool-navbar h-[3.75rem] flex-shrink-0 items-center gap-3 border-b border-[var(--flow-border)] bg-[var(--flow-surface)] px-4"
-      style={{ position: 'relative', display: 'grid', gridTemplateColumns: '1fr auto 1fr' }}
-    >
-      <div className="flex min-w-0 items-center gap-2">
-        <button
-          onClick={onBack}
-          style={{ padding: '8px 10px', borderRadius: 8, border: '1px solid var(--flow-border)', background: 'var(--flow-surface)', color: 'var(--flow-text)', cursor: 'pointer', fontSize: 12, fontWeight: 600, flexShrink: 0 }}
-        >
-          ← Back
+    <div className="recipe-tool-navbar rt-navbar">
+      <div className="rt-navbar-left">
+        <button type="button" onClick={onBack} className="rt-button" title="Back to your recipes">
+          ← <span className="hidden md:inline">Back</span>
         </button>
 
         <button
           type="button"
           onClick={() => setShowDetails((value) => !value)}
-          className="flex min-w-0 items-center gap-2 rounded-lg px-2 py-1.5"
-          style={{ border: '1px solid transparent', background: showDetails ? 'var(--flow-surface-muted)' : 'transparent', cursor: 'pointer' }}
+          className={`rt-recipe-chip${showDetails ? ' is-open' : ''}`}
           title="View full recipe details"
+          aria-expanded={showDetails}
         >
-          <span
-            aria-hidden
-            style={{
-              width: 28, height: 28, borderRadius: 8, flexShrink: 0,
-              background: 'linear-gradient(135deg, var(--flow-accent), var(--flow-accent-secondary))',
-              display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 14,
-            }}
-          >
-            🍳
-          </span>
+          <span aria-hidden className="rt-recipe-icon">🍳</span>
           <span className="hidden min-w-0 flex-col items-start sm:flex">
-            <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--flow-text)', maxWidth: 220, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-              {recipe.name}
-            </span>
-            {recipe.description && (
-              <span className="hidden lg:inline" style={{ fontSize: 10.5, color: 'var(--flow-text-muted)', maxWidth: 260, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                {recipe.description}
-              </span>
-            )}
+            <span className="rt-recipe-name">{recipe.name}</span>
+            {recipe.description && <span className="rt-recipe-description hidden xl:inline">{recipe.description}</span>}
           </span>
-          <span
-            className="hidden sm:inline"
-            style={{
-              fontSize: 9, fontWeight: 700, padding: '2px 7px', borderRadius: 999, flexShrink: 0,
-              background: recipe.visibility === 'PUBLIC' ? '#eff6ff' : 'var(--flow-surface-muted)',
-              border: `1px solid ${recipe.visibility === 'PUBLIC' ? '#bfdbfe' : 'var(--flow-border)'}`,
-              color: recipe.visibility === 'PUBLIC' ? '#1d4ed8' : 'var(--flow-text-muted)',
-            }}
-          >
-            {recipe.visibility === 'PUBLIC' ? '🌐' : '🔒'}
+          <span className={`rt-visibility hidden sm:inline-flex${isPublic ? ' is-public' : ''}`}>
+            {isPublic ? 'Public' : 'Private'}
           </span>
-          <span style={{ fontSize: 11, color: 'var(--flow-text-subtle)', transform: showDetails ? 'rotate(180deg)' : 'none', flexShrink: 0 }} aria-hidden>
-            ▾
-          </span>
+          <span aria-hidden className="rt-chevron">▾</span>
         </button>
+
+        {!readOnly && (
+          <span className="rt-status">
+            <ReadinessBadge onShowIssue={onShowIssue} />
+            <span className="hidden min-w-0 xl:inline-flex"><SaveStatus /></span>
+          </span>
+        )}
       </div>
 
-      <div className="flex flex-shrink-0 items-center gap-2">
+      <div className="rt-navbar-center">
         {readOnly ? (
-          <span
-            title="This is someone else's recipe — add it to your kitchen to edit it"
-            style={{
-              padding: '7px 12px', borderRadius: 8, whiteSpace: 'nowrap', fontSize: 12, fontWeight: 700,
-              border: '1px solid var(--flow-border)', background: 'var(--flow-surface-muted)', color: 'var(--flow-text-muted)',
-            }}
-          >
+          <span className="rt-readonly" title="This is someone else's recipe — add it to your kitchen to edit it">
             <span aria-hidden>👀</span><span className="hidden sm:inline"> Read only</span>
           </span>
         ) : (
-          <div className="flex flex-shrink-0 items-center gap-1 rounded-lg border border-[var(--flow-border)] bg-[var(--flow-surface-muted)] p-1">
+          <div className="rt-tabs" role="tablist" aria-label="Recipe views">
             {TABS.map((tab) => (
               <NavLink
                 key={tab.id}
                 to={recipeToolPath(recipe.id, tab.id)}
                 replace
-                style={({ isActive }) => ({
-                  padding: '7px 12px',
-                  borderRadius: 7,
-                  background: isActive ? 'var(--flow-surface)' : 'transparent',
-                  boxShadow: isActive ? '0 1px 3px rgba(15,23,42,0.12)' : 'none',
-                  color: isActive ? 'var(--flow-accent-strong)' : 'var(--flow-text-muted)',
-                  fontSize: 12,
-                  fontWeight: 700,
-                  textDecoration: 'none',
-                  whiteSpace: 'nowrap',
-                })}
+                role="tab"
+                className={({ isActive }) => `rt-tab${isActive ? ' is-active' : ''}`}
+                aria-label={tab.label}
               >
-                <span className="hidden sm:inline">{tab.icon} {tab.label}</span>
-                <span className="sm:hidden" aria-label={tab.label}>{tab.icon}</span>
+                <span aria-hidden>{tab.icon}</span><span className="hidden sm:inline"> {tab.label}</span>
               </NavLink>
             ))}
           </div>
         )}
-        <RecipePreviewButton recipeId={recipe.id} />
+        {cookMode.available && (
+          <button
+            type="button"
+            onClick={() => void cookMode.open()}
+            className="rt-button"
+            title="Cook mode: follow the whole recipe one step at a time, with narration"
+            aria-label="Cook mode"
+          >
+            <span aria-hidden>▶</span><span className="hidden md:inline"> Cook mode</span>
+          </button>
+        )}
       </div>
 
-      <div className="flex min-w-0 items-center justify-end gap-2">
+      <div className="rt-navbar-right">
+        {onToggleVisibility && !isPublic && (
+          <button
+            type="button"
+            onClick={() => onToggleVisibility(readiness?.blockers.length ?? 0)}
+            className="rt-button"
+            title="Publish: let anyone find this recipe in Discover and add a copy to their kitchen"
+            aria-label="Publish recipe"
+          >
+            <span aria-hidden>🌐</span><span className="hidden lg:inline"> Publish</span>
+          </button>
+        )}
+        {isPublic && onCopyLink && (
+          <button type="button" onClick={onCopyLink} className="rt-button" title="Copy a link to this public recipe" aria-label="Copy link">
+            <span aria-hidden>🔗</span><span className="hidden lg:inline"> Copy link</span>
+          </button>
+        )}
+
         {addToMyRecipes && (
-          <AddToMyRecipesButton
-            action={addToMyRecipes}
-            compact
-            style={{
-              padding: '8px 12px', borderRadius: 8, border: 0, flexShrink: 0, whiteSpace: 'nowrap',
-              background: 'linear-gradient(135deg, var(--flow-accent), var(--flow-accent-secondary))',
-              color: 'white', fontSize: 12, fontWeight: 700, cursor: addToMyRecipes.adding ? 'progress' : 'pointer',
-              opacity: addToMyRecipes.adding ? 0.7 : 1,
-            }}
-          />
+          <AddToMyRecipesButton action={addToMyRecipes} compact className="rt-button is-primary" />
         )}
 
         {onOrderRecipe && (
           <button
             type="button"
-            onClick={() => void startOrder()}
-            disabled={ordering || checking}
-            aria-label={ordering ? 'Starting recipe order' : 'Order Recipe'}
-            title="Order this recipe from your kitchen — uses the last saved version (simulated preparation and delivery)"
-            style={{
-              padding: '8px 12px', borderRadius: 8, border: 0, flexShrink: 0, whiteSpace: 'nowrap',
-              background: 'linear-gradient(135deg, var(--flow-accent), var(--flow-accent-secondary))',
-              color: 'white', fontSize: 12, fontWeight: 700, cursor: ordering ? 'progress' : 'pointer', opacity: ordering ? 0.7 : 1,
-            }}
+            onClick={() => onOrderRecipe(() => readinessGate('ordering'))}
+            disabled={ordering}
+            className="rt-button is-primary"
+            aria-label={ordering ? 'Starting recipe order' : 'Order'}
+            title="Order this recipe — chef-prepared delivery is coming soon; a demo is available"
           >
-            <span aria-hidden>🛒</span>
-            <span className="hidden md:inline"> {ordering ? 'Starting…' : 'Order Recipe'}</span>
+            <span aria-hidden>🧾</span>
+            <span className="hidden md:inline"> {ordering ? 'Starting…' : 'Order'}</span>
           </button>
         )}
 
-        <ActionMenu items={menuItems} label={`More actions for ${recipe.name}`} placement="down" />
+        {menuItems.length > 0 && <ActionMenu items={menuItems} label={`More actions for ${recipe.name}`} placement="down" />}
       </div>
 
       {showDetails && (
-        <div
-          style={{
-            position: 'absolute', top: '100%', left: 12, marginTop: 6, zIndex: 30,
-            width: 'min(420px, calc(100vw - 24px))', boxShadow: '0 12px 28px rgba(15,23,42,0.18)',
-          }}
-        >
+        <div className="rt-details-popover">
           <RecipeSummarySection recipe={recipe} />
         </div>
       )}
+
+      {cookMode.element}
     </div>
   )
 }

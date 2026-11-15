@@ -29,7 +29,8 @@ public class RecipeTemplateMapper {
      * entity. Lossy/derived field: {@code visibility} is always hardcoded to
      * {@link Visibility#PRIVATE} regardless of the DTO's contents. The
      * entity's {@code id}, {@code createdAt} and {@code updatedAt} are left
-     * unset, since they are assigned at persistence time.
+     * unset: the id is assigned by the service, the dates on save by
+     * {@code RecipeTimestampCallbacks}.
      *
      * @param dto the request payload describing the recipe template to create
      * @return a new, unpersisted {@link RecipeTemplate} entity populated from {@code dto}

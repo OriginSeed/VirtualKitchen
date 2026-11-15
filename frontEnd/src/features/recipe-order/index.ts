@@ -4,6 +4,7 @@
  */
 export { default as RecipeOrderPage } from './RecipeOrderPage'
 export { useStartRecipeOrder } from './useStartRecipeOrder'
+export { useOrderRecipeEntry, type OrderRequest } from './entry/useOrderRecipeEntry'
 export { isPaidStatus, recipeOrderPath } from './model/orderView'
 export { formatServings, timeValue } from './model/orderFormat'
 

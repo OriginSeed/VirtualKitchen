@@ -1,9 +1,11 @@
 package com.processVisualisation.virtualKitchen.kitchen.controller;
 
+import com.processVisualisation.virtualKitchen.auth.security.CurrentUser;
 import com.processVisualisation.virtualKitchen.common.web.ApiResponse;
 import com.processVisualisation.virtualKitchen.kitchen.dto.KitchenRequestDTO;
 import com.processVisualisation.virtualKitchen.kitchen.dto.KitchenResponseDTO;
 import com.processVisualisation.virtualKitchen.kitchen.dto.KitchenUpdateDTO;
+import com.processVisualisation.virtualKitchen.kitchen.service.KitchenAccess;
 import com.processVisualisation.virtualKitchen.kitchen.service.KitchenService;
 
 import org.springframework.beans.factory.annotation.Autowired;
@@ -23,6 +25,9 @@ public class KitchenController {
 
     @Autowired
     private KitchenService service;
+
+    @Autowired
+    private KitchenAccess kitchenAccess;
 
     /**
      * Creates a new kitchen. Handles {@code POST /api/v1/kitchens}.
@@ -45,6 +50,8 @@ public class KitchenController {
      */
     @GetMapping("/{id}")
     public ApiResponse<KitchenResponseDTO> get(@PathVariable Long id){
+        // Only the owner (or an admin) sees a kitchen.
+        kitchenAccess.requireAccess(id);
         return build(service.get(id), "fetched");
     }
 
@@ -57,6 +64,7 @@ public class KitchenController {
      */
     @GetMapping("/owner/{ownerId}")
     public ApiResponse<List<KitchenResponseDTO>> getByOwner(@PathVariable Long ownerId){
+        CurrentUser.requireSelfOrAdmin(ownerId);
         return build(service.getByOwner(ownerId), "fetched");
     }
 

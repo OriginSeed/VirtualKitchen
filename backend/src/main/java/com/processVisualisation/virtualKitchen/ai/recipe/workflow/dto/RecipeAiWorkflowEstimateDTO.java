@@ -23,6 +23,12 @@ public class RecipeAiWorkflowEstimateDTO {
     /** False while the step count is an assumed range (the process hasn't been generated yet). */
     private boolean stepCountKnown;
 
+    /** Saved steps that already have an image: what "keep or replace" applies to (0 for a new process). */
+    private int existingImages;
+
+    /** Saved steps that already have ready narration (0 for a new process). */
+    private int existingNarrations;
+
     @Data
     @Builder
     public static class TaskEstimate {

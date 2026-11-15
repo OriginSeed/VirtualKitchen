@@ -59,9 +59,9 @@ export default function RecipeSummarySection({ recipe }: RecipeSummarySectionPro
             fontWeight: 700,
             padding: '3px 10px',
             borderRadius: 999,
-            background: recipe.visibility === 'PUBLIC' ? '#eff6ff' : 'var(--flow-surface-muted)',
-            border: `1px solid ${recipe.visibility === 'PUBLIC' ? '#bfdbfe' : 'var(--flow-border)'}`,
-            color: recipe.visibility === 'PUBLIC' ? '#1d4ed8' : 'var(--flow-text-muted)',
+            background: recipe.visibility === 'PUBLIC' ? 'var(--flow-success-soft)' : 'var(--flow-surface-muted)',
+            border: `1px solid ${recipe.visibility === 'PUBLIC' ? 'var(--flow-success-border)' : 'var(--flow-border)'}`,
+            color: recipe.visibility === 'PUBLIC' ? 'var(--flow-success-strong)' : 'var(--flow-text-muted)',
           }}
         >
           {recipe.visibility === 'PUBLIC' ? '🌐 Public' : '🔒 Private'}

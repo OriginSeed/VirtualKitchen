@@ -2,11 +2,11 @@ package com.processVisualisation.virtualKitchen.recipe.dto;
 
 import lombok.Data;
 import jakarta.validation.constraints.NotBlank;
-import jakarta.validation.constraints.NotNull;
 
 /**
- * Request payload for creating a new recipe template, capturing its name,
- * description and the id of the user creating it.
+ * Request payload for creating a new recipe template: its name and description. The owner is always the
+ * authenticated caller; {@code createdBy} is overwritten from the verified JWT (a value sent by the client is
+ * ignored, and older clients that still send it keep working).
  */
 @Data
 public class RecipeTemplateRequestDTO {
@@ -16,6 +16,5 @@ public class RecipeTemplateRequestDTO {
 
     private String description;
 
-    @NotNull
     private Long createdBy;
 }

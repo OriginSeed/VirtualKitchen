@@ -184,55 +184,48 @@
   font-size: 0.72rem;
 }
 
-/* Visibility of one of your recipes: an icon on the image's top-left corner. Hover says what it
-   means; clicking it offers to switch (via the public/private confirmation). */
+/* Visibility of one of your recipes: a status badge on the image's top-left corner (change it from the ⋯ menu). */
 .recipe-card-visibility {
   position: absolute;
   top: 0.6rem;
   left: 0.6rem;
   z-index: 2;
-  display: grid;
-  width: 2rem;
-  height: 2rem;
-  place-items: center;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  padding: 0.2rem 0.55rem;
   border: 1px solid var(--flow-border);
   border-radius: 999px;
   background: var(--flow-surface);
   box-shadow: var(--flow-shadow-card);
-  font-size: 0.9rem;
-  line-height: 1;
-  cursor: pointer;
-  transition: transform 0.15s ease, border-color 0.15s ease;
-}
-
-.recipe-card-visibility:hover,
-.recipe-card-visibility:focus-visible {
-  border-color: var(--flow-accent);
-  transform: scale(1.06);
-}
-
-.recipe-card-visibility::after {
-  position: absolute;
-  top: 50%;
-  left: calc(100% + 0.45rem);
-  padding: 0.3rem 0.55rem;
-  border-radius: 0.45rem;
-  background: var(--flow-text);
-  color: var(--flow-surface);
-  content: attr(data-tooltip);
-  font-size: 0.7rem;
-  font-weight: 700;
-  opacity: 0;
+  color: var(--flow-text-muted);
+  font-size: 0.68rem;
+  font-weight: 750;
+  line-height: 1.4;
   pointer-events: none;
-  transform: translateY(-50%) translateX(-4px);
-  transition: opacity 0.15s ease, transform 0.15s ease;
-  white-space: nowrap;
 }
 
-.recipe-card-visibility:hover::after,
-.recipe-card-visibility:focus-visible::after {
-  opacity: 1;
-  transform: translateY(-50%);
+.recipe-card-visibility.is-public {
+  border-color: var(--flow-success-border);
+  background: var(--flow-success-soft);
+  color: var(--flow-success-strong);
+}
+
+/* "View full image", on the image's bottom-right corner: a box with the image's own shape lays it out there. */
+.recipe-card-zoom-anchor {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  aspect-ratio: 4 / 3;
+  pointer-events: none;
+}
+
+.recipe-card-zoom-anchor .image-zoom-button {
+  top: auto;
+  bottom: 0.6rem;
+  right: 0.6rem;
+  pointer-events: auto;
 }
 
 /* The card's "⋯" menu, on the image's top-right corner (qualified to win over .action-menu's own position). */
@@ -245,16 +238,6 @@
 
 .recipe-card-actions .action-menu-trigger {
   box-shadow: var(--flow-shadow-card);
-}
-
-/* The page header's "Order recipe" (next to "Create recipe"). */
-.recipe-order-cta {
-  border-color: var(--flow-accent);
-  color: var(--flow-accent-strong);
-}
-
-.recipe-order-cta:hover:not(:disabled) {
-  background: var(--flow-accent-soft);
 }
 
 /* Order recipe: the recipe picker */
@@ -701,4 +684,97 @@
   .recipe-modal-footer button {
     flex: 1;
   }
+}
+
+/* =========================================================
+   Create Recipe: how to start (AI draft or blank canvas)
+   ========================================================= */
+
+.create-recipe-modes {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.6rem;
+  margin: 1rem 0 0;
+  padding: 0;
+  border: 0;
+}
+
+.create-recipe-modes legend {
+  grid-column: 1 / -1;
+  padding: 0;
+}
+
+.create-recipe-mode {
+  position: relative;
+  display: flex;
+  align-items: flex-start;
+  gap: 0.6rem;
+  padding: 0.75rem;
+  border: 1px solid var(--flow-border);
+  border-radius: var(--flow-radius-md);
+  background: var(--flow-surface);
+  cursor: pointer;
+  transition: border-color 0.15s ease, background 0.15s ease;
+}
+
+.create-recipe-mode:hover {
+  border-color: var(--flow-border-strong);
+}
+
+.create-recipe-mode.is-selected {
+  border-color: var(--flow-accent);
+  background: var(--flow-accent-soft);
+}
+
+.create-recipe-mode:focus-within {
+  outline: 2px solid var(--flow-accent);
+  outline-offset: 2px;
+}
+
+.create-recipe-mode input {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.create-recipe-mode-icon {
+  font-size: 1.1rem;
+  line-height: 1.2;
+}
+
+.create-recipe-mode strong {
+  display: block;
+  color: var(--flow-text);
+  font-size: 0.8rem;
+}
+
+.create-recipe-mode small {
+  display: block;
+  margin-top: 0.15rem;
+  color: var(--flow-text-muted);
+  font-size: 0.72rem;
+  line-height: 1.05rem;
+}
+
+@media (max-width: 480px) {
+  .create-recipe-modes {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+.recipe-sort-select {
+  height: 2.25rem;
+  padding: 0 0.6rem;
+  border: 1px solid var(--flow-border);
+  border-radius: var(--flow-radius-md);
+  background: var(--flow-surface);
+  color: var(--flow-text);
+  font: inherit;
+  font-size: 0.8rem;
+  cursor: pointer;
+}
+
+.recipe-sort-select:focus-visible {
+  outline: 2px solid var(--flow-accent);
+  outline-offset: 1px;
 }

@@ -1,5 +1,7 @@
 package com.processVisualisation.virtualKitchen.ai.recipe.narration.controller;
 
+import com.processVisualisation.virtualKitchen.common.logging.LogAction;
+
 import com.processVisualisation.virtualKitchen.ai.recipe.narration.StepNarrationService;
 import com.processVisualisation.virtualKitchen.ai.recipe.narration.dto.NarrationBatchRequestDTO;
 import com.processVisualisation.virtualKitchen.ai.recipe.narration.dto.NarrationEnsureRequestDTO;
@@ -26,6 +28,7 @@ import java.util.List;
  * polls {@code GET} until the step is {@code READY} (or {@code FAILED}).
  */
 @RestController
+@LogAction("narration")
 @RequestMapping("/api/v1/recipes/{recipeId}/processes/{processId}")
 public class StepNarrationController {
 

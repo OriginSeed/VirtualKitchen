@@ -1,6 +1,8 @@
 package com.processVisualisation.virtualKitchen.admin.config;
 
-import lombok.extern.slf4j.Slf4j;
+import com.processVisualisation.virtualKitchen.common.logging.FailureLogger;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.boot.context.event.ApplicationReadyEvent;
 import org.springframework.context.event.EventListener;
 import org.springframework.stereotype.Service;
@@ -22,9 +24,10 @@ import java.util.stream.Collectors;
  * Every write is checked against the section's field catalog (only the offered dropdown values are accepted), then
  * applied, and only stored once applying succeeded, so a rejected change never reaches the database.
  */
-@Slf4j
 @Service
 public class RuntimeConfigService {
+
+    private static final Logger log = LoggerFactory.getLogger(RuntimeConfigService.class);
 
     private final Map<String, ConfigSection> sections;
     private final RuntimeConfigOverridesRepository overridesRepository;
@@ -54,10 +57,10 @@ public class RuntimeConfigService {
             }
             try {
                 section.apply(overrides);
-                log.info("Applied {} runtime config override(s) to section '{}'", overrides.size(), section.id());
+                log.info("event=runtime_config_overrides_applied section={} count={}", section.id(), overrides.size());
             } catch (RuntimeException e) {
-                log.warn("Stored runtime config for section '{}' no longer applies; using the baseline: {}",
-                        section.id(), e.getMessage());
+                log.warn("event=runtime_config_override_stale section={} count={} errorType={} error=\"{}\"",
+                        section.id(), overrides.size(), e.getClass().getSimpleName(), FailureLogger.oneLine(e.getMessage()));
             }
         }
     }
@@ -113,6 +116,8 @@ public class RuntimeConfigService {
         section.apply(next);
         save(section, next, adminId);
         audit(section, "UPDATE", adminId, before, after);
+        log.info("event=admin_config_updated section={} changedCount={} overrideCount={} adminId={}",
+                section.id(), after.size(), next.size(), adminId);
         return view(section);
     }
 
@@ -127,6 +132,7 @@ public class RuntimeConfigService {
             current.forEach((key, value) -> before.put(key, section.forAudit(key, value)));
             audit(section, "RESET", adminId, before, Map.of());
         }
+        log.info("event=admin_config_reset section={} clearedCount={} adminId={}", section.id(), current.size(), adminId);
         return view(section);
     }
 

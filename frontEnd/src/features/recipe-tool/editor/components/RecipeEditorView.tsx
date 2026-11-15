@@ -20,6 +20,7 @@ import { getPreparationFlows, getPreparationProcess } from '../../model/preparat
 import { generationJobKey, isTrackedJobActive, isWorkflowOpen, workflowJobKey } from '../../jobs/jobTracker'
 import { useJobTracker, useTrackedJob } from '../../jobs/useJobTracker'
 import RecipeAiCreationModal from '../../workflow/components/RecipeAiCreationModal'
+import type { RunModels } from '../../workflow/model/workflowSelection'
 import { clearDraft, draftKeys } from '../../../../shared/drafts/draftStore'
 import { workflowBadge, workflowChipLabel, workflowHeadline } from '../../workflow/model/workflowView'
 import type { RecipeAiTaskType } from '../../../../types/recipeAiWorkflow'
@@ -59,6 +60,8 @@ type RecipeEditorViewProps = {
   issueFocusRequest?: { issue: ReadinessIssue; token: number } | null
   /** A step to open (from the Recipe Process page): its process is shown with the step selected and centred. */
   stepFocusRequest?: { processId: number; nodeId: string; token: number } | null
+  /** Open AI Recipe Creation right away (a recipe just created with "Describe it for AI"). */
+  openAiCreationOnStart?: boolean
 }
 
 /**
@@ -75,6 +78,7 @@ type RecipeEditorViewProps = {
  */
 export default function RecipeEditorView({
   recipeId, recipeName, isOwner, onMainProcessChanged, preparationNotes = null, onSavePreparationNotes, issueFocusRequest = null, stepFocusRequest = null,
+  openAiCreationOnStart = false,
 }: RecipeEditorViewProps) {
   const { notifyError, notifySuccess } = useNotifications()
   const session = useRecipeSession()
@@ -89,7 +93,7 @@ export default function RecipeEditorView({
   const generationJob = useTrackedJob(generationJobKey(recipeId))
   // AI Recipe Creation (process → review/approval → visuals + narration), followed by the same tracker.
   const workflow = useTrackedJob(workflowJobKey(recipeId))?.job ?? null
-  const [showAiCreation, setShowAiCreation] = useState(false)
+  const [showAiCreation, setShowAiCreation] = useState(openAiCreationOnStart && isOwner)
   // What the AI menu item that opened AI Recipe Creation pre-ticks (undefined: the user's last selection).
   const [aiCreationTasks, setAiCreationTasks] = useState<RecipeAiTaskType[] | undefined>(undefined)
   const openAiCreation = useCallback((tasks?: RecipeAiTaskType[]) => {
@@ -284,11 +288,11 @@ export default function RecipeEditorView({
    * app-level JobTracker, so the user can close the modal, switch processes or leave the tool; the
    * effect below loads the result once it's ready, whenever that is.
    */
-  const runGeneration = useCallback(async (recipeText: string) => {
+  const runGeneration = useCallback(async (recipeText: string, modelKeys: RunModels) => {
     if (generating) return
     setStartingGeneration('CREATE')
     try {
-      await jobTracker.startGeneration(recipeId, { mode: 'CREATE', recipeText })
+      await jobTracker.startGeneration(recipeId, { mode: 'CREATE', recipeText, modelKeys })
     } finally {
       setStartingGeneration(null)
     }
@@ -303,13 +307,14 @@ export default function RecipeEditorView({
    * and the selected node are sent; the AI answers with the smallest set of changes, which the
    * effect below offers for review once the background job finishes.
    */
-  const runEdit = useCallback(async (instruction: string) => {
+  const runEdit = useCallback(async (instruction: string, modelKeys: RunModels) => {
     if (generating || !session || !editableTarget) return
     setStartingGeneration('EDIT')
     try {
       await jobTracker.startGeneration(recipeId, {
         mode: 'EDIT',
         recipeText: instruction,
+        modelKeys,
         targetProcess: serializeProcessForEdit(editableTarget, session.getProcesses()),
         selectedNodeId: canvasSelectedNodeId,
       })
@@ -513,8 +518,10 @@ export default function RecipeEditorView({
 
   if (session.loadError) {
     return (
-      <div className="flex h-full w-full items-center justify-center" style={{ color: '#9f1239' }}>
-        {session.loadError}
+      <div className="flex h-full w-full flex-col items-center justify-center gap-3 p-4 text-center" role="alert" style={{ color: 'var(--flow-danger)' }}>
+        <span>{session.loadError}</span>
+        {/* The session loads once per page; reloading the page is the reliable retry. */}
+        <button type="button" className="vk-btn vk-btn-secondary" onClick={() => window.location.reload()}>Try again</button>
       </div>
     )
   }

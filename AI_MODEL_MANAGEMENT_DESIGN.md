@@ -1174,3 +1174,60 @@ With Gemini as the image provider, profiles have no effect on size or cost.
 - **Artifact key.** A profiled image's artifact key also includes `image:WxH;steps=N`, so a retained payload of a different size is never reused for it. Unprofiled images, including the scene anchor and global assets, keep their old keys.
 - **Existing images.** A step whose `VisualizationAsset` already has an image URL is not regenerated, so profile changes apply to new images only.
 - **DeepInfra cost.** DeepInfra bills FLUX.2 Klein at $0.014 × (w/1024) × (h/1024): 512² ≈ $0.0035, 256² ≈ $0.0009, 768² ≈ $0.0079. The `vk.ai.pricing.per-image-usd` estimate is flat, so it overstates smaller images. Quality at each size is a matter for experiment, not an assumption.
+
+---
+
+## 27. Focused Cooking View
+
+Step images are close-ups of the cooking, not pictures of a kitchen. The text model no longer writes whole image prompts: it names the recipe's equipment once and describes only the food and the action of each step. The backend writes everything else into every image, in the same words.
+
+### 27.1 Scene context and action context
+
+| | Scene context | Action context |
+|---|---|---|
+| Changes | Never within a recipe | Every step |
+| Holds | Equipment: vessel, stove, surface, cutting board, prep bowl, serving dish (`SceneContext`, stored on the recipe's scene asset). Camera angle, lighting, style, environment (`ai.visualization.image.scene.*`, the same for every recipe). | Focus, state (what is in the frame, including what earlier steps left there), action (what is being done, with which utensil). Stored as the step asset's `focus` and `imagePrompt`. |
+| Written by | Text model once per recipe (equipment); configuration (the rest) | Text model, one entry per image, in one batch call |
+
+The text sent to the image model is assembled by `RecipeProcessVisualizationPromptBuilder.buildFocusedImageRequestText`: camera and framing, the step's own text, lighting and style, a guardrail against extra items, the dish context, then how to use any reference images.
+
+### 27.2 Action-aware framing
+
+`VisualFocus` is the single place a focus becomes framing. A step's default focus comes from its action through the existing action → category → purpose mapping (`VisualizationImageProfiles.focusFor`); the text model may name another focus when the step clearly happens elsewhere.
+
+| Focus | Default for | Fills the frame |
+|---|---|---|
+| `CUTTING_BOARD` | ingredient preparation (cut, chop, peel, wash…) | the cutting board |
+| `COOKING_VESSEL` | adding, cooking, mixing, waiting; anything unknown | the main pan or pot on the stove |
+| `PREP_BOWL` | coating and dough (marinate, coat, knead…) | the prep bowl |
+| `PLATE` | serving (plate, garnish, serve…) | the serving dish |
+| `STORYBOARD` | a multi-step preparation flow | a panel grid, as before |
+
+The camera is about 50 degrees above the counter in every image (`scene.camera-angle`), so it changes only when the focus does.
+
+### 27.3 Consistency across steps
+
+| Technique | How it is used |
+|---|---|
+| Fixed scene description | Always. Identical framing, equipment, lighting and style text in every image of a recipe. |
+| Scene anchor | The anchor is the empty vessel on the stove, framed like a cooking step. Sent as a reference to `COOKING_VESSEL` images only. |
+| Previous image as reference | Main steps with the same focus form a chain and are generated in order; each is drawn against the previous image of its chain (`referenceChain.enabled`). Chains of different focus and preparation flows still run in parallel. |
+| Image editing | The chained request is an instruction edit ("continue from the second image, change only what this step does"). No masks are used. |
+| Seed | One seed per recipe is passed in the settings; only providers that take one send it. It is a minor aid, not the mechanism. |
+
+Provider support:
+
+| | Fixed scene text | Reference images | Seed |
+|---|---|---|---|
+| Gemini 2.5 Flash Image | yes | yes, anchor and previous step | no |
+| DeepInfra FLUX.2 Klein 4B | yes | only with `ai.deepinfra.image.edit-endpoint` set (off by default; the request format has not been verified against the live API) | only with `ai.deepinfra.image.send-seed=true` (also unverified) |
+| Draw Things SDXL | yes | no | yes |
+
+### 27.4 Fallbacks and compatibility
+
+- **Switch.** `ai.visualization.image.focused-view-enabled` (admin: Images > Focused cooking view). Off, prompts are written and images requested exactly as before this section existed. `reference-chain-enabled` switches chaining alone.
+- **Existing assets.** A step asset without a `focus` holds a self-contained prompt and is requested as it always was. Existing images are never regenerated.
+- **Reference failures.** A previous image that cannot be read is skipped. A request with references that fails is made once more from the prompt alone. A failed step does not stop its chain: the next step is drawn against the anchor.
+- **Text model failures.** A missing or invalid focus falls back to the action's default; missing equipment falls back to the configured defaults; a step the batch leaves out writes its own focused prompt.
+- **Not used.** Mask-based inpainting (no mask source, and edit models make localized changes without one).
+

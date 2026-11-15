@@ -37,6 +37,9 @@ public class VisualizationJob {
 
     private int totalSteps;
 
+    /** Started with "regenerate and replace": the steps' existing images were cleared and drawn again. */
+    private boolean overwriteExisting;
+
     private int completedSteps;
 
     private List<StepResult> stepResults = new ArrayList<>();

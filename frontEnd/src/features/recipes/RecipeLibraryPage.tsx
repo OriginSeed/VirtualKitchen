@@ -1,66 +1,110 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useMemo, useState } from 'react'
+import { Link } from 'react-router-dom'
 import type { Recipe } from '../../api'
-import { EditRecipeDetailsModal } from '../recipe-tool'
-import { useStartRecipeOrder } from '../recipe-order'
+import { createRecipeFromFile, describeMissingAssets, EditRecipeDetailsModal, parseRecipeFile, summarizeRecipeFile, type RecipeFile } from '../recipe-tool'
+import { useNotifications } from '../../shared/components/notifications/notificationContext'
 import ListEnd from '../../shared/components/ListEnd'
+import { EmptyState, ErrorState, PageHeader, SkeletonGrid } from '../../shared/components/page'
 import { draftKeys } from '../../shared/drafts/draftStore'
 import { useDraft } from '../../shared/drafts/useDraft'
 import { errorMessage } from '../../shared/errors'
 import { useIncrementalReveal } from '../../shared/hooks/useIncrementalReveal'
 import '../../styles/flow-ui.css'
 import ConfirmVisibilityModal from './components/ConfirmVisibilityModal'
-import CreateRecipeModal from './components/CreateRecipeModal'
-import EmptyState from './components/EmptyState'
-import OrderRecipeModal from './components/OrderRecipeModal'
+import CreateRecipeModal, { type ChosenRecipeFile } from './components/CreateRecipeModal'
+import { EMPTY_CREATE_RECIPE_DRAFT, type CreateRecipeDraft, type CreateRecipeMode } from './components/createRecipeDraft'
 import RecipeCard from './components/RecipeCard'
 import RecipeToolbar from './components/RecipeToolbar'
-import { useRecipeLibrary, type RecipeTab } from './useRecipeLibrary'
+import { searchRecipes, sortRecipes, type RecipeSort } from './recipeListing'
+import { useRecipeLibrary, type RecipeScope } from './useRecipeLibrary'
+
+export type CreatedRecipe = {
+  recipeId: number
+  title: string
+  mode: CreateRecipeMode
+  /** The dish described for AI (empty for a blank start). */
+  recipeText: string
+}
 
 type RecipeLibraryPageProps = {
   userId: number
-  /** Opens a recipe in read mode — any card, own or global. The app routes it to the Recipe Tool's Recipe Process. */
-  onOpenRecipe?: (recipeId: number) => void
-  /** Called right after creating a recipe. The app routes it to the Recipe Editor. */
-  onCreateRecipe?: (recipeId: number, title: string) => void
+  /** My Recipes (the user's own, in My Kitchen) or Discover (other people's public recipes). */
+  scope: RecipeScope
+  /** Opens a recipe in read mode. The app routes it to the Recipe Tool's Recipe Process. */
+  onOpenRecipe: (recipeId: number) => void
+  /** Opens one of the user's recipes in the Recipe Editor. */
+  onEditRecipe?: (recipeId: number) => void
+  /** Called right after creating a recipe; the app opens the editor (with AI Recipe Creation for an AI start). */
+  onCreateRecipe?: (created: CreatedRecipe) => void
+  /** "Order" on one of the user's recipes; the app shows the ordering dialog. */
+  onOrderRecipe?: (recipe: Recipe) => void
+  /** Changes each time something asks to create a recipe (the navbar's "+ New recipe"); the dialog opens then. */
+  createRequestKey?: string | null
 }
 
-const HIGHLIGHT_MS = 3000
+const COPY: Record<RecipeScope, { eyebrow: string; title: string; subtitle: string; search: string }> = {
+  mine: {
+    eyebrow: 'My Kitchen',
+    title: 'My Recipes',
+    subtitle: 'Recipes you created or added from Discover. Open one to read it, or edit its cooking flow.',
+    search: 'Search your recipes...',
+  },
+  discover: {
+    eyebrow: 'Discover',
+    title: 'Discover recipes',
+    subtitle: 'Recipes other cooks have published. Read any of them, cook along, or add a copy to make it your own.',
+    search: 'Search public recipes...',
+  },
+}
 
-/** The recipe library: the user's recipes and the public ones, with create, order, edit, share and copy. */
-export default function RecipeLibraryPage({ userId, onOpenRecipe, onCreateRecipe }: RecipeLibraryPageProps) {
-  const [activeTab, setActiveTab] = useState<RecipeTab>('mine')
-  const library = useRecipeLibrary(userId, activeTab)
-  const { startOrder, orderingRecipeId } = useStartRecipeOrder()
+/** A list of recipes — the user's own or the public ones — with search, sort and each card's actions. */
+export default function RecipeLibraryPage({
+  userId, scope, onOpenRecipe, onEditRecipe, onCreateRecipe, onOrderRecipe, createRequestKey = null,
+}: RecipeLibraryPageProps) {
+  const library = useRecipeLibrary(userId, scope)
+  const copy = COPY[scope]
 
   // The create-recipe form keeps what was typed until the recipe is created, so closing the dialog
   // or leaving the page doesn't lose it.
-  const createDraft = useDraft(draftKeys.newRecipe(), { title: '', description: '' })
-  const { title, description } = createDraft.value
-  const [createModalOpen, setCreateModalOpen] = useState(false)
+  const createDraft = useDraft<CreateRecipeDraft>(draftKeys.newRecipe(), EMPTY_CREATE_RECIPE_DRAFT)
+  const draft = { ...EMPTY_CREATE_RECIPE_DRAFT, ...createDraft.value }
+  // "+ New recipe" from anywhere lands here with a request to open the dialog.
+  const [seenCreateRequest, setSeenCreateRequest] = useState(createRequestKey)
+  const [createModalOpen, setCreateModalOpen] = useState(createRequestKey != null && scope === 'mine')
   const [creating, setCreating] = useState(false)
   const [createError, setCreateError] = useState<string | null>(null)
+  // "Import from file": the parsed file is kept here, not in the saved draft (it can be large, and a file
+  // has to be picked again after a reload anyway).
+  const [recipeFile, setRecipeFile] = useState<{ chosen: ChosenRecipeFile; doc: RecipeFile | null } | null>(null)
+  const { notifySuccess, notifyInfo } = useNotifications()
+  if (createRequestKey !== seenCreateRequest) {
+    setSeenCreateRequest(createRequestKey)
+    if (createRequestKey != null && scope === 'mine') {
+      setCreateError(null)
+      setCreateModalOpen(true)
+    }
+  }
 
   const [search, setSearch] = useState('')
-  const [orderModalOpen, setOrderModalOpen] = useState(false)
+  const [sort, setSort] = useState<RecipeSort>('newest')
   const [editingRecipe, setEditingRecipe] = useState<Recipe | null>(null)
   const [visibilityRecipe, setVisibilityRecipe] = useState<Recipe | null>(null)
   const [visibilityLoading, setVisibilityLoading] = useState(false)
+  const [addingRecipeId, setAddingRecipeId] = useState<number | null>(null)
 
-  const [highlightedRecipeId, setHighlightedRecipeId] = useState<number | null>(null)
-  const highlightTimeoutRef = useRef<number | null>(null)
-  useEffect(() => () => {
-    if (highlightTimeoutRef.current !== null) window.clearTimeout(highlightTimeoutRef.current)
-  }, [])
+  const openCreateModal = () => {
+    setCreateError(null)
+    setCreateModalOpen(true)
+  }
 
-  const filteredRecipes = useMemo(() => {
-    const source = activeTab === 'mine' ? library.recipes : library.globalRecipes
-    const query = search.trim().toLowerCase()
-    if (!query) return source
-    return source.filter((recipe) =>
-      recipe.name.toLowerCase().includes(query) || recipe.description?.toLowerCase().includes(query))
-  }, [library.recipes, library.globalRecipes, activeTab, search])
+  const source = scope === 'mine' ? library.recipes : library.globalRecipes
+  const listLoading = scope === 'mine' ? library.recipesLoading : library.globalRecipesLoading
+  const listError = scope === 'mine' ? library.recipesError : library.globalRecipesError
+  const reloadList = scope === 'mine' ? library.reloadRecipes : library.reloadGlobalRecipes
 
-  // Global recipes the user already added, mapped to their own copy, so a card offers "Open" instead of a duplicate.
+  const filteredRecipes = useMemo(() => sortRecipes(searchRecipes(source, search), sort), [source, search, sort])
+
+  // Public recipes the user already added, mapped to their own copy, so a card offers "Open" instead of a duplicate.
   const ownCopyIdBySource = useMemo(() => {
     const map = new Map<number, number>()
     for (const recipe of library.recipes) {
@@ -75,12 +119,7 @@ export default function RecipeLibraryPage({ userId, onOpenRecipe, onCreateRecipe
     hasMore: hasMoreRecipes,
     sentinelRef: recipesSentinelRef,
     showMore: showMoreRecipes,
-  } = useIncrementalReveal(filteredRecipes, `${activeTab}|${search.trim().toLowerCase()}`)
-
-  const openCreateModal = () => {
-    setCreateError(null)
-    setCreateModalOpen(true)
-  }
+  } = useIncrementalReveal(filteredRecipes, `${scope}|${sort}|${search.trim().toLowerCase()}`)
 
   const closeCreateModal = () => {
     if (creating) return
@@ -88,19 +127,69 @@ export default function RecipeLibraryPage({ userId, onOpenRecipe, onCreateRecipe
     setCreateError(null)
   }
 
+  /** Reads the picked file in the browser and checks it is a recipe file; its name fills an empty title. */
+  const chooseRecipeFile = async (file: File) => {
+    setCreateError(null)
+    try {
+      const doc = parseRecipeFile(await file.text(), file.name)
+      setRecipeFile({ chosen: { fileName: file.name, ...summarizeRecipeFile(doc) }, doc })
+      createDraft.setValue((current) => ({
+        ...EMPTY_CREATE_RECIPE_DRAFT, ...current,
+        title: current?.title?.trim() ? current.title : (doc.name ?? ''),
+        description: current?.description?.trim() ? current.description : (doc.description ?? ''),
+      }))
+    } catch (error) {
+      // The parser's message starts with the file's name; the dialog already shows it.
+      const reason = errorMessage(error, 'it could not be read').replace(`${file.name}: `, '')
+      setRecipeFile({ chosen: { fileName: file.name, error: reason }, doc: null })
+    }
+  }
+
+  const handleImport = async (doc: RecipeFile) => {
+    try {
+      setCreating(true)
+      setCreateError(null)
+      const title = draft.title.trim()
+      const imported = await createRecipeFromFile(doc, title, draft.description.trim())
+      setCreateModalOpen(false)
+      setRecipeFile(null)
+      createDraft.clear()
+      const missing = describeMissingAssets(imported)
+      if (missing) notifyInfo(`Recipe imported. ${missing}`)
+      else notifySuccess('Recipe imported.')
+      onCreateRecipe?.({ recipeId: imported.recipeId, title, mode: 'import', recipeText: '' })
+    } catch (error) {
+      setCreateError(errorMessage(error, 'Unable to import this recipe'))
+    } finally {
+      setCreating(false)
+    }
+  }
+
   const handleCreate = async () => {
-    if (!title.trim()) {
+    if (!draft.title.trim()) {
       setCreateError('Please enter a recipe name')
+      return
+    }
+    if (draft.mode === 'import') {
+      if (!recipeFile?.doc) {
+        setCreateError(recipeFile ? 'Choose a recipe file that can be imported.' : 'Choose a recipe file to import.')
+        return
+      }
+      await handleImport(recipeFile.doc)
+      return
+    }
+    if (draft.mode === 'ai' && !draft.recipeText.trim()) {
+      setCreateError('Describe the dish for the AI, or choose “Start from scratch”.')
       return
     }
     try {
       setCreating(true)
       setCreateError(null)
-      const recipeTitle = title.trim()
-      const recipeId = await library.createRecipe(recipeTitle, description.trim())
+      const title = draft.title.trim()
+      const recipeId = await library.createRecipe(title, draft.description.trim())
       setCreateModalOpen(false)
       createDraft.clear()
-      onCreateRecipe?.(recipeId, recipeTitle)
+      onCreateRecipe?.({ recipeId, title, mode: draft.mode, recipeText: draft.mode === 'ai' ? draft.recipeText.trim() : '' })
     } catch (error) {
       setCreateError(errorMessage(error, 'Unable to create recipe'))
     } finally {
@@ -117,117 +206,124 @@ export default function RecipeLibraryPage({ userId, onOpenRecipe, onCreateRecipe
   }
 
   const handleAddToMyRecipes = async (recipe: Recipe) => {
-    const copyId = await library.addToMyRecipes(recipe)
-    if (copyId == null) return
-    setActiveTab('mine')
-    if (highlightTimeoutRef.current !== null) window.clearTimeout(highlightTimeoutRef.current)
-    setHighlightedRecipeId(copyId)
-    highlightTimeoutRef.current = window.setTimeout(() => setHighlightedRecipeId(null), HIGHLIGHT_MS)
+    setAddingRecipeId(recipe.id)
+    await library.addToMyRecipes(recipe)
+    setAddingRecipeId(null)
   }
 
-  const listLoading = activeTab === 'mine' ? library.recipesLoading : library.globalRecipesLoading
+  const searching = Boolean(search.trim())
 
   return (
-    <div className="flow-editor-shell min-h-screen bg-[linear-gradient(135deg,var(--flow-bg)_0%,var(--flow-accent-soft)_100%)] px-4 py-5 sm:px-6 sm:py-7">
-      <div className="mx-auto max-w-7xl">
-        <header className="mb-7 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
-          <div>
-            <div className="mb-1 text-[0.7rem] font-bold uppercase tracking-[0.16em] text-[var(--flow-accent)]">
-              Virtual Kitchen
-            </div>
-            <h1 className="text-3xl font-extrabold tracking-tight text-[var(--flow-text)]">Recipes</h1>
-            <p className="mt-1.5 text-sm text-[var(--flow-text-muted)]">Create, manage and build your cooking flows.</p>
-          </div>
-
-          <div className="flex flex-wrap items-center gap-2 self-start sm:self-auto">
-            <button
-              onClick={() => setOrderModalOpen(true)}
-              className="recipe-secondary-button recipe-order-cta"
-              title="Have one of your recipes prepared and delivered (simulated)"
-            >
-              🛒 Order recipe
+    <div className="vk-page flow-editor-shell">
+      <PageHeader
+        eyebrow={copy.eyebrow}
+        title={copy.title}
+        subtitle={copy.subtitle}
+        actions={scope === 'mine' ? (
+          <>
+            <Link className="vk-btn vk-btn-secondary" to="/kitchen/discover">🌍 Discover</Link>
+            <button type="button" onClick={openCreateModal} className="vk-btn vk-btn-primary">
+              <span aria-hidden="true">+</span> New recipe
             </button>
-            {activeTab === 'mine' && (
-              <button onClick={openCreateModal} className="recipe-primary-button">
-                <span className="text-base leading-none">+</span>
-                Create recipe
-              </button>
-            )}
-          </div>
-        </header>
+          </>
+        ) : (
+          <Link className="vk-btn vk-btn-secondary" to="/kitchen/recipes">📖 My Recipes</Link>
+        )}
+      />
 
-        <div className="recipe-tabs mb-6">
-          <button onClick={() => setActiveTab('mine')} className={`recipe-tab-button ${activeTab === 'mine' ? 'active' : ''}`}>
-            My Recipes
-          </button>
-          <button onClick={() => setActiveTab('global')} className={`recipe-tab-button ${activeTab === 'global' ? 'active' : ''}`}>
-            Global Recipes
-          </button>
-        </div>
+      <RecipeToolbar
+        search={search}
+        onSearchChange={setSearch}
+        sort={sort}
+        onSortChange={setSort}
+        recipeCount={filteredRecipes.length}
+        placeholder={copy.search}
+      />
 
-        <RecipeToolbar search={search} onSearchChange={setSearch} recipeCount={filteredRecipes.length} />
-
-        {listLoading ? (
+      {listLoading && source.length === 0 ? (
+        <SkeletonGrid count={6} label="Loading recipes…" />
+      ) : listError ? (
+        <ErrorState
+          title={scope === 'mine' ? 'Couldn’t load your recipes' : 'Couldn’t load public recipes'}
+          message={listError}
+          onRetry={reloadList}
+        />
+      ) : filteredRecipes.length === 0 ? (
+        searching ? (
+          <EmptyState
+            icon="🔍"
+            title="No recipes found"
+            text="Try a different name or ingredient."
+            actions={<button type="button" className="vk-btn vk-btn-secondary" onClick={() => setSearch('')}>Clear search</button>}
+          />
+        ) : scope === 'discover' ? (
+          <EmptyState
+            icon="🌍"
+            title="No public recipes yet"
+            text="When cooks publish their recipes, they show up here. Make one of yours public to be the first."
+            actions={<Link className="vk-btn vk-btn-primary" to="/kitchen/recipes">Go to My Recipes</Link>}
+          />
+        ) : (
+          <EmptyState
+            icon="🍳"
+            title="No recipes yet"
+            text="Create your first recipe — describe a dish and let AI draft the steps — or add one from Discover."
+            actions={
+              <>
+                <button type="button" onClick={openCreateModal} className="vk-btn vk-btn-primary">Create your first recipe →</button>
+                <Link className="vk-btn vk-btn-secondary" to="/kitchen/discover">Browse Discover</Link>
+              </>
+            }
+          />
+        )
+      ) : (
+        <>
           <div className="recipe-grid">
-            {Array.from({ length: 6 }).map((_, index) => (
-              <div key={index} className="recipe-card recipe-card-skeleton">
-                <div className="recipe-skeleton-image" />
-                <div className="p-4">
-                  <div className="recipe-skeleton-line w-3/4" />
-                  <div className="recipe-skeleton-line mt-3 w-full" />
-                  <div className="recipe-skeleton-line mt-2 w-2/3" />
-                </div>
-              </div>
+            {visibleRecipes.map((recipe) => (
+              <RecipeCard
+                key={recipe.id}
+                recipe={recipe}
+                variant={scope}
+                onOpen={() => onOpenRecipe(recipe.id)}
+                onEditInEditor={onEditRecipe ? () => onEditRecipe(recipe.id) : undefined}
+                onEditDetails={() => setEditingRecipe(recipe)}
+                onDelete={() => void library.deleteRecipe(recipe)}
+                onToggleVisibility={() => setVisibilityRecipe(recipe)}
+                onCopyLink={() => void library.copyLink(recipe)}
+                onOrder={onOrderRecipe ? () => onOrderRecipe(recipe) : undefined}
+                onAddToMyRecipes={() => void handleAddToMyRecipes(recipe)}
+                adding={addingRecipeId === recipe.id}
+                ownCopyId={scope === 'discover' ? ownCopyIdBySource.get(recipe.id) : undefined}
+                onOpenOwnCopy={() => {
+                  const copyId = ownCopyIdBySource.get(recipe.id)
+                  if (copyId != null) onOpenRecipe(copyId)
+                }}
+              />
             ))}
           </div>
-        ) : filteredRecipes.length === 0 ? (
-          <EmptyState searching={Boolean(search.trim())} tab={activeTab} onCreate={openCreateModal} />
-        ) : (
-          <>
-            <div className="recipe-grid">
-              {visibleRecipes.map((recipe) => (
-                <RecipeCard
-                  key={recipe.id}
-                  recipe={recipe}
-                  variant={activeTab}
-                  highlighted={recipe.id === highlightedRecipeId}
-                  onOpen={() => onOpenRecipe?.(recipe.id)}
-                  onEditDetails={() => setEditingRecipe(recipe)}
-                  onDelete={() => void library.deleteRecipe(recipe)}
-                  onToggleVisibility={() => setVisibilityRecipe(recipe)}
-                  onAddToMyRecipes={() => void handleAddToMyRecipes(recipe)}
-                  ownCopyId={activeTab === 'global' ? ownCopyIdBySource.get(recipe.id) : undefined}
-                  onOpenOwnCopy={() => {
-                    const copyId = ownCopyIdBySource.get(recipe.id)
-                    if (copyId != null) onOpenRecipe?.(copyId)
-                  }}
-                />
-              ))}
-            </div>
-            <ListEnd
-              hasMore={hasMoreRecipes}
-              shown={visibleRecipes.length}
-              total={filteredRecipes.length}
-              noun="recipes"
-              sentinelRef={recipesSentinelRef}
-              onShowMore={showMoreRecipes}
-            />
-          </>
-        )}
-      </div>
+          <ListEnd
+            hasMore={hasMoreRecipes}
+            shown={visibleRecipes.length}
+            total={filteredRecipes.length}
+            noun="recipes"
+            sentinelRef={recipesSentinelRef}
+            onShowMore={showMoreRecipes}
+          />
+        </>
+      )}
 
       <CreateRecipeModal
         open={createModalOpen}
-        title={title}
-        description={description}
+        draft={draft}
         loading={creating}
         error={createError}
-        onTitleChange={(value) => createDraft.setValue((current) => ({ ...current, title: value }))}
-        onDescriptionChange={(value) => createDraft.setValue((current) => ({ ...current, description: value }))}
+        onChange={(update) => createDraft.setValue((current) => ({ ...EMPTY_CREATE_RECIPE_DRAFT, ...current, ...update }))}
         onCreate={() => void handleCreate()}
         onClose={closeCreateModal}
         draftRestored={createDraft.restored}
         onClearDraft={createDraft.clear}
+        chosenFile={recipeFile?.chosen ?? null}
+        onChooseFile={(file) => void chooseRecipeFile(file)}
       />
 
       <EditRecipeDetailsModal
@@ -238,16 +334,6 @@ export default function RecipeLibraryPage({ userId, onOpenRecipe, onCreateRecipe
           setEditingRecipe(null)
         }}
         onClose={() => setEditingRecipe(null)}
-      />
-
-      <OrderRecipeModal
-        open={orderModalOpen}
-        recipes={library.recipes}
-        loading={library.recipesLoading}
-        orderingRecipeId={orderingRecipeId}
-        onOrder={(recipe) => void startOrder(recipe.id)}
-        onCreateRecipe={openCreateModal}
-        onClose={() => setOrderModalOpen(false)}
       />
 
       <ConfirmVisibilityModal

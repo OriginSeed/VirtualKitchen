@@ -245,6 +245,8 @@ public class GlobalAssetImageService {
             assetStore.markFailed(assetKey, token, describeFailure(e));
             // Any generated payload is retained in the artifact store; a retry or the recovery job reuses it.
             operation.failed(e, "outcome=failed payloadRetained=true");
+        } finally {
+            operation.close();
         }
     }
 

@@ -48,8 +48,8 @@ export const buildCookModeSlides = (sections: RecipeTimelineSection[]): Slidesho
       label: `${where}Step ${item.number} of ${totalSteps}`,
       instruction: item.instructionText,
       description: description || undefined,
-      // A preparation has one image for the whole flow; every slide of it shows that.
-      imageUrl: flow ? flow.imageUrl : item.imageUrl,
+      // A preparation step shows its own image; an older preparation has one image for the whole flow, on every slide.
+      imageUrl: flow && !flow.stepImages ? flow.imageUrl : item.imageUrl ?? flow?.imageUrl,
       stepNumber: item.number,
     }
   }))

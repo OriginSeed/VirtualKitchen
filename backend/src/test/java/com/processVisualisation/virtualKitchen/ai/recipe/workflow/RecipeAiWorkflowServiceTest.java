@@ -19,6 +19,7 @@ import com.processVisualisation.virtualKitchen.ai.recipe.visualization.model.Vis
 import com.processVisualisation.virtualKitchen.ai.recipe.visualization.model.VisualizationJobStatus;
 import com.processVisualisation.virtualKitchen.ai.recipe.workflow.dto.RecipeAiTaskSelectionDTO;
 import com.processVisualisation.virtualKitchen.ai.recipe.workflow.dto.RecipeAiWorkflowCreateRequestDTO;
+import com.processVisualisation.virtualKitchen.ai.recipe.workflow.dto.RecipeAiWorkflowEstimateDTO;
 import com.processVisualisation.virtualKitchen.ai.recipe.workflow.dto.RecipeAiWorkflowResponseDTO;
 import com.processVisualisation.virtualKitchen.ai.recipe.workflow.model.RecipeAiTaskStatus;
 import com.processVisualisation.virtualKitchen.ai.recipe.workflow.model.RecipeAiTaskType;
@@ -91,6 +92,9 @@ class RecipeAiWorkflowServiceTest {
     private RecipeProcessVisualizationJobService visualizationJobService;
     private VisualizationJobRepository visualizationJobRepository;
     private StepNarrationService narrationService;
+    private RecipeAiWorkflowEstimator estimator;
+    /** The step counts each estimate was priced with. */
+    private final List<RecipeAiWorkflowEstimator.StepCounts> pricedCounts = new ArrayList<>();
     private RecipeAiWorkflowService service;
 
     private RecipeTemplate recipe;
@@ -111,7 +115,12 @@ class RecipeAiWorkflowServiceTest {
         visualizationJobService = mock(RecipeProcessVisualizationJobService.class);
         visualizationJobRepository = mock(VisualizationJobRepository.class);
         narrationService = mock(StepNarrationService.class);
-        RecipeAiWorkflowEstimator estimator = mock(RecipeAiWorkflowEstimator.class);
+        estimator = mock(RecipeAiWorkflowEstimator.class);
+        when(estimator.estimate(any(), anyList(), any())).thenAnswer(inv -> {
+            RecipeAiWorkflowEstimator.StepCounts counts = inv.getArgument(2);
+            pricedCounts.add(counts);
+            return RecipeAiWorkflowEstimateDTO.builder().tasks(List.of()).build();
+        });
         service = new RecipeAiWorkflowService(workflowRepository, mongoTemplate, recipeRepository, processRepository,
                 stepSource, generationJobService, generationJobRepository, visualizationJobService,
                 visualizationJobRepository, narrationService, estimator,
@@ -327,6 +336,61 @@ class RecipeAiWorkflowServiceTest {
     }
 
     @Test
+    void modelsPickedAtApprovalReplaceTheRunsChoices() {
+        List<String> ttsModelAtStart = new ArrayList<>();
+        when(narrationService.ensureAll(eq(USER), eq(RECIPE), anyLong(), anyList())).thenAnswer(inv -> {
+            ttsModelAtStart.add(AiRunModels.keyFor(AiCapability.TEXT_TO_SPEECH).orElse(null));
+            return List.of();
+        });
+        RecipeAiTaskSelectionDTO selection = new RecipeAiTaskSelectionDTO(List.of(PROCESS, NARRATION), false);
+        selection.setModelKeys(new LinkedHashMap<>(Map.of("TEXT_TO_TEXT", "premium-text", "TEXT_TO_SPEECH", "old-tts")));
+        service.create(USER, RECIPE, new RecipeAiWorkflowCreateRequestDTO(selection, "Boil 2 eggs"));
+        completeGeneration(true);
+
+        RecipeAiWorkflowResponseDTO approved = service.approve(USER, RECIPE, stored.getId(), 3L,
+                new LinkedHashMap<>(Map.of("TEXT_TO_SPEECH", "new-tts")));
+
+        assertEquals(List.of("new-tts", "new-tts"), ttsModelAtStart);
+        assertEquals(Map.of("TEXT_TO_TEXT", "premium-text", "TEXT_TO_SPEECH", "new-tts"), stored.getModelKeys(),
+                "capabilities not picked again keep the run's choice");
+        assertEquals(stored.getModelKeys(), approved.getModelKeys());
+    }
+
+    @Test
+    void aBlankModelAtApprovalGoesBackToTheAccountSetting() {
+        RecipeAiTaskSelectionDTO selection = new RecipeAiTaskSelectionDTO(List.of(PROCESS, NARRATION), false);
+        selection.setModelKeys(new LinkedHashMap<>(Map.of("TEXT_TO_SPEECH", "old-tts")));
+        service.create(USER, RECIPE, new RecipeAiWorkflowCreateRequestDTO(selection, "Boil 2 eggs"));
+        completeGeneration(true);
+
+        service.approve(USER, RECIPE, stored.getId(), 3L, new LinkedHashMap<>(Map.of("TEXT_TO_SPEECH", "")));
+
+        assertEquals(Map.of(), stored.getModelKeys());
+    }
+
+    @Test
+    void aRetryRunsWithTheModelsPickedForIt() {
+        approvedWorkflow(VISUALS);
+        stored.setVisualizationJobs(new ArrayList<>(List.of(
+                new RecipeAiWorkflow.VisualizationJobRef(MAIN, "j-main"),
+                new RecipeAiWorkflow.VisualizationJobRef(SUB, "j-sub"))));
+        doReturn(List.of(
+                vizJob("j-main", VisualizationJobStatus.COMPLETED, 2, 2),
+                vizJob("j-sub", VisualizationJobStatus.COMPLETED_WITH_ERRORS, 1, 0)))
+                .when(visualizationJobRepository).findAllById(any());
+        List<String> imageModelAtStart = new ArrayList<>();
+        when(visualizationJobService.startJob(eq(USER), eq(RECIPE), anyLong(), anyList())).thenAnswer(inv -> {
+            imageModelAtStart.add(AiRunModels.keyFor(AiCapability.TEXT_TO_IMAGE).orElse(null));
+            return VisualizationJobResponseDTO.builder().jobId("viz-retry").processId(inv.getArgument(2)).build();
+        });
+
+        service.retryTask(USER, RECIPE, stored.getId(), VISUALS, new LinkedHashMap<>(Map.of("TEXT_TO_IMAGE", "better-image")));
+
+        assertEquals(List.of("better-image"), imageModelAtStart);
+        assertEquals(Map.of("TEXT_TO_IMAGE", "better-image"), stored.getModelKeys());
+    }
+
+    @Test
     void theRunsNarrationModelIsInScopeWhileNarrationStarts() {
         List<String> ttsModelAtStart = new ArrayList<>();
         when(narrationService.ensureAll(eq(USER), eq(RECIPE), anyLong(), anyList())).thenAnswer(inv -> {
@@ -435,6 +499,68 @@ class RecipeAiWorkflowServiceTest {
 
         verify(narrationService).ensureAll(USER, RECIPE, MAIN, List.of("s2"));
         verify(narrationService, never()).ensureAll(eq(USER), eq(RECIPE), eq(SUB), any());
+    }
+
+    // --- keep or replace existing images/narration ---------------------------------------------------
+
+    @Test
+    void regenerateChosenAtCreation_approvalStartsVisualsAndNarrationThatReplaceWhatExists() {
+        when(visualizationJobService.startJob(eq(USER), eq(RECIPE), anyLong(), anyList(), eq(true))).thenAnswer(inv ->
+                VisualizationJobResponseDTO.builder().jobId("viz-new-" + inv.getArgument(2)).processId(inv.getArgument(2)).build());
+        RecipeAiTaskSelectionDTO selection = new RecipeAiTaskSelectionDTO(List.of(PROCESS, VISUALS, NARRATION), false);
+        selection.setOverwriteExisting(true);
+        service.create(USER, RECIPE, new RecipeAiWorkflowCreateRequestDTO(selection, "Boil 2 eggs"));
+        completeGeneration(true);
+        assertTrue(stored.isOverwriteExisting());
+
+        RecipeAiWorkflowResponseDTO approved = service.approve(USER, RECIPE, stored.getId(), 3L);
+
+        assertTrue(approved.isOverwriteExisting());
+        verify(visualizationJobService).startJob(eq(USER), eq(RECIPE), eq(MAIN), anyList(), eq(true));
+        verify(visualizationJobService, never()).startJob(eq(USER), eq(RECIPE), eq(MAIN), anyList());
+        verify(narrationService).ensureAll(eq(USER), eq(RECIPE), eq(MAIN), anyList(), eq(true));
+    }
+
+    @Test
+    void keepIsTheDefault_andApprovalCanSwitchToRegenerate() {
+        service.create(USER, RECIPE, new RecipeAiWorkflowCreateRequestDTO(
+                new RecipeAiTaskSelectionDTO(List.of(PROCESS, NARRATION), false), "Boil 2 eggs"));
+        completeGeneration(true);
+        assertFalse(stored.isOverwriteExisting());
+
+        service.approve(USER, RECIPE, stored.getId(), 3L, null, true);
+
+        assertTrue(stored.isOverwriteExisting());
+        verify(narrationService).ensureAll(eq(USER), eq(RECIPE), eq(MAIN), anyList(), eq(true));
+    }
+
+    @Test
+    void estimate_countsExistingNarration_andPricesItOnlyWhenReplacing() {
+        when(narrationService.list(USER, RECIPE, MAIN)).thenReturn(List.of(narration("s1", "READY"), narration("s2", "FAILED")));
+        when(narrationService.list(USER, RECIPE, SUB)).thenReturn(List.of(narration("s3", "READY")));
+        RecipeAiTaskSelectionDTO keep = new RecipeAiTaskSelectionDTO(List.of(NARRATION), false);
+        RecipeAiTaskSelectionDTO replace = new RecipeAiTaskSelectionDTO(List.of(NARRATION), false);
+        replace.setOverwriteExisting(true);
+
+        RecipeAiWorkflowEstimateDTO kept = service.estimate(USER, RECIPE, keep);
+        service.estimate(USER, RECIPE, replace);
+
+        assertEquals(2, kept.getExistingNarrations());
+        assertEquals(1, pricedCounts.get(0).maxNarrationSteps(), "only the failed step is narrated");
+        assertEquals(3, pricedCounts.get(1).maxNarrationSteps(), "every step is narrated again");
+    }
+
+    @Test
+    void retryNeverReplacesWhatWasMade_evenWhenTheRunRegenerates() {
+        approvedWorkflow(NARRATION);
+        stored.setOverwriteExisting(true);
+        when(narrationService.list(USER, RECIPE, MAIN)).thenReturn(List.of(narration("s1", "READY"), narration("s2", "FAILED")));
+        when(narrationService.list(USER, RECIPE, SUB)).thenReturn(List.of(narration("s3", "READY")));
+
+        service.retryTask(USER, RECIPE, stored.getId(), NARRATION);
+
+        verify(narrationService).ensureAll(USER, RECIPE, MAIN, List.of("s2"));
+        verify(narrationService, never()).ensureAll(any(), any(), any(), any(), eq(true));
     }
 
     @Test
@@ -576,6 +702,8 @@ class RecipeAiWorkflowServiceTest {
                     case "activeKey" -> stored.setActiveKey((String) value);
                     case "completedAt" -> stored.setCompletedAt((Instant) value);
                     case "dismissedAt" -> stored.setDismissedAt((Instant) value);
+                    case "modelKeys" -> stored.setModelKeys(new LinkedHashMap<>((Map<String, String>) value));
+                    case "overwriteExisting" -> stored.setOverwriteExisting((Boolean) value);
                     default -> { }
                 }
             });

@@ -69,6 +69,8 @@
   --flow-success: #4ade80;
   --flow-success-soft: rgba(74, 222, 128, 0.14);
   --flow-success-border: rgba(74, 222, 128, 0.4);
+  /* Text on success-soft backgrounds: the light theme's dark green is unreadable here. */
+  --flow-success-strong: #86efac;
   --flow-warning: #fbbf24;
   --flow-warning-soft: rgba(251, 191, 36, 0.14);
   --flow-warning-border: rgba(251, 191, 36, 0.4);

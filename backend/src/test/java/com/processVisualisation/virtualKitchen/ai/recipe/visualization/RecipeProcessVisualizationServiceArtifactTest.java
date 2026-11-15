@@ -96,6 +96,8 @@ class RecipeProcessVisualizationServiceArtifactTest {
 
         assetStore = new ConcurrentHashMap<>();
         imageProperties = new VisualizationImageProperties();
+        // These tests pin down the requests of self-contained prompts, as made with the focused view off.
+        imageProperties.setFocusedViewEnabled(false);
         AtomicLong idCounter = new AtomicLong();
         when(sequenceGeneratorService.generateSequence(anyString())).thenAnswer(inv -> idCounter.incrementAndGet());
         when(assetRepository.findByVisualizationKey(anyString()))

@@ -30,7 +30,13 @@ public class RecipeAiTaskSelectionDTO {
      */
     private Map<String, String> modelKeys = new LinkedHashMap<>();
 
+    /**
+     * Steps that already have an image or narration: false (default) keeps them and only fills what is missing; true
+     * regenerates and replaces them.
+     */
+    private boolean overwriteExisting;
+
     public RecipeAiTaskSelectionDTO(List<RecipeAiTaskType> tasks, boolean completeExperience) {
-        this(tasks, completeExperience, new LinkedHashMap<>());
+        this(tasks, completeExperience, new LinkedHashMap<>(), false);
     }
 }

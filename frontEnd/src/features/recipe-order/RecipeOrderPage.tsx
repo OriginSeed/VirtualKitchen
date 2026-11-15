@@ -7,6 +7,7 @@ import '../../styles/flow-ui.css'
 import './recipeOrder.css'
 import OrderStatusBadge from './components/OrderStatusBadge'
 import OrderStepper from './components/OrderStepper'
+import DemoNotice from './components/DemoNotice'
 import { recipeOrderPath, resolveOrderView, type RecipeOrderView } from './model/orderView'
 import ConfirmStep from './steps/ConfirmStep'
 import IngredientsStep from './steps/IngredientsStep'
@@ -146,11 +147,16 @@ export default function RecipeOrderPage({ orderId, view, userId }: RecipeOrderPa
           <div>
             <Link to="/kitchen/orders" className="ro-back">← All orders</Link>
             <h1 className="ro-page-title">
-              Recipe order <span className="ro-code">{order.orderCode}</span>
+              Recipe order <span className="ro-code">{order.orderCode}</span> <span className="vk-chip vk-chip-demo">Demo</span>
             </h1>
           </div>
           <OrderStatusBadge status={order.status} />
         </header>
+
+        <DemoNotice variant="strong" icon="🧪">
+          This is a demo order. Chef-prepared delivery is coming soon — payment, preparation and delivery here are
+          simulated, nothing is cooked and nothing is charged.
+        </DemoNotice>
 
         <OrderStepper orderId={order.id} status={order.status} view={resolved.view} />
 

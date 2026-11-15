@@ -17,27 +17,35 @@ and the conventions that keep it that way.
 src/
 ├── main.tsx          mounts the providers (theme, notifications, confirm, AI job tracker) and <App />
 ├── app/              the app shell
-│   ├── App.tsx            the route table + signed-in / admin guards
+│   ├── App.tsx            the route table + signed-in / admin guards (see "Navigation" below)
+│   ├── AppSplash.tsx      shown while a stored session is restored;  NotFoundPage.tsx: unknown addresses
 │   ├── routes/            route components that read URL params and wire features together
-│   └── session/           useAppSession (restore / login / logout / 401) and the SignedIn context
+│   └── session/           useAppSession (restore / login / logout / 401 notice), the SignedIn context,
+│                          returnPath (where to land after sign-in; only /kitchen paths are accepted)
 ├── api/              HTTP client (auth header, 401 → sign-out, envelope unwrapping) + one module per backend area
 ├── types/            domain types shared across features (kitchen, recipe, process, recipe order, …)
 ├── shared/           feature-independent building blocks
 │   ├── catalog/           step & ingredient catalogs (stepCatalogs.data.json is also read by the backend build)
 │   ├── components/        confirm dialog, notifications, payment gateway, ActionMenu, ListEnd, SearchableSelect, …
+│   │   └── page/              PageHeader, EmptyState, ErrorState, SkeletonGrid + page.css (vk-btn, vk-chip, …)
 │   ├── format/            money, date, number formatting
 │   ├── hooks/             useApiData (load/reload/mutate), useIncrementalReveal
-│   ├── cart/  drafts/  theme/
+│   ├── cart/              cartStorage (fires CART_CHANGED_EVENT) and useCartCount (the navbar badge)
+│   ├── drafts/  theme/
+│   ├── clipboard.ts       copyText(text)
 │   └── errors.ts          errorMessage(error, fallback)
 ├── styles/           global.css (Tailwind), theme-tokens.css, flow-ui.css (shared flow-* component classes)
 └── features/
     ├── home/              landing page
     ├── auth/              login / signup / OTP / password reset
-    ├── kitchen/           layout/ (navbar), inventory/, shop/ (catalog, cart, checkout), orders/ (order history)
-    ├── recipes/           recipe library page, its components and useRecipeLibrary
-    ├── recipe-order/      order wizard: confirm → ingredients → payment → tracking → receipt   (public API: index.ts)
+    ├── kitchen/           layout/ (navbar, KitchenWorkspaceLayout side nav, kitchenSections), overview/ (My Kitchen
+    │                      dashboard), inventory/ (the read-only pantry: Ingredients / Equipment), shop/, orders/
+    ├── recipes/           RecipeLibraryPage (scope "mine" = My Recipes, "discover" = Discover), create dialog
+    ├── recipe-order/      entry/ (the "Order" dialog: coming soon + demo), the demo order wizard:
+    │                      confirm → ingredients → payment → receipt → track   (public API: index.ts)
     ├── recipe-tool/       the recipe tool                                                       (public API: index.ts)
-    └── admin/ai-analytics/ admin AI cost & usage dashboards
+    ├── settings/          account settings (AI models, narration voice, credits)
+    └── admin/             admin layout, AI analytics, AI evaluation, runtime config
 ```
 
 ### Inside `features/recipe-tool`
@@ -46,7 +54,8 @@ src/
 recipe-tool/
 ├── index.ts          everything other features and the app may use
 ├── recipeToolRoutes.ts
-├── page/             RecipeToolPage (editor ⇄ view tabs), its navbar, summary and edit-details dialog
+├── page/             RecipeToolPage (editor ⇄ view tabs), its header (readiness, save status, Cook mode, Publish /
+│                     Copy link, Order), useCookMode, summary and edit-details dialog
 ├── model/            the step/condition data model and graph logic, shared by every folder below
 │                     (incl. preparationFlows / mergePreparations: the one Preparation and its flows,
 │                     recipeReadiness: whole-recipe Preparation + Main checks, stepAnnotations: @ annotations
@@ -54,17 +63,35 @@ recipe-tool/
 ├── session/          RecipeSessionProvider: the one in-memory editing session (autosave, undo/redo,
 │                     crash recovery in useRecoveryMirror, generated images in useVisualsApplier,
 │                     live readiness + the gate for ordering/cook mode in useRecipeReadiness)
-├── jobs/             JobTracker: app-wide polling of AI generation, visuals and workflow jobs
+├── jobs/             JobTracker: app-wide polling of AI generation, visuals and workflow jobs; AiJobIndicator (navbar)
 ├── editor/           the React Flow editor: components/, hooks/, adapters/ (process ⇄ canvas, AI edits),
 │                     model/ (layout, slides, deletion wording), nodes/, context/, styles/;
 │                     components/annotations/: the @ description editor, its suggestions and amount popover
 ├── view/             the read-only "Recipe Process" view (recipeView.ts builds it from the graphs;
 │                     processExplanation.ts: Preparation flow cards, main-process continuity)
 ├── walkthrough/      step slideshow + narration player (used by the editor's Preview and the view's cook mode)
-├── workflow/         AI Recipe Creation (generate → approve → visuals → narration)
-├── process-list/     the standalone list of a recipe's processes
+├── workflow/         AI Recipe Creation (generate → approve → visuals → narration); seedAiRecipeCreation
 └── styles/           modals.css, RecipePropertiesPanel.css
 ```
+
+## Navigation
+
+```text
+/                         landing page (sign-in dialog)          /auth?from=…  sign-in page, returns to `from`
+/kitchen                  My Kitchen (side nav, a tab strip on narrow screens — kitchen/layout/kitchenSections.ts):
+    (index)  Overview · recipes  My Recipes · ingredients / equipment  Pantry · shop · orders
+/kitchen/discover         public recipes
+/kitchen/recipes/:id/tool/editor|process   Recipe Editor / Recipe Process (full screen, outside the side nav)
+/kitchen/recipe-orders/:id/:view           demo recipe order (full screen)
+/kitchen/settings         account settings          /kitchen/admin/*   admin (ADMIN only)
+```
+
+The navbar has the areas (My Kitchen, Discover, Admin for admins), then "+ New recipe" (`/kitchen/recipes?create=1`),
+the background-AI indicator, the cart (`/kitchen/shop?cart=open`), theme and the account menu. Old addresses
+(`/kitchen/inventory`, `?tab=global`, the removed standalone process pages) redirect.
+
+Breakpoints used across pages: 480px (phones), 768px (tablets: kitchen padding, editor note), 900px (side nav →
+tab strip), 1000px (landing menu).
 
 ## Dependency rules
 
@@ -73,6 +100,7 @@ Imports only go downward; there are no cycles between folders.
 ```text
 app ──► features ──► shared / api / types
 kitchen, recipes ──► recipe-order ──► recipe-tool          (other features: no feature imports)
+app ──► recipe-tool for the navbar's AiJobIndicator, passed into KitchenLayout as `navbarExtras`
 recipe-tool: page ──► editor / view / workflow ──► session / jobs / walkthrough ──► model
 ```
 

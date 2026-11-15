@@ -24,10 +24,9 @@ import com.processVisualisation.virtualKitchen.common.concurrent.NamedTask;
 import com.processVisualisation.virtualKitchen.common.concurrent.TaskPool;
 import com.processVisualisation.virtualKitchen.common.concurrent.TaskResult;
 import com.processVisualisation.virtualKitchen.common.logging.FailureLogger;
-import com.processVisualisation.virtualKitchen.common.logging.MdcKeys;
+import com.processVisualisation.virtualKitchen.common.logging.UsageLedger;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.slf4j.MDC;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Service;
@@ -397,7 +396,8 @@ public class AiRequestQueueService {
         job.setMaxAttempts(requestProperties.getMaxRetries() + 1);
         job.setCorrelationType(correlationType);
         job.setCorrelationId(correlationId);
-        job.setOperationId(MDC.get(MdcKeys.JOB_ID));
+        // The job, or for a plain HTTP request "req:<requestId>": whoever drains the usage ledger at the end.
+        job.setOperationId(UsageLedger.currentKey());
         job.setQueuedAt(Instant.now());
         // A DuplicateKeyException here (same userId+idempotencyKey already exists) is intentionally
         // left to propagate to GlobalExceptionHandler's existing 409 handler rather than caught here —
@@ -531,15 +531,22 @@ public class AiRequestQueueService {
      * The one INFO/WARN line per AI request (across all its attempts and provider calls): what it was for, which
      * model served it, how long it took, the tokens it used and what it cost. The same figures are persisted on
      * the {@code ai_request_jobs} row, and attributed to the surrounding operation via {@link AiCostLedger}.
-     * Cost is tokens x the model's configured prices ({@code ai.models[n].*-usd-per-million}); {@code NA} means
-     * the model has no prices configured.
+     * Cost is tokens x the model's configured prices ({@code ai.models[n].*-usd-per-million}); for a model priced per
+     * image or per audio second instead, the rate card's flat price. {@code unpriced} means it is unknown.
      */
     private void logOutcome(String event, AiRequestJob job, ModelSelectionOutcome selection,
                             AiUsageSummary summary, Exception error) {
+        if (summary.estimatedCostUsd() == null) {
+            Double flat = analytics == null ? null : analytics.flatCostUsd(selection.model().getKey(), job.getCapability(), error == null);
+            if (flat != null) {
+                summary = new AiUsageSummary(summary.providerCalls(), summary.promptTokens(), summary.cachedTokens(),
+                        summary.completionTokens(), summary.thoughtsTokens(), summary.totalTokens(), flat);
+            }
+        }
         AiCostLedger.record(job.getOperationId(), summary);
         Double costUsd = summary.estimatedCostUsd();
-        String costUsdText = costUsd == null ? "NA" : String.format("%.6f", costUsd);
-        String costInrText = costUsd == null ? "NA" : String.format("%.4f", costUsd * requestProperties.getUsdToInr());
+        String costUsdText = costUsd == null ? "unpriced" : String.format("%.6f", costUsd);
+        String costInrText = costUsd == null ? "unpriced" : String.format("%.4f", costUsd * requestProperties.getUsdToInr());
         String format = "event={} operation={} capability={} modelKey={} model={} tier={} usedFallback={} "
                 + "durationMs={} attempts={} providerCalls={} inputTokens={} cachedTokens={} outputTokens={} "
                 + "thoughtsTokens={} costUsd={} costInr={} aiRequestId={}";

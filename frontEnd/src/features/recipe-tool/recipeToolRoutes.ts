@@ -11,3 +11,7 @@ export const isRecipeToolView = (value: unknown): value is RecipeToolView =>
 
 export const recipeToolPath = (recipeId: number, view?: RecipeToolView) =>
   view ? `/kitchen/recipes/${recipeId}/tool/${view}` : `/kitchen/recipes/${recipeId}/tool`
+
+/** The link to share a (public) recipe: its Recipe Process. Signed-out visitors sign in first and land on it. */
+export const recipeShareUrl = (recipeId: number, origin: string = globalThis.location?.origin ?? '') =>
+  `${origin}${recipeToolPath(recipeId, 'process')}`
