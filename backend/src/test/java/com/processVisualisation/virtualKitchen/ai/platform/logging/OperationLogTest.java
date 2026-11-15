@@ -78,6 +78,32 @@ class OperationLogTest {
     }
 
     @Test
+    void aJobStartedInsideAnotherRecordsItsParentAndCloseRestoresTheOuterJob() {
+        try (OperationLog outer = OperationLog.start(log, "outer_job", "job-outer", "")) {
+            try (OperationLog inner = OperationLog.start(log, "inner_job", "job-inner", "")) {
+                assertThat(MDC.get(MdcKeys.JOB_ID)).isEqualTo("job-inner");
+                assertThat(MDC.get(MdcKeys.PARENT_JOB_ID)).isEqualTo("job-outer");
+            }
+            assertThat(MDC.get(MdcKeys.JOB_ID)).isEqualTo("job-outer");
+            assertThat(MDC.get(MdcKeys.PARENT_JOB_ID)).isNull();
+        }
+        assertThat(MDC.get(MdcKeys.JOB_ID)).as("no job id leaks past the operation").isNull();
+    }
+
+    @Test
+    void theClosingLineSaysWhatTheOperationUsedBesidesAi() {
+        try (LogCapture logs = LogCapture.of(OperationLogTest.class);
+             OperationLog operation = OperationLog.start(log, "demo_job", "job-usage", "")) {
+            com.processVisualisation.virtualKitchen.common.logging.UsageLedger.increment(
+                    com.processVisualisation.virtualKitchen.common.logging.UsageLedger.Counter.DB_WRITES);
+            operation.completed("");
+
+            assertThat(logs.events("demo_job_completed").get(0).getFormattedMessage())
+                    .contains("aiRequests=0").contains("dbReads=0 dbWrites=1");
+        }
+    }
+
+    @Test
     void oneLineFlattensAndBoundsProviderMessages() {
         assertThat(FailureLogger.oneLine("line one\n  \"quoted\"\tline two")).isEqualTo("line one 'quoted' line two");
         assertThat(FailureLogger.oneLine("x".repeat(500))).hasSize(303).endsWith("...");

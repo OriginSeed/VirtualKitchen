@@ -210,7 +210,11 @@ public class RecipeOrderService {
         order.getTimestamps().setCreatedAt(now);
         order.getTimestamps().setUpdatedAt(now);
         event(order, "CREATED", null, DRAFT, "Order draft created", false);
-        return orders.insert(order);
+        RecipeOrder created = orders.insert(order);
+        log.info("event=recipe_order_created orderId={} recipeId={} kitchenId={} status={} servings={} stepCount={} processCount={}",
+                created.getId(), created.getRecipeId(), created.getKitchenId(), created.getStatus(), created.getServings(),
+                snapshot.getStepCount(), processes.size());
+        return created;
     }
 
     /** Changes servings, address or notes. A new serving count needs the recipe re-confirmed. */
@@ -230,7 +234,11 @@ public class RecipeOrderService {
         if (order.getStatus() != from) {
             event(order, "DETAILS_CHANGED", from, order.getStatus(), "Servings changed to " + order.getServings() + "; confirm the recipe again", false);
         }
-        return save(order);
+        RecipeOrder saved = save(order);
+        log.info("event=recipe_order_updated orderId={} fromStatus={} status={} servings={} addressChanged={} notesChanged={}",
+                saved.getId(), from, saved.getStatus(), saved.getServings(),
+                request.deliveryAddress() != null, request.notes() != null);
+        return saved;
     }
 
     /**
@@ -265,7 +273,11 @@ public class RecipeOrderService {
         order.getTimestamps().setRecipeConfirmedAt(now());
         event(order, "RECIPE_CONFIRMED", DRAFT, AWAITING_INGREDIENTS,
                 "Recipe confirmed for " + order.getServings() + (order.getBaseServings() != null ? " servings" : " batch(es)"), false);
-        return save(order);
+        RecipeOrder saved = save(order);
+        log.info("event=recipe_order_confirmed orderId={} status={} servings={} requirementCount={} issueCount={} stepCount={}",
+                saved.getId(), saved.getStatus(), saved.getServings(), saved.getRequirements().size(),
+                saved.getRequirementIssues().size(), saved.getTotalSteps());
+        return saved;
     }
 
     // --- inventory reservation ---
@@ -296,6 +308,8 @@ public class RecipeOrderService {
         int attempt = order.getReservationAttempt() + 1;
         AllocationPlan plan = availability.plan(order, attempt);
         if (!plan.feasible()) {
+            log.warn("event=recipe_order_reserve_rejected orderId={} status={} reason=insufficient_stock shortageCount={}",
+                    order.getId(), order.getStatus(), plan.shortages().size());
             throw RecipeOrderException.conflict("Not enough ingredients in your kitchen: " + plan.shortages().stream()
                     .map(line -> line.name() + " (missing " + format(line.missing()) + " " + line.unit() + ")")
                     .reduce((a, b) -> a + ", " + b).orElse(""));
@@ -334,7 +348,15 @@ public class RecipeOrderService {
             event(order, "INGREDIENTS_RESERVED", from, AWAITING_PAYMENT,
                     "Reserved " + order.getAllocations().size() + " inventory item(s) for this order", false);
         }
-        return save(order);
+        RecipeOrder saved = save(order);
+        if (failed) {
+            log.warn("event=recipe_order_reserve_failed orderId={} status={} reason=inventory_conflict attempt={} releasedCount={}",
+                    saved.getId(), saved.getStatus(), attempt, saved.getReleasedAllocations().size());
+        } else {
+            log.info("event=recipe_order_reserved orderId={} status={} attempt={} allocationCount={}",
+                    saved.getId(), saved.getStatus(), attempt, saved.getAllocations().size());
+        }
+        return saved;
     }
 
     // --- demo payment ---
@@ -378,7 +400,10 @@ public class RecipeOrderService {
             order.getTimestamps().setPaidAt(now);
             event(order, "PAYMENT_SUCCEEDED", AWAITING_PAYMENT, CONFIRMED,
                     "Demo payment approved (simulated: no money was moved)", true);
-            return savePayment(order, userId, request.idempotencyKey());
+            RecipeOrder paid = savePayment(order, userId, request.idempotencyKey());
+            log.info("event=recipe_order_paid orderId={} status={} paymentAttemptCount={} demo=true",
+                    paid.getId(), paid.getStatus(), paid.getPaymentAttempts().size());
+            return paid;
         }
 
         attempt.setStatus(PaymentStatus.FAILED);
@@ -390,7 +415,10 @@ public class RecipeOrderService {
         order = savePayment(order, userId, request.idempotencyKey());
         // Release after the failure is recorded; if this is interrupted, the next reserve or cancel finishes it.
         releaseAll(order);
-        return save(order);
+        RecipeOrder declined = save(order);
+        log.warn("event=recipe_order_payment_declined orderId={} status={} reason=demo_decline paymentAttemptCount={}",
+                declined.getId(), declined.getStatus(), declined.getPaymentAttempts().size());
+        return declined;
     }
 
     // --- simulated preparation and delivery ---
@@ -435,11 +463,20 @@ public class RecipeOrderService {
                 order.setStatus(COMPLETING);
                 order.getTimestamps().setDeliveredAt(now);
                 event(order, "DELIVERED", from, COMPLETING, "Simulated delivery: delivered", true);
-                return finishCompletion(save(order));
+                RecipeOrder delivered = save(order);
+                logAdvanced(delivered, from);
+                return finishCompletion(delivered);
             }
             default -> throw RecipeOrderException.conflict("Unexpected next stage " + next.status());
         }
-        return save(order);
+        RecipeOrder saved = save(order);
+        logAdvanced(saved, from);
+        return saved;
+    }
+
+    private static void logAdvanced(RecipeOrder order, RecipeOrderStatus from) {
+        log.info("event=recipe_order_advanced orderId={} fromStatus={} status={} stepIndex={} totalSteps={}",
+                order.getId(), from, order.getStatus(), order.getCurrentStepIndex(), order.getTotalSteps());
     }
 
     /** Consumes every held ingredient (each row operation applies at most once) and completes the order. */
@@ -461,7 +498,10 @@ public class RecipeOrderService {
         order.setStatus(COMPLETED);
         order.getTimestamps().setCompletedAt(now());
         event(order, "COMPLETED", COMPLETING, COMPLETED, "Order complete; ingredient usage recorded", false);
-        return save(order);
+        RecipeOrder completed = save(order);
+        log.info("event=recipe_order_completed orderId={} status={} allocationCount={}",
+                completed.getId(), completed.getStatus(), completed.getAllocations().size());
+        return completed;
     }
 
     // --- cancellation ---
@@ -481,14 +521,19 @@ public class RecipeOrderService {
         }
         RecipeOrderStatus from = order.getStatus();
         releaseAll(order);
+        boolean refunded = false;
         if (order.getPayment() != null && order.getPayment().getStatus() == PaymentStatus.PAID) {
             order.getPayment().setStatus(PaymentStatus.REFUNDED);
             event(order, "PAYMENT_REFUNDED", from, CANCELLED, "Demo payment refunded (simulated)", true);
+            refunded = true;
         }
         order.setStatus(CANCELLED);
         order.getTimestamps().setCancelledAt(now());
         event(order, "CANCELLED", from, CANCELLED, "Order cancelled; reserved ingredients released", false);
-        return save(order);
+        RecipeOrder cancelled = save(order);
+        log.info("event=recipe_order_cancelled orderId={} fromStatus={} status={} refunded={} releasedCount={}",
+                cancelled.getId(), from, cancelled.getStatus(), refunded, cancelled.getReleasedAllocations().size());
+        return cancelled;
     }
 
     // --- helpers ---

@@ -1,5 +1,7 @@
 package com.processVisualisation.virtualKitchen.ai.platform.artifact;
 
+import com.processVisualisation.virtualKitchen.common.logging.LogScope;
+
 import com.processVisualisation.virtualKitchen.ai.platform.artifact.consumer.AiArtifactConsumer;
 import com.processVisualisation.virtualKitchen.ai.platform.artifact.consumer.AiArtifactConsumerRegistry;
 import com.processVisualisation.virtualKitchen.common.logging.MdcKeys;
@@ -67,7 +69,7 @@ public class AiArtifactRecoveryJob {
             return;
         }
         // Scheduler threads have no request ID; a per-sweep job ID groups this sweep's log lines instead.
-        try (MDC.MDCCloseable ignored = MDC.putCloseable(MdcKeys.JOB_ID,
+        try (LogScope ignored = LogScope.with(MdcKeys.AREA, "system", MdcKeys.ACTION, "scheduled.artifact_sweep", MdcKeys.JOB_ID,
                 "artifact-sweep-" + Long.toHexString(System.currentTimeMillis()))) {
             recoverOrphans();
             collectRetiredPayloads();

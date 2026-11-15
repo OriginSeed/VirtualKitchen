@@ -1,5 +1,7 @@
 package com.processVisualisation.virtualKitchen.recipe.controller;
 
+import com.processVisualisation.virtualKitchen.common.logging.LogAction;
+
 import com.processVisualisation.virtualKitchen.auth.exception.AuthException;
 import com.processVisualisation.virtualKitchen.auth.security.CurrentUser;
 import com.processVisualisation.virtualKitchen.common.web.ApiResponse;
@@ -31,6 +33,7 @@ import java.util.Objects;
  * change and rejects the request otherwise (403).
  */
 @RestController
+@LogAction("recipe")
 @RequestMapping("/api/v1/process-templates")
 public class RecipeTemplateController {
 

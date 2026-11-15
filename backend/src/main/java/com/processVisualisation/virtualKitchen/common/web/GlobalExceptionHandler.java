@@ -32,7 +32,7 @@ import java.util.NoSuchElementException;
  * an appropriate HTTP status. Feature exceptions carry their own status, so
  * this class needs no knowledge of individual features.
  * <p>
- * This is also the one place a failed synchronous request is logged, once: client errors (400/404) at DEBUG,
+ * This is also the one place a failed synchronous request is logged, once: client errors (400/404) at INFO,
  * rejected requests (403/409/422/429, auth) at WARN, AI/provider failures at ERROR without a stack (the type
  * and message say what happened, and the AI client has already logged the call), and anything unexpected at
  * ERROR with the full stack trace. The request ID comes from the MDC.

@@ -14,6 +14,8 @@ import com.processVisualisation.virtualKitchen.store.model.ItemType;
 import com.processVisualisation.virtualKitchen.store.repository.EquipmentRepository;
 import com.processVisualisation.virtualKitchen.store.repository.IngredientRepository;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
@@ -32,6 +34,8 @@ import java.util.stream.Collectors;
  */
 @Service
 public class KitchenInventoryService {
+
+    private static final Logger log = LoggerFactory.getLogger(KitchenInventoryService.class);
 
     @Autowired
     private KitchenInventoryRepository repo;
@@ -61,7 +65,10 @@ public class KitchenInventoryService {
     public KitchenInventoryResponseDTO create(KitchenInventoryRequestDTO dto){
         KitchenInventory ki = mapper.toEntity(dto);
         ki.setId(seq.generateSequence(KitchenInventory.SEQUENCE_NAME));
-        return mapper.toDTO(repo.save(ki));
+        KitchenInventory saved = repo.save(ki);
+        log.info("event=kitchen_inventory_created kitchenInventoryId={} kitchenId={} inventoryId={}",
+                ki.getId(), ki.getKitchenId(), ki.getInventoryId());
+        return mapper.toDTO(saved);
     }
 
     /**
@@ -115,5 +122,6 @@ public class KitchenInventoryService {
      */
     public void delete(Long id){
         repo.deleteById(id);
+        log.info("event=kitchen_inventory_deleted kitchenInventoryId={}", id);
     }
 }

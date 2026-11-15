@@ -1,5 +1,7 @@
 package com.processVisualisation.virtualKitchen.ai.recipe.visualization.controller;
 
+import com.processVisualisation.virtualKitchen.common.logging.LogAction;
+
 import com.processVisualisation.virtualKitchen.ai.platform.preference.RunModelChoices;
 import com.processVisualisation.virtualKitchen.ai.recipe.visualization.RecipeProcessVisualizationJobService;
 import com.processVisualisation.virtualKitchen.ai.recipe.visualization.dto.VisualizationJobRequestDTO;
@@ -23,6 +25,7 @@ import java.time.LocalDateTime;
  * to {@link RecipeProcessVisualizationJobService}.
  */
 @RestController
+@LogAction("visualization")
 @RequestMapping("/api/v1/recipes/{recipeId}/processes/{processId}/visualization")
 public class RecipeProcessVisualizationController {
 

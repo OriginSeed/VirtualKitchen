@@ -62,7 +62,7 @@ export const RecipeAiWorkflowApi = {
       approvedRevision,
       ...(modelKeys ? { modelKeys } : {}),
       ...(overwriteExisting !== undefined ? { overwriteExisting } : {}),
-    })
+    }, { uiAction: 'workflow.approve' })
   },
 
   /** `modelKeys`: the models picked for the retry ('' = account setting); omitted keeps the run's. */

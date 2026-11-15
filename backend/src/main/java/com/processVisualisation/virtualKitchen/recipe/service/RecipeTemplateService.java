@@ -20,6 +20,8 @@ import com.processVisualisation.virtualKitchen.recipe.model.Visibility;
 import com.processVisualisation.virtualKitchen.recipe.repository.RecipeTemplateRepository;
 import com.processVisualisation.virtualKitchen.recipe.validation.ProcessValidationException;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
@@ -40,6 +42,8 @@ import java.util.stream.Collectors;
  */
 @Service
 public class RecipeTemplateService {
+
+    private static final Logger log = LoggerFactory.getLogger(RecipeTemplateService.class);
 
     @Autowired
     private RecipeTemplateRepository repo;
@@ -72,7 +76,10 @@ public class RecipeTemplateService {
     public RecipeTemplateResponseDTO create(RecipeTemplateRequestDTO dto){
         RecipeTemplate pt = mapper.toEntity(dto);
         pt.setId(seq.generateSequence(RecipeTemplate.SEQUENCE_NAME));
-        return mapper.toDTO(repo.save(pt));
+        RecipeTemplate saved = repo.save(pt);
+        log.info("event=recipe_created recipeId={} userId={} visibility={} ingredientCount={}",
+                saved.getId(), saved.getCreatedBy(), saved.getVisibility(), sizeOf(saved.getIngredients()));
+        return mapper.toDTO(saved);
     }
 
     /**
@@ -131,7 +138,9 @@ public class RecipeTemplateService {
         requireOwner(pt, userId);
         pt.setName(dto.getName());
         pt.setDescription(dto.getDescription());
-        return mapper.toDTO(repo.save(pt));
+        RecipeTemplate saved = repo.save(pt);
+        log.info("event=recipe_updated recipeId={} userId={}", saved.getId(), userId);
+        return mapper.toDTO(saved);
     }
 
     /**
@@ -149,7 +158,11 @@ public class RecipeTemplateService {
         RecipeTemplate pt = repo.findById(id).orElseThrow();
         requireOwner(pt, userId);
         pt.setPreparationNotes(notes == null || notes.isBlank() ? null : notes.strip());
-        return mapper.toDetailDTO(repo.save(pt));
+        RecipeTemplate saved = repo.save(pt);
+        log.info("event=recipe_preparation_notes_updated recipeId={} userId={} reset={} length={}",
+                saved.getId(), userId, saved.getPreparationNotes() == null,
+                saved.getPreparationNotes() == null ? 0 : saved.getPreparationNotes().length());
+        return mapper.toDetailDTO(saved);
     }
 
     /**
@@ -164,6 +177,7 @@ public class RecipeTemplateService {
         RecipeTemplate pt = repo.findById(id).orElseThrow();
         requireOwner(pt, userId);
         repo.deleteById(id);
+        log.info("event=recipe_deleted recipeId={} userId={}", id, userId);
     }
 
     /**
@@ -180,8 +194,12 @@ public class RecipeTemplateService {
     public RecipeTemplateResponseDTO updateVisibility(Long id, Long userId, Visibility visibility){
         RecipeTemplate pt = repo.findById(id).orElseThrow();
         requireOwner(pt, userId);
+        Visibility previous = pt.getVisibility();
         pt.setVisibility(visibility);
-        return mapper.toDTO(repo.save(pt));
+        RecipeTemplate saved = repo.save(pt);
+        log.info("event=recipe_visibility_changed recipeId={} userId={} fromVisibility={} visibility={}",
+                saved.getId(), userId, previous, saved.getVisibility());
+        return mapper.toDTO(saved);
     }
 
     /**
@@ -238,6 +256,8 @@ public class RecipeTemplateService {
         eventPublisher.publishEvent(new RecipeCopiedEvent(original.getId(), saved.getId(), userId,
                 processCopy.processIdMap(), processCopy.nodeIdMaps()));
 
+        log.info("event=recipe_copied sourceRecipeId={} recipeId={} userId={} processCount={} ingredientCount={}",
+                original.getId(), saved.getId(), userId, sizeOf(processCopy.processIdMap()), sizeOf(saved.getIngredients()));
         return mapper.toDTO(saved);
     }
 
@@ -259,6 +279,8 @@ public class RecipeTemplateService {
 
         recipe.setIngredients(mapper.toIngredientEntities(ingredients));
         RecipeTemplate saved = repo.save(recipe);
+        log.info("event=recipe_ingredients_updated recipeId={} userId={} ingredientCount={}",
+                saved.getId(), userId, sizeOf(saved.getIngredients()));
         return mapper.toDetailDTO(saved);
     }
 
@@ -272,6 +294,8 @@ public class RecipeTemplateService {
 
         recipe.setNutrition(mapper.toNutritionEntity(nutrition));
         RecipeTemplate saved = repo.save(recipe);
+        log.info("event=recipe_nutrition_updated recipeId={} userId={} cleared={}",
+                saved.getId(), userId, saved.getNutrition() == null);
         return mapper.toDetailDTO(saved);
     }
 
@@ -393,6 +417,14 @@ public class RecipeTemplateService {
         if (userId == null || !userId.equals(pt.getCreatedBy())) {
             throw new RecipeAccessDeniedException("You do not have permission to modify this recipe");
         }
+    }
+
+    private static int sizeOf(java.util.Collection<?> items) {
+        return items == null ? 0 : items.size();
+    }
+
+    private static int sizeOf(java.util.Map<?, ?> items) {
+        return items == null ? 0 : items.size();
     }
 
     private List<RecipeIngredient> cloneIngredients(List<RecipeIngredient> ingredients) {

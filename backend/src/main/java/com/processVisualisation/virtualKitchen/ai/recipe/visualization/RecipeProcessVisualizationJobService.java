@@ -258,6 +258,8 @@ public class RecipeProcessVisualizationJobService {
                     .set("aiUsage", operation.aiTotals())
                     .unset("activeKey");
             mongoTemplate.updateFirst(query(where("_id").is(jobId)), update, VisualizationJob.class);
+        } finally {
+            operation.close();
         }
     }
 

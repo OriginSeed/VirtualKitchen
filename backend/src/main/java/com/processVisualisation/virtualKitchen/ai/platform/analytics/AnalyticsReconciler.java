@@ -2,6 +2,8 @@ package com.processVisualisation.virtualKitchen.ai.platform.analytics;
 
 import com.processVisualisation.virtualKitchen.ai.platform.analytics.model.AiRequestAnalytics;
 import com.processVisualisation.virtualKitchen.ai.platform.analytics.model.AnalyticsStatus;
+import com.processVisualisation.virtualKitchen.common.logging.LogScope;
+import com.processVisualisation.virtualKitchen.common.logging.MdcKeys;
 import org.bson.Document;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -42,6 +44,14 @@ public class AnalyticsReconciler {
             fixedDelayString = "${app.jobs.reconciler.fixed-delay-ms:300000}",
             initialDelayString = "${app.jobs.reconciler.fixed-delay-ms:300000}")
     public void reconcile() {
+        // Scheduler threads have no request context; name this sweep so its lines group together.
+        try (LogScope ignored = LogScope.with(MdcKeys.AREA, "system", MdcKeys.ACTION, "scheduled.analytics_reconcile",
+                MdcKeys.JOB_ID, "analytics-reconcile-" + Long.toHexString(System.currentTimeMillis()))) {
+            closeStaleRecords();
+        }
+    }
+
+    private void closeStaleRecords() {
         Instant cutoff = Instant.now().minus(staleAfter);
         Query stale = Query.query(where("status").in(AnalyticsStatus.QUEUED.name(), AnalyticsStatus.RUNNING.name())
                 .and("updatedAt").lt(cutoff)).limit(500);

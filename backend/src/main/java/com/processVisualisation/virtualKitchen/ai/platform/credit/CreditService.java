@@ -2,6 +2,8 @@ package com.processVisualisation.virtualKitchen.ai.platform.credit;
 
 import com.processVisualisation.virtualKitchen.ai.platform.registry.AiCapability;
 import com.processVisualisation.virtualKitchen.ai.platform.usage.AiUsageSummary;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.data.mongodb.core.FindAndModifyOptions;
 import org.springframework.data.mongodb.core.MongoTemplate;
 import org.springframework.data.mongodb.core.query.Query;
@@ -32,6 +34,8 @@ import static org.springframework.data.mongodb.core.query.Criteria.where;
  */
 @Service
 public class CreditService {
+
+    private static final Logger log = LoggerFactory.getLogger(CreditService.class);
 
     private final MongoTemplate mongoTemplate;
     private final AiCreditProperties creditProperties;
@@ -140,9 +144,12 @@ public class CreditService {
                 query, update, FindAndModifyOptions.options().returnNew(true), UserAiCredit.class);
 
         if (updated == null) {
+            log.warn("event=ai_credits_grant_rejected targetUserId={} amount={} reason=insufficient_balance", userId, amount);
             return Optional.empty();
         }
         appendLedger(userId, CreditTransactionType.ADMIN_ADJUSTMENT, amount, updated.getAvailableBalance(), null, null, null, null);
+        log.info("event=ai_credits_granted targetUserId={} amount={} availableBalance={}",
+                userId, amount, updated.getAvailableBalance());
         return Optional.of(updated);
     }
 

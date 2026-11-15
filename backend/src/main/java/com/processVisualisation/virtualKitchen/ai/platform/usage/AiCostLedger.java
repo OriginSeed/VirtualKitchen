@@ -1,61 +1,48 @@
 package com.processVisualisation.virtualKitchen.ai.platform.usage;
 
-import java.util.Map;
-import java.util.concurrent.ConcurrentHashMap;
+import com.processVisualisation.virtualKitchen.common.logging.UsageLedger;
 
 /**
- * Adds up the AI spend of one background operation (a visualization job, a process generation, a narration)
- * across every AI request it makes, so the operation's "completed" log line and its persisted record can state
- * its total tokens and cost.
+ * The AI side of {@link UsageLedger}: adds up the AI spend of one operation (a background job, or a plain HTTP
+ * request when no job is running) across every AI request it makes, so the operation's closing log line and its
+ * persisted record can state its total tokens and cost.
  * <p>
- * Requests are attributed by the {@code jobId} MDC key, which the job services set and {@code ThreadPoolTaskPool}
- * carries onto worker threads. {@code AiRequestQueueService} records each request here; the operation
- * {@link #drain drains} its totals when it ends. A request made outside any job is simply not attributed.
- * <p>
- * Static, like {@link AiUsageMeter}, so it needs no wiring through every service that might start AI work.
+ * {@code AiRequestQueueService} records each request under the key current when the request was submitted
+ * ({@link UsageLedger#currentKey()}); the operation drains its totals when it ends.
  */
 public final class AiCostLedger {
-
-    /** Operations that never drain (their thread died) must not leak; past this many open entries, all are cleared. */
-    private static final int MAX_OPEN_OPERATIONS = 1_000;
-
-    private static final Map<String, Totals> OPEN = new ConcurrentHashMap<>();
-
-    /** Display-only conversion for log lines; set from {@code ai.request.usd-to-inr} at startup. */
-    private static volatile double usdToInr = 88.0;
 
     private AiCostLedger() {
     }
 
     public static void configureUsdToInr(double rate) {
-        usdToInr = rate;
+        UsageLedger.configureUsdToInr(rate);
     }
 
     public static double usdToInr() {
-        return usdToInr;
+        return UsageLedger.usdToInr();
     }
 
     /** Attributes one finished (or failed) AI request's usage to {@code operationId}; a null id is ignored. */
     public static void record(String operationId, AiUsageSummary usage) {
-        if (operationId == null || operationId.isBlank() || usage == null) {
+        if (usage == null) {
             return;
         }
-        if (OPEN.size() >= MAX_OPEN_OPERATIONS && !OPEN.containsKey(operationId)) {
-            OPEN.clear();
-        }
-        OPEN.merge(operationId, Totals.of(usage), Totals::plus);
-    }
-
-    /** Returns and forgets everything attributed to {@code operationId} ({@link Totals#NONE} if nothing was). */
-    public static Totals drain(String operationId) {
-        if (operationId == null) {
-            return Totals.NONE;
-        }
-        Totals totals = OPEN.remove(operationId);
-        return totals == null ? Totals.NONE : totals;
+        UsageLedger.addAi(operationId, usage.promptTokens(), usage.cachedTokens(),
+                usage.completionTokens() + usage.thoughtsTokens(), usage.estimatedCostUsd());
     }
 
     /**
+     * Returns and forgets everything attributed to {@code operationId} ({@link Totals#NONE} if nothing was),
+     * including its non-AI counters. Use {@link UsageLedger#drain} directly to keep those.
+     */
+    public static Totals drain(String operationId) {
+        return Totals.of(UsageLedger.drain(operationId));
+    }
+
+    /**
+     * Persisted on job records as {@code aiUsage}: keep the field names stable.
+     *
      * @param requests          AI requests made (each may include retries)
      * @param inputTokens       all input tokens, cached included
      * @param outputTokens      output tokens, reasoning tokens included
@@ -67,30 +54,24 @@ public final class AiCostLedger {
 
         public static final Totals NONE = new Totals(0, 0, 0, 0, 0, 0);
 
-        static Totals of(AiUsageSummary usage) {
-            return new Totals(1, usage.promptTokens(), usage.cachedTokens(),
-                    usage.completionTokens() + usage.thoughtsTokens(),
-                    usage.estimatedCostUsd() == null ? 0 : usage.estimatedCostUsd(),
-                    usage.estimatedCostUsd() == null ? 1 : 0);
-        }
-
-        Totals plus(Totals other) {
-            return new Totals(requests + other.requests, inputTokens + other.inputTokens,
-                    cachedTokens + other.cachedTokens, outputTokens + other.outputTokens,
-                    costUsd + other.costUsd, unpricedRequests + other.unpricedRequests);
+        public static Totals of(UsageLedger.Usage usage) {
+            if (usage.aiRequests() == 0) {
+                return NONE;
+            }
+            return new Totals(usage.aiRequests(), usage.inputTokens(), usage.cachedTokens(), usage.outputTokens(),
+                    usage.costUsd(), usage.unpricedRequests());
         }
 
         /**
          * {@code aiRequests=.. inputTokens=.. outputTokens=.. costUsd=.. costInr=..}, for an operation's log line.
-         * Cost is shown as a lower bound ({@code >=}) when some requests could not be priced.
+         * Cost is a lower bound ({@code >=}) when some requests could not be priced, {@code unpriced} when none could.
          */
         public String toLogFields() {
-            String bound = unpricedRequests > 0 ? ">=" : "";
             return "aiRequests=" + requests
                     + " inputTokens=" + inputTokens
                     + " outputTokens=" + outputTokens
-                    + " costUsd=" + bound + String.format("%.6f", costUsd)
-                    + " costInr=" + bound + String.format("%.4f", costUsd * usdToInr);
+                    + " costUsd=" + UsageLedger.formatCost(costUsd, unpricedRequests, requests, 1, 6)
+                    + " costInr=" + UsageLedger.formatCost(costUsd, unpricedRequests, requests, UsageLedger.usdToInr(), 4);
         }
     }
 }

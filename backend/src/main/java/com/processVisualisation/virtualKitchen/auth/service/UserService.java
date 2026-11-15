@@ -9,6 +9,8 @@ import com.processVisualisation.virtualKitchen.auth.model.User;
 import com.processVisualisation.virtualKitchen.auth.repository.UserRepository;
 import com.processVisualisation.virtualKitchen.common.persistence.SequenceGeneratorService;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 
@@ -20,6 +22,8 @@ import org.springframework.stereotype.Service;
  */
 @Service
 public class UserService {
+
+    private static final Logger log = LoggerFactory.getLogger(UserService.class);
 
     private final UserRepository userRepository;
     private final SequenceGeneratorService sequenceGeneratorService;
@@ -49,6 +53,7 @@ public class UserService {
     public UserResponseDTO createUser(UserRequestDTO request) {
 
         if (userRepository.existsByEmail(request.getEmail())) {
+            log.warn("event=user_create_rejected reason=account_exists");
             throw new RuntimeException("Email already exists");
         }
 
@@ -57,6 +62,7 @@ public class UserService {
         user.setPasswordHash(passwordEncoder.encode(request.getPassword()));
 
         User saved = userRepository.save(user);
+        log.info("event=user_created userId={}", user.getId());
         return userMapper.toDTO(saved);
     }
 
@@ -103,6 +109,7 @@ public class UserService {
         user.setName(request.getName());
 
         User updated = userRepository.save(user);
+        log.info("event=user_updated userId={}", id);
         return userMapper.toDTO(updated);
     }
 
@@ -117,5 +124,6 @@ public class UserService {
                 .orElseThrow(() -> new UserNotFoundException("User not found with id: " + id));
 
         userRepository.delete(user);
+        log.info("event=user_deleted userId={}", id);
     }
 }

@@ -1,5 +1,7 @@
 package com.processVisualisation.virtualKitchen.ai.recipe.visualization;
 
+import com.processVisualisation.virtualKitchen.common.logging.UsageLedger;
+
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.processVisualisation.virtualKitchen.ai.platform.config.AiGenerationParamsProperties;
@@ -519,6 +521,7 @@ public class RecipeProcessVisualizationService {
         asset.setResolvedTier(source.getResolvedTier());
         asset.setUsedFallback(source.isUsedFallback());
         asset.setSourceGridKey(source.getSourceGridKey());
+        UsageLedger.increment(UsageLedger.Counter.ARTIFACTS_REUSED);
         logger.debug("event=visualization_image_reused visualizationKey={} sourceKey={}", key, source.getVisualizationKey());
         return assetRepository.save(asset);
     }

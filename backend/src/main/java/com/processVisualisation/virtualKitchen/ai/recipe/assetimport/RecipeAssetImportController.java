@@ -1,5 +1,7 @@
 package com.processVisualisation.virtualKitchen.ai.recipe.assetimport;
 
+import com.processVisualisation.virtualKitchen.common.logging.LogAction;
+
 import com.processVisualisation.virtualKitchen.auth.security.CurrentUser;
 import com.processVisualisation.virtualKitchen.common.web.ApiResponse;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -15,6 +17,7 @@ import java.time.LocalDateTime;
  * new recipe has its own files. Called once, right after the recipe's steps have been saved. Recipe owner only.
  */
 @RestController
+@LogAction("recipe")
 @RequestMapping("/api/v1/recipes/{recipeId}/assets")
 public class RecipeAssetImportController {
 

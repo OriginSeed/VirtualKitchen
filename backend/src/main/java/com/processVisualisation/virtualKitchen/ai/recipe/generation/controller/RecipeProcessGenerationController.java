@@ -1,5 +1,7 @@
 package com.processVisualisation.virtualKitchen.ai.recipe.generation.controller;
 
+import com.processVisualisation.virtualKitchen.common.logging.LogAction;
+
 import com.processVisualisation.virtualKitchen.ai.platform.preference.RunModelChoices;
 import com.processVisualisation.virtualKitchen.ai.recipe.generation.RecipeProcessGenerationJobService;
 import com.processVisualisation.virtualKitchen.ai.recipe.generation.dto.RecipeProcessGenerationJobResponseDTO;
@@ -28,6 +30,7 @@ import java.time.LocalDateTime;
  * the current Recipe working session and the user Saves explicitly.
  */
 @RestController
+@LogAction("generation")
 @RequestMapping("/api/v1/recipes/{recipeId}/processes/generate")
 public class RecipeProcessGenerationController {
 

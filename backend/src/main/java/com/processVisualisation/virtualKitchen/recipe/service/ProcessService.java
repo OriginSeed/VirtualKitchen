@@ -17,6 +17,8 @@ import com.processVisualisation.virtualKitchen.recipe.repository.ProcessReposito
 import com.processVisualisation.virtualKitchen.recipe.repository.RecipeTemplateRepository;
 import com.processVisualisation.virtualKitchen.recipe.validation.ProcessValidationException;
 import com.processVisualisation.virtualKitchen.recipe.validation.ProcessValidator;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDateTime;
@@ -37,6 +39,8 @@ import java.util.stream.Collectors;
  */
 @Service
 public class ProcessService {
+
+    private static final Logger log = LoggerFactory.getLogger(ProcessService.class);
 
     private static final String COPY_SUFFIX = " (copy)";
 
@@ -84,6 +88,8 @@ public class ProcessService {
         processValidator.validateOrThrow(process);
         Process saved = processRepository.save(process);
         touchRecipe(recipeId);
+        log.info("event=process_created recipeId={} processId={} type={} userId={}",
+                recipeId, saved.getId(), saved.getType(), userId);
         return processMapper.toDTO(saved);
     }
 
@@ -150,6 +156,8 @@ public class ProcessService {
         processValidator.validateOrThrow(process);
         Process saved = processRepository.save(process);
         touchRecipe(recipeId);
+        log.info("event=process_updated recipeId={} processId={} userId={} stepCount={} edgeCount={}",
+                recipeId, saved.getId(), userId, sizeOf(saved.getNodes()), sizeOf(saved.getEdges()));
         return processMapper.toDTO(saved);
     }
 
@@ -213,6 +221,11 @@ public class ProcessService {
             throw e;
         }
         touchRecipe(recipeId);
+        log.info("event=process_batch_updated recipeId={} userId={} processCount={} stepCount={} edgeCount={} revision={}",
+                recipeId, userId, saved.size(),
+                saved.stream().mapToInt(p -> sizeOf(p.getNodes())).sum(),
+                saved.stream().mapToInt(p -> sizeOf(p.getEdges())).sum(),
+                revision);
         return new ProcessBatchUpdateResponseDTO(
                 revision,
                 saved.stream().map(processMapper::toDTO).collect(Collectors.toList()));
@@ -265,6 +278,8 @@ public class ProcessService {
 
         processRepository.deleteById(processId);
         touchRecipe(recipeId);
+        log.info("event=process_deleted recipeId={} processId={} userId={} type={}",
+                recipeId, processId, userId, process.getType());
     }
 
     /** The recipe changed when one of its processes did: keeps "recently updated" true to editing its steps. */
@@ -296,6 +311,8 @@ public class ProcessService {
         }
 
         Process copy = copyProcess(source);
+        log.info("event=process_copied recipeId={} sourceProcessId={} processId={} userId={} stepCount={} edgeCount={}",
+                recipeId, processId, copy.getId(), userId, sizeOf(copy.getNodes()), sizeOf(copy.getEdges()));
         return processMapper.toDTO(copy);
     }
 
@@ -380,6 +397,10 @@ public class ProcessService {
         Process saved = processRepository.save(copy);
         touchRecipe(original.getRecipeId());
         return saved;
+    }
+
+    private static int sizeOf(List<?> items) {
+        return items == null ? 0 : items.size();
     }
 
     private Process findProcessOrThrow(Long processId) {

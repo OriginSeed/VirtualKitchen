@@ -12,6 +12,8 @@ import com.processVisualisation.virtualKitchen.store.repository.EquipmentReposit
 import com.processVisualisation.virtualKitchen.store.repository.IngredientRepository;
 import com.processVisualisation.virtualKitchen.store.units.UnitConversionService;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.mongodb.core.FindAndModifyOptions;
 import org.springframework.data.mongodb.core.MongoTemplate;
@@ -37,6 +39,8 @@ import static org.springframework.data.mongodb.core.query.Criteria.where;
  */
 @Service
 public class InventoryService {
+
+    private static final Logger log = LoggerFactory.getLogger(InventoryService.class);
 
     @Autowired
     private InventoryRepository repo;
@@ -84,7 +88,10 @@ public class InventoryService {
             inv = mapper.toEntity(dto);
             inv.setId(seq.generateSequence(Inventory.SEQUENCE_NAME));
             inv.setLastUpdated(LocalDateTime.now());
-            return mapper.toDTO(repo.save(inv));
+            Inventory created = repo.save(inv);
+            log.info("event=inventory_updated inventoryId={} kitchenId={} userId={} itemType={} itemId={} created=true",
+                    inv.getId(), inv.getKitchenId(), inv.getUserId(), inv.getItemType(), inv.getItemId());
+            return mapper.toDTO(created);
         }
 
         double delta = quantityInRowUnit(dto, inv);
@@ -96,6 +103,9 @@ public class InventoryService {
         Inventory updated = mongoTemplate.findAndModify(
                 Query.query(where("_id").is(inv.getId())), update,
                 FindAndModifyOptions.options().returnNew(true), Inventory.class);
+        log.info("event=inventory_updated inventoryId={} kitchenId={} userId={} itemType={} itemId={} created=false unitConverted={}",
+                inv.getId(), inv.getKitchenId() != null ? inv.getKitchenId() : dto.getKitchenId(), inv.getUserId(),
+                inv.getItemType(), inv.getItemId(), dto.getUnit() != null && inv.getUnit() != null && dto.getUnit() != inv.getUnit());
         return mapper.toDTO(updated != null ? updated : inv);
     }
 

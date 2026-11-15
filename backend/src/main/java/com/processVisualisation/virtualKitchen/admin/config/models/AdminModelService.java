@@ -8,6 +8,8 @@ import com.processVisualisation.virtualKitchen.ai.platform.registry.AiCapability
 import com.processVisualisation.virtualKitchen.ai.platform.registry.AiModelRegistry;
 import com.processVisualisation.virtualKitchen.ai.platform.registry.ModelDefinition;
 import com.processVisualisation.virtualKitchen.ai.platform.registry.ModelTier;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.data.mongodb.core.MongoTemplate;
 import org.springframework.stereotype.Service;
 
@@ -33,6 +35,8 @@ import static org.springframework.data.mongodb.core.query.Query.query;
  */
 @Service
 public class AdminModelService {
+
+    private static final Logger log = LoggerFactory.getLogger(AdminModelService.class);
 
     static final String MODELS_SECTION = "models";
     private static final Pattern KEY = Pattern.compile("[a-z0-9][a-z0-9-]{1,47}");
@@ -133,6 +137,8 @@ public class AdminModelService {
         }
         pricing.publishAdminCard(model.toDefinition(), model.getPerImageUsd());
         configService.audit(MODELS_SECTION, "MODEL_ADD", adminId, Map.of(), describe(model));
+        log.info("event=ai_model_added modelKey={} capability={} providerBean={} tier={} creditCost={} enabled={} adminId={}",
+                key, capability, providerBean, tier, model.getCreditCost(), model.isEnabled(), adminId);
         return model;
     }
 
@@ -155,6 +161,7 @@ public class AdminModelService {
         }
         pricing.publishAdminCard(model.toDefinition(), model.getPerImageUsd());
         configService.audit(MODELS_SECTION, "MODEL_EDIT", adminId, before, describe(model));
+        log.info("event=ai_model_updated modelKey={} capability={} adminId={}", key, model.getCapability(), adminId);
         return model;
     }
 
@@ -189,6 +196,7 @@ public class AdminModelService {
         repository.deleteById(key);
         configService.reapply(MODELS_SECTION);
         configService.audit(MODELS_SECTION, "MODEL_DELETE", adminId, describe(model), Map.of());
+        log.info("event=ai_model_removed modelKey={} capability={} adminId={}", key, model.getCapability(), adminId);
     }
 
     /** Provider beans that can serve {@code capability} with a model id of the admin's choosing. */

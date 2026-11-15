@@ -51,7 +51,8 @@ public class OrderService {
     @Autowired
     private KitchenRepository kitchenRepository;
 
-    private static final Logger logger = LoggerFactory.getLogger(OrderService.class);
+    private static final Logger log = LoggerFactory.getLogger(OrderService.class);
+
     /**
      * Creates a new order for the requested items.
      * <p>
@@ -99,6 +100,8 @@ public class OrderService {
         Order saved = orderRepository.save(order);
 
         // After successfully creating the order, add ordered items to the user's kitchen inventory
+        int inventoryUpdatedCount = 0;
+        Long kitchenId = null;
         try {
             // fetch kitchen for the user
             List<Kitchen> kitchens = kitchenRepository.findByOwnerId(saved.getUserId());
@@ -106,13 +109,15 @@ public class OrderService {
                 throw new IllegalStateException("Kitchen not found for userId=" + saved.getUserId());
             }
             Kitchen kitchen = kitchens.get(0);
+            kitchenId = kitchen.getId();
 
             for (InventoryRequestDTO invReq : toInventoryRequests(saved.getUserId(), kitchen.getId(), saved.getItems())) {
                 inventoryService.addOrUpdate(invReq);
+                inventoryUpdatedCount++;
             }
         } catch (Exception ex) {
             // Log and continue - order creation should not fail because inventory update failed
-            logger.error("event=order_inventory_update_failed orderId={} errorType={}",
+            log.error("event=order_inventory_update_failed orderId={} errorType={}",
                     saved.getOrderId(), ex.getClass().getSimpleName(), ex);
             // if the exception is due to missing kitchen we rethrow as requested
             if (ex instanceof IllegalStateException && ex.getMessage().startsWith("Kitchen not found")) {
@@ -120,6 +125,9 @@ public class OrderService {
             }
         }
 
+        log.info("event=order_placed orderId={} userId={} kitchenId={} itemCount={} inventoryUpdatedCount={}",
+                saved.getOrderId(), saved.getUserId(), kitchenId,
+                saved.getItems() == null ? 0 : saved.getItems().size(), inventoryUpdatedCount);
         return orderMapper.toDTO(saved);
     }
 

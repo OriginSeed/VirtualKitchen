@@ -1,5 +1,7 @@
 package com.processVisualisation.virtualKitchen.ai.recipe.narration;
 
+import com.processVisualisation.virtualKitchen.common.logging.UsageLedger;
+
 import com.processVisualisation.virtualKitchen.ai.platform.analytics.AiAnalyticsRecorder;
 import com.processVisualisation.virtualKitchen.ai.platform.artifact.AiArtifactKeyBuilder;
 import com.processVisualisation.virtualKitchen.ai.platform.artifact.AiArtifactService;
@@ -251,6 +253,7 @@ public class StepNarrationService {
             StepNarration record = existing.get();
             boolean sameText = script.hash().equals(record.getSourceTextHash());
             if (sameText && record.getStatus() == StepNarrationStatus.READY) {
+                UsageLedger.increment(UsageLedger.Counter.CACHE_HITS);
                 log.debug("event=narration_cache_hit narrationKey={}", key);
                 return toDto(stepId, record, script, now);
             }
@@ -342,6 +345,8 @@ public class StepNarrationService {
         } catch (Exception e) {
             operation.failed(e, "narrationKey=" + key);
             store.markFailed(key, token, describeFailure(e), now());
+        } finally {
+            operation.close();
         }
     }
 

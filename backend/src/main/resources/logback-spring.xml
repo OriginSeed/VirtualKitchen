@@ -1,11 +1,14 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!--
-  Application logging configuration. Four files under logs/, each with one job:
+  Application logging configuration. Five files under logs/, each with one job (see docs/logging.md):
 
-    application.log        What the application did. INFO and above: every operation's started/completed/failed
-                           line (with duration, model, tokens and cost for AI work), one summary line per AI
-                           request, rejected/failed HTTP requests with their reason, warnings and errors.
+    application.log        What the application did. INFO and above: one action_completed line per state-changing
+                           HTTP request (action, outcome, duration, and what it used: AI, dbReads/dbWrites, cache),
+                           the business event it caused (recipe_updated, order_placed...), every background job's
+                           started/completed/failed line (with model, tokens and cost for AI work), one summary line
+                           per AI request, rejected/failed requests with their reason, warnings and errors.
                            Read this one.
+    application.json.log   The same lines as JSON (ECS), every context key a field, for log viewers.
     application-error.log  ERROR only, kept longer for triage. Bugs carry their stack trace.
     debug.log              Everything in application.log plus DEBUG detail: intermediate steps (cache checks,
                            provider calls, artifact staging, uploads), and third-party chatter such as the MongoDB
@@ -13,10 +16,14 @@
     access.log             One line per HTTP request (method, path, status, duration). Polling lives here, so it
                            never buries the operation log.
 
-  Every line carries requestId, jobId and userId (MDC). jobId names the background operation a line belongs to
+  Every line carries requestId, userId, area, action and jobId (MDC; "-" when unset), plus parentJobId, workflowId,
+  recipeId and uiAction when set. action names the user action (recipe.update, narration.ensureAll...) and is
+  inherited by the background jobs a request starts; jobId names the background operation a line belongs to
   (a visualization or generation job id, or narration:<recipeId>::<stepId>), including its AI requests, so:
-      grep "jobId=<id>" logs/application.log      the story of one operation
-      grep "requestId=<id>" logs/debug.log        everything one HTTP request caused
+      grep "action=recipe.update" logs/application.log   every time a user did that, and what it caused
+      grep "jobId=<id>" logs/application.log             the story of one operation
+      grep "workflowId=<id>" logs/application.log        every job of one AI workflow
+      grep "requestId=<id>" logs/debug.log               everything one HTTP request caused (the UI shows it as "Ref")
 
   Profiles: no profile (local development) gets a coloured console and DEBUG detail in debug.log; "prod" gets a
   plain console and keeps debug.log at INFO.
@@ -36,7 +43,12 @@
     <springProperty scope="context" name="CONSOLE_THRESHOLD" source="logging.threshold.console" defaultValue="INFO"/>
 
     <property name="LOG_DIR" value="${LOG_PATH:-logs}"/>
-    <property name="MDC_PATTERN" value="requestId=%X{requestId:-} jobId=%X{jobId:-} userId=%X{userId:-}"/>
+    <!--
+      Always: requestId, userId, area, action, jobId ("-" when not set). Only when set: parentJobId, workflowId,
+      recipeId, uiAction (the %replace drops an empty "key=").
+    -->
+    <property name="MDC_PATTERN"
+              value="requestId=%X{requestId:--} userId=%X{userId:--} area=%X{area:--} action=%X{action:--} jobId=%X{jobId:--}%replace( parentJobId=%X{parentJobId}){' parentJobId=$', ''}%replace( workflowId=%X{workflowId}){' workflowId=$', ''}%replace( recipeId=%X{recipeId}){' recipeId=$', ''}%replace( uiAction=%X{uiAction}){' uiAction=$', ''}"/>
     <property name="FILE_PATTERN"
               value="%d{yyyy-MM-dd HH:mm:ss.SSS} %-5p [%t] [${MDC_PATTERN}] %logger{40} - %m%n%wEx"/>
 
@@ -97,7 +109,7 @@
     <appender name="ACCESS_FILE" class="ch.qos.logback.core.rolling.RollingFileAppender">
         <file>${LOG_DIR}/access.log</file>
         <encoder>
-            <pattern>%d{yyyy-MM-dd HH:mm:ss.SSS} [requestId=%X{requestId:-} userId=%X{userId:-}] %m%n</pattern>
+            <pattern>%d{yyyy-MM-dd HH:mm:ss.SSS} [requestId=%X{requestId:--} userId=%X{userId:--} action=%X{action:--}%replace( uiAction=%X{uiAction}){' uiAction=$', ''}] %m%n</pattern>
             <charset>UTF-8</charset>
         </encoder>
         <rollingPolicy class="ch.qos.logback.core.rolling.SizeAndTimeBasedRollingPolicy">
@@ -105,6 +117,28 @@
             <maxFileSize>${LOGBACK_ROLLINGPOLICY_MAX_FILE_SIZE:-20MB}</maxFileSize>
             <maxHistory>7</maxHistory>
             <totalSizeCap>300MB</totalSizeCap>
+            <cleanHistoryOnStart>true</cleanHistoryOnStart>
+        </rollingPolicy>
+    </appender>
+
+    <!--
+      application.json.log: the same INFO+ lines as application.log, one JSON object each (Elastic Common Schema),
+      every MDC key a field of its own, for log viewers (filter on action, area, userId, jobId...).
+    -->
+    <appender name="JSON_FILE" class="ch.qos.logback.core.rolling.RollingFileAppender">
+        <filter class="ch.qos.logback.classic.filter.ThresholdFilter">
+            <level>INFO</level>
+        </filter>
+        <file>${LOG_DIR}/application.json.log</file>
+        <encoder class="org.springframework.boot.logging.logback.StructuredLogEncoder">
+            <format>ecs</format>
+            <charset>UTF-8</charset>
+        </encoder>
+        <rollingPolicy class="ch.qos.logback.core.rolling.SizeAndTimeBasedRollingPolicy">
+            <fileNamePattern>${LOG_DIR}/application.json.%d{yyyy-MM-dd}.%i.log.gz</fileNamePattern>
+            <maxFileSize>${LOGBACK_ROLLINGPOLICY_MAX_FILE_SIZE:-20MB}</maxFileSize>
+            <maxHistory>7</maxHistory>
+            <totalSizeCap>500MB</totalSizeCap>
             <cleanHistoryOnStart>true</cleanHistoryOnStart>
         </rollingPolicy>
     </appender>
@@ -135,7 +169,7 @@
                 <level>${CONSOLE_THRESHOLD}</level>
             </filter>
             <encoder>
-                <pattern>%clr(%d{HH:mm:ss.SSS}){faint} %clr(%5p) %clr([%X{requestId:--}]){magenta} %clr(%-40.40logger{39}){cyan} %clr(:){faint} %m%n%wEx</pattern>
+                <pattern>%clr(%d{HH:mm:ss.SSS}){faint} %clr(%5p) %clr([%X{requestId:--} %X{action:--}]){magenta} %clr(%-40.40logger{39}){cyan} %clr(:){faint} %m%n%wEx</pattern>
                 <charset>UTF-8</charset>
             </encoder>
         </appender>
@@ -149,7 +183,7 @@
                 <level>${CONSOLE_THRESHOLD}</level>
             </filter>
             <encoder>
-                <pattern>%d{yyyy-MM-dd HH:mm:ss.SSS} %5p [%X{requestId:--}] %-40.40logger{39} : %m%n%wEx</pattern>
+                <pattern>%d{yyyy-MM-dd HH:mm:ss.SSS} %5p [%X{requestId:--} %X{action:--}] %-40.40logger{39} : %m%n%wEx</pattern>
                 <charset>UTF-8</charset>
             </encoder>
         </appender>
@@ -162,5 +196,6 @@
         <appender-ref ref="FILE"/>
         <appender-ref ref="ERROR_FILE"/>
         <appender-ref ref="DEBUG_FILE"/>
+        <appender-ref ref="JSON_FILE"/>
     </root>
 </configuration>

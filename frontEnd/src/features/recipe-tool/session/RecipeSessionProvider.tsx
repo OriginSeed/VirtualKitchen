@@ -66,7 +66,7 @@ export function RecipeSessionProvider({ recipeId, canEdit = true, children }: { 
     const api: PersistenceApi = {
       createMainProcess: () => RecipeDetailApi.createMainProcess(recipeId),
       createProcess: (request) => ProcessApi.create(recipeId, request),
-      updateAll: (items, baseRevision) => ProcessApi.updateAll(recipeId, items, baseRevision),
+      updateAll: (items, baseRevision) => ProcessApi.updateAll(recipeId, items, baseRevision, { uiAction: 'editor.save' }),
       deleteProcess: async (processId) => {
         try {
           await ProcessApi.delete(recipeId, processId)

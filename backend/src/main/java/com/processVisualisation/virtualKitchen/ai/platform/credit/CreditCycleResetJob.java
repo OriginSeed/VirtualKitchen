@@ -1,5 +1,7 @@
 package com.processVisualisation.virtualKitchen.ai.platform.credit;
 
+import com.processVisualisation.virtualKitchen.common.logging.LogScope;
+
 import com.processVisualisation.virtualKitchen.common.logging.MdcKeys;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -44,7 +46,7 @@ public class CreditCycleResetJob {
 
     @Scheduled(cron = "${ai.credits.cycle-reset-cron:0 0 2 * * *}")
     public void resetExpiredCycles() {
-        try (MDC.MDCCloseable ignored = MDC.putCloseable(MdcKeys.JOB_ID,
+        try (LogScope ignored = LogScope.with(MdcKeys.AREA, "system", MdcKeys.ACTION, "scheduled.credit_cycle_reset", MdcKeys.JOB_ID,
                 "credit-reset-" + Long.toHexString(System.currentTimeMillis()))) {
             resetCycles();
         }

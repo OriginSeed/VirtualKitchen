@@ -1,0 +1,113 @@
+package com.processVisualisation.virtualKitchen.auth.service;
+
+import ch.qos.logback.classic.Level;
+import ch.qos.logback.classic.spi.ILoggingEvent;
+import com.processVisualisation.virtualKitchen.auth.dto.LoginRequestDTO;
+import com.processVisualisation.virtualKitchen.auth.exception.AuthException;
+import com.processVisualisation.virtualKitchen.auth.mapper.UserMapper;
+import com.processVisualisation.virtualKitchen.auth.model.User;
+import com.processVisualisation.virtualKitchen.auth.model.UserType;
+import com.processVisualisation.virtualKitchen.auth.repository.UserRepository;
+import com.processVisualisation.virtualKitchen.auth.security.JwtService;
+import com.processVisualisation.virtualKitchen.common.logging.LogCapture;
+import com.processVisualisation.virtualKitchen.common.persistence.SequenceGeneratorService;
+import org.junit.jupiter.api.Test;
+import org.springframework.context.ApplicationEventPublisher;
+import org.springframework.security.crypto.password.PasswordEncoder;
+
+import java.util.List;
+import java.util.Optional;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
+
+/** The audit lines {@link AuthService} writes for sign-in: ids and reason codes only, never the email or password. */
+class AuthServiceTest {
+
+    private static final String EMAIL = "cook@example.test";
+    private static final String PASSWORD = "s3cret-pass";
+
+    private final UserRepository users = mock(UserRepository.class);
+    private final PasswordEncoder encoder = mock(PasswordEncoder.class);
+    private final JwtService jwt = mock(JwtService.class);
+    private final AuthService service = new AuthService(users, mock(SequenceGeneratorService.class), new UserMapper(),
+            encoder, jwt, mock(OtpService.class), mock(GoogleTokenVerifierService.class),
+            mock(ApplicationEventPublisher.class), new AdminAllowlist(""));
+
+    @Test
+    void wrongPassword_logsLoginFailedWithReasonCodeAndNoEmail() {
+        seedUser(true);
+        when(encoder.matches(anyString(), anyString())).thenReturn(false);
+
+        try (LogCapture logs = LogCapture.of(AuthService.class)) {
+            assertThrows(AuthException.class, () -> service.login(login()));
+
+            List<ILoggingEvent> failed = logs.events("auth_login_failed");
+            assertThat(failed).hasSize(1);
+            assertThat(failed.get(0).getLevel()).isEqualTo(Level.WARN);
+            assertThat(failed.get(0).getFormattedMessage())
+                    .contains("reason=bad_credentials")
+                    .contains("userId=5");
+            assertNoCredentials(logs);
+            assertThat(logs.events("auth_login_succeeded")).isEmpty();
+        }
+    }
+
+    @Test
+    void unknownAccount_logsLoginFailedWithoutTheEmail() {
+        when(users.findByEmail(EMAIL)).thenReturn(Optional.empty());
+
+        try (LogCapture logs = LogCapture.of(AuthService.class)) {
+            assertThrows(AuthException.class, () -> service.login(login()));
+
+            List<ILoggingEvent> failed = logs.events("auth_login_failed");
+            assertThat(failed).hasSize(1);
+            assertThat(failed.get(0).getLevel()).isEqualTo(Level.WARN);
+            assertThat(failed.get(0).getFormattedMessage()).contains("reason=unknown_account");
+            assertNoCredentials(logs);
+        }
+    }
+
+    @Test
+    void correctPassword_logsLoginSucceededWithUserIdOnly() {
+        seedUser(true);
+        when(encoder.matches(anyString(), anyString())).thenReturn(true);
+        when(jwt.generateToken(any(), any(), any())).thenReturn("token");
+
+        try (LogCapture logs = LogCapture.of(AuthService.class)) {
+            service.login(login());
+
+            List<ILoggingEvent> succeeded = logs.events("auth_login_succeeded");
+            assertThat(succeeded).hasSize(1);
+            assertThat(succeeded.get(0).getLevel()).isEqualTo(Level.INFO);
+            assertThat(succeeded.get(0).getFormattedMessage()).contains("userId=5").contains("method=password");
+            assertNoCredentials(logs);
+        }
+    }
+
+    private void assertNoCredentials(LogCapture logs) {
+        String all = logs.allMessages();
+        assertThat(all).doesNotContain(EMAIL).doesNotContain("example.test").doesNotContain(PASSWORD);
+    }
+
+    private void seedUser(boolean verified) {
+        User user = new User();
+        user.setId(5L);
+        user.setEmail(EMAIL);
+        user.setPasswordHash("hash");
+        user.setEmailVerified(verified);
+        user.setUserType(UserType.USER);
+        when(users.findByEmail(EMAIL)).thenReturn(Optional.of(user));
+    }
+
+    private static LoginRequestDTO login() {
+        LoginRequestDTO request = new LoginRequestDTO();
+        request.setEmail(EMAIL);
+        request.setPassword(PASSWORD);
+        return request;
+    }
+}

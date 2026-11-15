@@ -58,20 +58,26 @@ class LogbackConfigTest {
 
         MDC.put(MdcKeys.REQUEST_ID, "8f32ab91c0de4a17");
         MDC.put(MdcKeys.JOB_ID, "job-123");
+        MDC.put(MdcKeys.AREA, "recipe");
+        MDC.put(MdcKeys.ACTION, "recipe.update");
+        MDC.put(MdcKeys.WORKFLOW_ID, "wf-9");
         log.debug("event=probe_debug_only");
         log.info("event=probe_info");
         log.error("event=probe_error", new IllegalStateException("probe stack"));
         MDC.clear();
+        log.info("event=probe_without_context");
 
         assertThat(output.getOut())
                 .contains("event=probe_info")
-                .contains("[8f32ab91c0de4a17]")
+                .contains("[8f32ab91c0de4a17 recipe.update]")
                 .doesNotContain("event=probe_debug_only");
 
         String file = read("application.log");
         assertThat(file)
                 .contains("event=probe_info")
-                .contains("requestId=8f32ab91c0de4a17 jobId=job-123 userId=")
+                .contains("requestId=8f32ab91c0de4a17 userId=- area=recipe action=recipe.update jobId=job-123 workflowId=wf-9]")
+                .as("unset optional keys are left out, unset fixed keys print -")
+                .contains("[requestId=- userId=- area=- action=- jobId=-] ")
                 .contains("java.lang.IllegalStateException: probe stack")
                 .as("DEBUG detail goes to debug.log only").doesNotContain("event=probe_debug_only");
 
@@ -82,6 +88,13 @@ class LogbackConfigTest {
 
         String errors = read("application-error.log");
         assertThat(errors).contains("event=probe_error").doesNotContain("event=probe_info");
+
+        String json = read("application.json.log");
+        String infoLine = json.lines().filter(l -> l.contains("event=probe_info")).findFirst().orElseThrow();
+        assertThat(infoLine).startsWith("{").endsWith("}")
+                .contains("\"action\":\"recipe.update\"")
+                .contains("\"jobId\":\"job-123\"");
+        assertThat(json).as("JSON file is INFO and above too").doesNotContain("event=probe_debug_only");
     }
 
     @Test

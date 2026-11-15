@@ -5,6 +5,7 @@
  */
 
 import { apiGet, apiPost, apiDelete, apiPut } from './client'
+import type { UiActionOptions } from './client'
 import { API } from './endpoints'
 import type { Process, ProcessBatchUpdateItem, ProcessBatchUpdateResult, ProcessCreateRequest, ProcessUpdateRequest } from '../types/process'
 import type { RecipeAssetImportRequest, RecipeAssetImportResponse } from '../types/recipe'
@@ -199,10 +200,15 @@ export const ProcessApi = {
    * every item before persisting any of them, so one invalid process rejects the whole batch.
    * `baseRevision` is the recipe process revision the snapshot was based on: if the recipe was saved
    * elsewhere since, the save is rejected with 409. Resolves with the recipe's new revision.
-   * Requires ownership.
+   * Requires ownership. `options.uiAction` tags the request with the click that caused it.
    */
-  async updateAll(recipeId: number, items: ProcessBatchUpdateItem[], baseRevision?: number): Promise<ProcessBatchUpdateResult> {
-    return apiPut<ProcessBatchUpdateResult>(API.processes.list(recipeId), { processes: items, baseRevision })
+  async updateAll(
+    recipeId: number,
+    items: ProcessBatchUpdateItem[],
+    baseRevision?: number,
+    options?: UiActionOptions,
+  ): Promise<ProcessBatchUpdateResult> {
+    return apiPut<ProcessBatchUpdateResult>(API.processes.list(recipeId), { processes: items, baseRevision }, options)
   },
 
   /**

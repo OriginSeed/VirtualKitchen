@@ -9,6 +9,8 @@ import com.processVisualisation.virtualKitchen.store.mapper.IngredientMapper;
 import com.processVisualisation.virtualKitchen.store.model.Ingredient;
 import com.processVisualisation.virtualKitchen.store.repository.IngredientRepository;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
@@ -24,6 +26,8 @@ import java.util.stream.Collectors;
  */
 @Service
 public class IngredientService {
+
+    private static final Logger log = LoggerFactory.getLogger(IngredientService.class);
 
     @Autowired
     private IngredientRepository ingredientRepository;
@@ -48,6 +52,7 @@ public class IngredientService {
     public IngredientResponseDTO createIngredient(IngredientRequestDTO request) {
 
         if (ingredientRepository.existsByName(request.getName())) {
+            log.warn("event=ingredient_create_rejected reason=duplicate_name");
             throw new RuntimeException("Ingredient already exists");
         }
 
@@ -56,6 +61,7 @@ public class IngredientService {
 
         Ingredient saved = ingredientRepository.save(ingredient);
         eventPublisher.publishEvent(new IngredientCatalogChangedEvent("create"));
+        log.info("event=ingredient_created ingredientId={} defaultUnit={}", ingredient.getId(), ingredient.getDefaultUnit());
         return ingredientMapper.toDTO(saved);
     }
 
@@ -105,6 +111,7 @@ public class IngredientService {
 
         Ingredient updated = ingredientRepository.save(ingredient);
         eventPublisher.publishEvent(new IngredientCatalogChangedEvent("update"));
+        log.info("event=ingredient_updated ingredientId={} defaultUnit={}", id, ingredient.getDefaultUnit());
         return ingredientMapper.toDTO(updated);
     }
 
@@ -121,5 +128,6 @@ public class IngredientService {
 
         ingredientRepository.delete(ingredient);
         eventPublisher.publishEvent(new IngredientCatalogChangedEvent("delete"));
+        log.info("event=ingredient_deleted ingredientId={}", id);
     }
 }

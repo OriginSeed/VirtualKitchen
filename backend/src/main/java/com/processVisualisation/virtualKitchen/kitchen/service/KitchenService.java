@@ -8,6 +8,8 @@ import com.processVisualisation.virtualKitchen.kitchen.mapper.KitchenMapper;
 import com.processVisualisation.virtualKitchen.kitchen.model.Kitchen;
 import com.processVisualisation.virtualKitchen.kitchen.repository.KitchenRepository;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
@@ -22,6 +24,8 @@ import java.util.stream.Collectors;
  */
 @Service
 public class KitchenService {
+
+    private static final Logger log = LoggerFactory.getLogger(KitchenService.class);
 
     @Autowired
     private KitchenRepository repo;
@@ -41,7 +45,9 @@ public class KitchenService {
     public KitchenResponseDTO create(KitchenRequestDTO dto){
         Kitchen k = mapper.toEntity(dto);
         k.setId(seq.generateSequence(Kitchen.SEQUENCE_NAME));
-        return mapper.toDTO(repo.save(k));
+        Kitchen saved = repo.save(k);
+        log.info("event=kitchen_created kitchenId={} ownerId={}", k.getId(), k.getOwnerId());
+        return mapper.toDTO(saved);
     }
 
     /**
@@ -79,7 +85,9 @@ public class KitchenService {
     public KitchenResponseDTO update(Long id, KitchenUpdateDTO dto){
         Kitchen k = repo.findById(id).orElseThrow();
         k.setName(dto.getName());
-        return mapper.toDTO(repo.save(k));
+        Kitchen saved = repo.save(k);
+        log.info("event=kitchen_updated kitchenId={} ownerId={}", k.getId(), k.getOwnerId());
+        return mapper.toDTO(saved);
     }
 
     /**
@@ -89,5 +97,6 @@ public class KitchenService {
      */
     public void delete(Long id){
         repo.deleteById(id);
+        log.info("event=kitchen_deleted kitchenId={}", id);
     }
 }
