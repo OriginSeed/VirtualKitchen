@@ -1273,6 +1273,46 @@ button.rp-continuation:hover {
   }
 }
 
+/* Steps shown together under one storyboard panel image: the picture once, its steps as points. */
+.rp-point-step {
+  display: inline-block;
+  margin-right: 6px;
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: var(--rp-accent-soft);
+  border: 1px solid var(--rp-accent-border);
+  color: var(--rp-accent-strong);
+  font-size: 11.5px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+/* Inside a preparation flow: a group of points (or one point) beside the one picture that shows them. */
+.rp-flow-group {
+  list-style: none;
+  margin-left: -20px;
+}
+
+.rp-flow-group-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 132px;
+  gap: 12px;
+  align-items: start;
+}
+
+.rp-flow-group-title {
+  margin: 0 0 4px;
+  font-size: 12.5px;
+  font-weight: 700;
+  color: var(--rp-accent-strong);
+}
+
+@media (max-width: 560px) {
+  .rp-flow-group-row {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
 .rp-flow-output {
   padding-top: 10px;
   border-top: 1px dashed var(--flow-border);

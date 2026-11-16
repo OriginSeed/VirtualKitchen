@@ -497,6 +497,7 @@ public class RecipeStoryboardJobService {
                                 .imageUrl(step.getImageUrl())
                                 .imagePrompt(owner ? step.getImagePrompt() : null)
                                 .attached(step.isAttached())
+                                .cleared(step.isCleared())
                                 .build()).toList())
                 .textModelKey(owner ? storyboard.getTextModelKey() : null)
                 .imageModelKey(owner ? storyboard.getImageModelKey() : null)

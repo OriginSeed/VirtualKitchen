@@ -8,7 +8,9 @@ import {
   storyboardPanelTitle,
   storyboardProgress,
   storyboardProgressBadge,
+  storyboardStepChanges,
   storyboardStepImages,
+  storyboardStepsCleared,
   storyboardStepSummary,
 } from '../src/features/recipe-tool/model/storyboardView.ts'
 import { activeJobsKey, parseActiveJobsKey, summarizeActiveJobs } from '../src/features/recipe-tool/jobs/activeJobsSummary.ts'
@@ -68,11 +70,19 @@ describe('recipe storyboard wording', () => {
 
   it('sums up what happened to the steps', () => {
     assert.equal(storyboardStepSummary({ steps: [] }), '')
-    assert.equal(storyboardStepSummary({ steps: [step('a', true), step('b', true)] }), 'Panel images were added to 2 steps.')
+    assert.equal(storyboardStepSummary({ steps: [step('a', true), step('b', true)] }),
+      "Each panel's image was added to the last step it shows: 2 steps.")
     assert.equal(storyboardStepSummary({ steps: [step('a', true), step('b', false), step('c', false)] }),
-      'Panel images were added to 1 step; 2 kept the image they already had.')
-    assert.equal(storyboardStepSummary({ steps: [step('a', false)] }),
-      'No step was changed: 1 step kept the image it already had.')
+      "Each panel's image was added to the last step it shows: 1 step. 2 steps kept the image they already had.")
+    assert.equal(storyboardStepSummary({ steps: [step('a', false)] }), '1 step kept the image it already had.')
+    assert.equal(storyboardStepSummary({ steps: [step('a', true), { ...step('b', false), cleared: true }] }),
+      "Each panel's image was added to the last step it shows: 1 step. An earlier storyboard's image was removed from 1 step.")
+  })
+
+  it('the editor applies new panel images and removed ones, not steps that kept their own', () => {
+    const steps = [step('a', true), step('b', false), { ...step('c', false), cleared: true }]
+    assert.deepEqual(storyboardStepsCleared({ steps }).map((entry) => entry.stepId), ['c'])
+    assert.deepEqual(storyboardStepChanges({ steps }).map((entry) => entry.stepId), ['a', 'c'])
   })
 })
 

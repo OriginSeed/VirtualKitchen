@@ -250,7 +250,10 @@ export interface RecipeStoryboardPanel {
   imageUrl?: string | null
 }
 
-/** What happened to one covered step when the panel images were put on the steps. */
+/**
+ * What happened to one step when the panel images were put on the steps: the last step of a panel (given the
+ * panel's image, or keeping its own), or a step that lost the image an earlier storyboard had put on it.
+ */
 export interface RecipeStoryboardStep {
   processId: number
   stepId: string
@@ -258,8 +261,10 @@ export interface RecipeStoryboardStep {
   visualizationAssetId?: number | null
   imageUrl?: string | null
   imagePrompt?: string | null
-  /** False when the step kept the image it already had. */
+  /** True when the panel's image was put on the step; false when it kept the image it already had. */
   attached: boolean
+  /** True when the image an earlier storyboard put on the step was removed (the step now has none). */
+  cleared?: boolean
 }
 
 export interface RecipeStoryboardResponse {

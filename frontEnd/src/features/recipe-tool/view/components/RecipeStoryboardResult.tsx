@@ -4,10 +4,16 @@ import { storyboardLayoutText, storyboardPanelMeta, storyboardPanelTitle } from 
 import '../styles/recipe-storyboard.css'
 
 /**
- * A finished storyboard: the combined image, then every panel (cut from it) with what it covers, and for the owner
- * the prompt it was drawn from. Shown in the editor's storyboard dialog and on the Recipe Process page.
+ * A finished storyboard: the combined image, and on request every panel (cut from it) with what it covers and the
+ * prompt it was drawn from. The Recipe Process page shows the image alone; the editor's storyboard dialog shows all.
  */
-export default function RecipeStoryboardResult({ storyboard }: { storyboard: RecipeStoryboardResponse }) {
+export default function RecipeStoryboardResult({ storyboard, showPanels = false, showPrompt = false }: {
+  storyboard: RecipeStoryboardResponse
+  /** List the panels under the image. */
+  showPanels?: boolean
+  /** Show the prompt the image was drawn from (the owner's storyboard dialog). */
+  showPrompt?: boolean
+}) {
   const title = storyboard.title?.trim() || 'Recipe'
   return (
     <div className="recipe-storyboard-result">
@@ -32,6 +38,7 @@ export default function RecipeStoryboardResult({ storyboard }: { storyboard: Rec
         </figure>
       )}
 
+      {showPanels && (
       <ol className="recipe-storyboard-panels">
         {storyboard.panels.map((panel) => (
           <li key={panel.panelId} className="recipe-storyboard-panel">
@@ -53,8 +60,9 @@ export default function RecipeStoryboardResult({ storyboard }: { storyboard: Rec
           </li>
         ))}
       </ol>
+      )}
 
-      {storyboard.masterPrompt && (
+      {showPrompt && storyboard.masterPrompt && (
         <details className="recipe-storyboard-prompt">
           <summary>Image prompt</summary>
           <pre>{storyboard.masterPrompt}</pre>

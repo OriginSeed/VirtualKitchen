@@ -70,7 +70,7 @@ import {
 import { RecipeProcessGraphProvider } from '../context/RecipeProcessGraphContext'
 import { useRecipeSession, type RecipeSessionContextValue } from '../../session/sessionContext'
 import type { Process } from '../../../../types/process'
-import type { RecipeProcessBreadcrumbEntry, RecipeProcessVisualizationStepResult } from '../../../../types/recipe'
+import type { RecipeProcessBreadcrumbEntry, RecipeProcessVisualizationStepResult, RecipeStoryboardStep } from '../../../../types/recipe'
 import { useNotifications } from '../../../../shared/components/notifications/notificationContext'
 import { useConfirm } from '../../../../shared/components/confirm/confirmContext'
 import RecipeConditionPanel from './RecipeConditionPanel'
@@ -88,6 +88,7 @@ import { useCanvasShortcuts } from '../hooks/useCanvasShortcuts'
 import EmptyCanvasPrompt from './EmptyCanvasPrompt'
 import ShortcutHelpDialog from './ShortcutHelpDialog'
 import { useProcessVisuals } from '../hooks/useProcessVisuals'
+import { useStoryboardStepImages } from '../hooks/useStoryboardStepImages'
 import { ModelChoiceDialog } from '../../workflow/components/RunModelPicker'
 import type { RunModelCapability } from '../../../../types/recipeAiWorkflow'
 import { buildCanvasSlideshowSteps } from '../model/canvasSlideshow'
@@ -859,6 +860,25 @@ function RecipeProcessCanvasContent({
 
   // The Preparation gets one image per flow (attached to its output step); every other process one per step.
   const isPreparationProcess = process.type === 'SUBPROCESS'
+  // A storyboard that finishes while this canvas is open changes step images too (see useStoryboardStepImages).
+  const applyStoryboardSteps = useCallback((steps: RecipeStoryboardStep[]) => {
+    const byStepId = new Map(steps.map((step) => [step.stepId, step]))
+    setNodes((nds) => nds.map((node) => {
+      const step = byStepId.get(node.id)
+      if (!step || !isRecipeStepNode(node)) return node
+      return {
+        ...node,
+        data: withRecipeStepVisualization(node.data, step.cleared ? { status: 'not_generated' } : {
+          assetId: step.visualizationAssetId ?? undefined,
+          imagePrompt: step.imagePrompt ?? undefined,
+          imageUrl: step.imageUrl ?? undefined,
+          status: 'generated',
+        }),
+      }
+    }))
+  }, [setNodes])
+  useStoryboardStepImages({ recipeId, processId, applySteps: applyStoryboardSteps })
+
   const visuals = useProcessVisuals({
     recipeId,
     processId,

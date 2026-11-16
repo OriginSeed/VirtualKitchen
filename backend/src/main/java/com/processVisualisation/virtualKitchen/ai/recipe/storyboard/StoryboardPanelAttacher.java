@@ -17,6 +17,7 @@ import org.springframework.util.StringUtils;
 
 import java.io.IOException;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -25,8 +26,8 @@ import java.util.Set;
 
 /**
  * Stage 4 of a storyboard, without any AI call: cuts the combined image into its panels, stores each panel image, and
- * puts it on every step the panel stands for, through the same asset and node fields step visuals use
- * ({@code recipeId::stepId} asset, {@link ProcessRepository#setStepVisualization}). Steps of one panel share its image.
+ * puts it on the last step the panel stands for, through the same asset and node fields step visuals use
+ * ({@code recipeId::stepId} asset, {@link ProcessRepository#setStepVisualization}). The panel's other steps get none.
  */
 @Component
 public class StoryboardPanelAttacher {
@@ -85,11 +86,15 @@ public class StoryboardPanelAttacher {
     }
 
     /**
-     * Puts each panel's image on the steps it stands for. A step that is in several panels takes the first; a step
-     * that already has an image keeps it unless {@code overwriteExisting}. Checks and steps unknown to {@code source}
-     * (deleted meanwhile) are skipped.
+     * Puts each panel's image on ONE step: the last, in cooking order, of the steps the panel stands for (a step that
+     * is in several panels belongs to the first). The other steps of the panel get no image, so the same picture is
+     * never repeated down a recipe; one that still carries an image an earlier storyboard gave it has it removed.
+     * <p>
+     * A step's own image (drawn for the step, or imported) is never removed, and is kept on the panel's last step
+     * unless {@code overwriteExisting}. An image an earlier storyboard put there is always replaced. Checks and steps
+     * unknown to {@code source} (deleted meanwhile) are skipped.
      *
-     * @return one result per covered step, in panel order
+     * @return one result per panel's last step, and one per step whose earlier storyboard image was removed
      */
     public List<RecipeStoryboard.StepResult> attachToSteps(RecipeStoryboard storyboard, StoryboardSource source,
                                                            boolean overwriteExisting) {
@@ -100,18 +105,40 @@ public class StoryboardPanelAttacher {
         String recipeId = String.valueOf(storyboard.getRecipeId());
         for (RecipeStoryboard.Panel panel : storyboard.getPanels()) {
             if (!StringUtils.hasText(panel.getImageUrl())) continue;
+            List<StoryboardSource.Node> steps = new ArrayList<>();
             for (String stepId : panel.getSourceStepIds()) {
                 StoryboardSource.Node node = byNodeId.get(stepId);
-                if (node == null || !node.step() || !done.add(stepId)) continue;
+                if (node != null && node.step() && done.add(stepId)) steps.add(node);
+            }
+            if (steps.isEmpty()) continue;
+            // Preparation and main steps never share a panel, so the order within the group decides.
+            StoryboardSource.Node last = steps.stream().max(Comparator.comparingInt(StoryboardSource.Node::order)).orElseThrow();
 
+            for (StoryboardSource.Node node : steps) {
+                String stepId = node.nodeId();
                 String key = VisualizationKeyBuilder.build(recipeId, stepId);
                 VisualizationAsset asset = assetRepository.findByVisualizationKey(key).orElse(null);
-                boolean hasImage = node.hasImage() || (asset != null && StringUtils.hasText(asset.getImageUrl()));
+                boolean fromStoryboard = asset != null && StringUtils.hasText(asset.getImageUrl())
+                        && asset.getSourceGridKey() != null && asset.getSourceGridKey().startsWith(SOURCE_PREFIX);
+                boolean ownImage = !fromStoryboard
+                        && (node.hasImage() || (asset != null && StringUtils.hasText(asset.getImageUrl())));
                 RecipeStoryboard.StepResult result = new RecipeStoryboard.StepResult();
                 result.setProcessId(node.processId());
                 result.setStepId(stepId);
                 result.setPanelId(panel.getPanelId());
-                if (hasImage && !overwriteExisting) {
+
+                if (node != last) {
+                    if (!fromStoryboard) continue;
+                    asset.setImageUrl(null);
+                    asset.setImagePrompt(null);
+                    asset.setSourceGridKey(null);
+                    assetRepository.save(asset);
+                    processRepository.setStepVisualization(node.processId(), stepId, null, null, null);
+                    result.setCleared(true);
+                    results.add(result);
+                    continue;
+                }
+                if (ownImage && !overwriteExisting) {
                     result.setAttached(false);
                     results.add(result);
                     continue;

@@ -186,7 +186,7 @@ class RecipeStoryboardJobServiceTest {
     }
 
     @Test
-    void aStoryboard_isPlanned_drawnWithExactlyOneImageRequest_cutAndPutOnEveryCoveredStep() throws Exception {
+    void aStoryboard_isPlanned_drawnWithExactlyOneImageRequest_cut_andEachPanelPutOnItsLastStep() throws Exception {
         RecipeStoryboardResponseDTO storyboard = service.startJob(OWNER, RECIPE_ID, false, false);
 
         // One image request: the master prompt, no reference images, the configured size and the chosen model.
@@ -217,32 +217,38 @@ class RecipeStoryboardJobServiceTest {
                     panel.getImageUrl());
         }
 
-        // Every step is given its panel's image; the check is not a step.
-        assertEquals(12, storyboard.getSteps().size());
+        // Each panel's image goes on ONE step, the last it covers, so no picture repeats down the recipe.
+        assertEquals(List.of("mix", "rest", "boil", "drain", "fry", "cook", "dum"),
+                storyboard.getSteps().stream().map(RecipeStoryboardResponseDTO.StepDTO::getStepId).toList());
         assertTrue(storyboard.getSteps().stream().allMatch(RecipeStoryboardResponseDTO.StepDTO::isAttached));
-        assertTrue(storyboard.getSteps().stream().noneMatch(step -> step.getStepId().equals("check")));
-        RecipeStoryboardResponseDTO.StepDTO coat = step(storyboard, "coat");
+        assertTrue(storyboard.getSteps().stream().noneMatch(RecipeStoryboardResponseDTO.StepDTO::isCleared));
         RecipeStoryboardResponseDTO.StepDTO rest = step(storyboard, "rest");
-        assertEquals("P2", coat.getPanelId());
-        assertEquals(coat.getImageUrl(), rest.getImageUrl());
-        assertEquals(storyboard.getPanels().get(1).getImageUrl(), coat.getImageUrl());
+        assertEquals("P2", rest.getPanelId());
+        assertEquals(storyboard.getPanels().get(1).getImageUrl(), rest.getImageUrl());
+        // The panel's earlier steps, and the check, get nothing.
+        assertNull(assets.get("62::coat"));
+        assertNull(assets.get("62::heat"));
 
-        // Written the way step visuals are: an asset per step, then the node itself.
-        VisualizationAsset asset = assets.get("62::coat");
-        assertEquals(coat.getImageUrl(), asset.getImageUrl());
+        // Written the way step visuals are: an asset for the step, then the node itself.
+        VisualizationAsset asset = assets.get("62::rest");
+        assertEquals(rest.getImageUrl(), asset.getImageUrl());
         assertEquals("Photo of panel P2", asset.getImagePrompt());
         assertEquals("storyboard:" + storyboard.getJobId(), asset.getSourceGridKey());
         assertEquals("test-image", asset.getResolvedModelKey());
         assertNull(asset.getFocus());
-        verify(processRepository).setStepVisualization(StoryboardTestFixtures.PREP_ID, "coat", asset.getId(),
-                "Photo of panel P2", coat.getImageUrl());
+        verify(processRepository).setStepVisualization(StoryboardTestFixtures.PREP_ID, "rest", asset.getId(),
+                "Photo of panel P2", rest.getImageUrl());
+        // The main panel that covers heat, add, cook and the check puts its image on "cook".
+        verify(processRepository).setStepVisualization(eq(StoryboardTestFixtures.MAIN_ID), eq("cook"), anyLong(),
+                eq("Photo of panel P6"), eq(storyboard.getPanels().get(5).getImageUrl()));
         verify(processRepository).setStepVisualization(eq(StoryboardTestFixtures.MAIN_ID), eq("dum"), anyLong(),
                 eq("Photo of panel P7"), eq(storyboard.getPanels().get(6).getImageUrl()));
-        verify(processRepository, times(12)).setStepVisualization(anyLong(), anyString(), anyLong(), anyString(), anyString());
+        verify(processRepository, times(7)).setStepVisualization(anyLong(), anyString(), any(), any(), any());
     }
 
     @Test
-    void stepsThatAlreadyHaveAnImage_keepIt_unlessAskedToReplace() throws Exception {
+    void aStepsOwnImage_isKept_unlessAskedToReplace_andIsNeverRemovedFromAnEarlierStepOfAPanel() throws Exception {
+        // "heat" is an earlier step of panel P6 and has its own image; "cook" is P6's last step and has one too.
         processes.get(0).getNodes().get(0).getData().put("imageUrl", "https://images.test/old-heat.png");
         VisualizationAsset cook = new VisualizationAsset();
         cook.setId(5L);
@@ -252,19 +258,58 @@ class RecipeStoryboardJobServiceTest {
 
         RecipeStoryboardResponseDTO kept = service.startJob(OWNER, RECIPE_ID, false, false);
 
-        assertFalse(step(kept, "heat").isAttached());
         assertFalse(step(kept, "cook").isAttached());
-        assertNull(step(kept, "heat").getImageUrl());
-        assertTrue(step(kept, "addChicken").isAttached());
+        assertNull(step(kept, "cook").getImageUrl());
+        assertTrue(step(kept, "dum").isAttached());
         assertEquals("https://images.test/old-cook.png", assets.get("62::cook").getImageUrl());
-        verify(processRepository, never()).setStepVisualization(anyLong(), eq("heat"), anyLong(), anyString(), anyString());
+        assertTrue(kept.getSteps().stream().noneMatch(step -> step.getStepId().equals("heat")));
+        verify(processRepository, never()).setStepVisualization(anyLong(), eq("heat"), any(), any(), any());
+        verify(processRepository, never()).setStepVisualization(anyLong(), eq("cook"), any(), any(), any());
 
         RecipeStoryboardResponseDTO replaced = service.startJob(OWNER, RECIPE_ID, true, true);
 
-        assertTrue(step(replaced, "heat").isAttached());
         assertTrue(step(replaced, "cook").isAttached());
         assertEquals(step(replaced, "cook").getImageUrl(), assets.get("62::cook").getImageUrl());
         assertEquals(5L, assets.get("62::cook").getId());
+        // Even when replacing, an earlier step of the panel keeps the image that is its own.
+        assertTrue(replaced.getSteps().stream().noneMatch(step -> step.getStepId().equals("heat")));
+        verify(processRepository, never()).setStepVisualization(anyLong(), eq("heat"), any(), any(), any());
+    }
+
+    @Test
+    void imagesAnEarlierStoryboardPutOnTheSteps_areReplacedOnTheLastStep_andRemovedFromTheOthers() throws Exception {
+        // As an earlier storyboard left them: the same panel image on both steps of P2.
+        for (String stepId : List.of("coat", "rest")) {
+            VisualizationAsset earlier = new VisualizationAsset();
+            earlier.setId(stepId.equals("coat") ? 11L : 12L);
+            earlier.setVisualizationKey("62::" + stepId);
+            earlier.setImageUrl("https://images.test/earlier-panel-2.png");
+            earlier.setImagePrompt("Earlier panel prompt");
+            earlier.setSourceGridKey("storyboard:sb-earlier");
+            assets.put(earlier.getVisualizationKey(), earlier);
+        }
+        processes.get(1).getNodes().forEach(node -> {
+            if (List.of("coat", "rest").contains(node.getId())) node.getData().put("imageUrl", "https://images.test/earlier-panel-2.png");
+        });
+
+        // Not asked to replace: these are not the user's own images.
+        RecipeStoryboardResponseDTO storyboard = service.startJob(OWNER, RECIPE_ID, false, false);
+
+        RecipeStoryboardResponseDTO.StepDTO coat = step(storyboard, "coat");
+        assertTrue(coat.isCleared());
+        assertFalse(coat.isAttached());
+        assertNull(coat.getImageUrl());
+        assertNull(assets.get("62::coat").getImageUrl());
+        assertNull(assets.get("62::coat").getSourceGridKey());
+        verify(processRepository).setStepVisualization(StoryboardTestFixtures.PREP_ID, "coat", null, null, null);
+
+        RecipeStoryboardResponseDTO.StepDTO rest = step(storyboard, "rest");
+        assertTrue(rest.isAttached());
+        assertFalse(rest.isCleared());
+        assertEquals(storyboard.getPanels().get(1).getImageUrl(), assets.get("62::rest").getImageUrl());
+        assertEquals("storyboard:" + storyboard.getJobId(), assets.get("62::rest").getSourceGridKey());
+        assertEquals(12L, assets.get("62::rest").getId());
+        assertEquals(8, storyboard.getSteps().size());
     }
 
     @Test
@@ -279,7 +324,7 @@ class RecipeStoryboardJobServiceTest {
         assertTrue(unsetsActiveKey());
         assertNull(storyboard.getImageUrl());
         assertTrue(storyboard.getSteps().isEmpty());
-        verify(processRepository, never()).setStepVisualization(anyLong(), anyString(), anyLong(), anyString(), anyString());
+        verify(processRepository, never()).setStepVisualization(anyLong(), anyString(), any(), any(), any());
         // The plan and the prompt were stored before the image was asked for.
         assertNotNull(lastSet("panels"));
         assertEquals(MASTER_PROMPT, lastSet("masterPrompt"));
@@ -298,7 +343,7 @@ class RecipeStoryboardJobServiceTest {
         assertEquals(List.of(StoryboardStage.IMAGE, StoryboardStage.CROP), allSet("stage"));
         assertEquals(7, storyboard.getPanels().size());
         assertEquals("earlier-text", storyboard.getTextModelKey());
-        assertEquals(12, storyboard.getSteps().size());
+        assertEquals(7, storyboard.getSteps().size());
     }
 
     @Test
@@ -337,7 +382,7 @@ class RecipeStoryboardJobServiceTest {
         assertEquals(1, storyboard.getWarnings().size());
         assertTrue(storyboard.getWarnings().get(0).contains("could not be cut"), storyboard.getWarnings().toString());
         assertTrue(storyboard.getPanels().stream().allMatch(panel -> panel.getImageUrl() == null));
-        verify(processRepository, never()).setStepVisualization(anyLong(), anyString(), anyLong(), anyString(), anyString());
+        verify(processRepository, never()).setStepVisualization(anyLong(), anyString(), any(), any(), any());
     }
 
     @Test

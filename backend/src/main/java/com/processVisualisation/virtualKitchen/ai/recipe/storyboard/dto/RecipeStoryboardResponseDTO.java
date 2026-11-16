@@ -76,5 +76,7 @@ public class RecipeStoryboardResponseDTO {
         private String imageUrl;
         private String imagePrompt;
         private boolean attached;
+        /** The image an earlier storyboard put on the step was removed. */
+        private boolean cleared;
     }
 }

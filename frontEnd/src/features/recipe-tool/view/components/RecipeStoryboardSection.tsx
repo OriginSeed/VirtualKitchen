@@ -1,21 +1,13 @@
-import { RecipeStoryboardApi } from '../../../../api'
-import { useApiData } from '../../../../shared/hooks/useApiData'
-import { storyboardJobKey } from '../../jobs/jobTracker'
-import { useTrackedJob } from '../../jobs/useJobTracker'
+import type { RecipeStoryboardResponse } from '../../../../types/recipe'
 import RecipeStoryboardResult from './RecipeStoryboardResult'
 
 /**
- * The recipe's storyboard on the Recipe Process page: shown once the recipe has a finished one, to its owner and to
- * readers of a public recipe alike. Renders nothing while there is none (it is made from the editor's AI menu).
+ * The recipe's storyboard on the Recipe Process page: the one combined image, shown to the owner and to readers of
+ * a public recipe alike. Its panels are not listed here: each one already illustrates its steps further down the
+ * page. Renders nothing for a storyboard without an image.
  */
-export default function RecipeStoryboardSection({ recipeId, anchorId }: { recipeId: number; anchorId: string }) {
-  // Read again when a generation this page is following finishes.
-  const tracked = useTrackedJob(storyboardJobKey(recipeId))
-  const finishedJobId = tracked?.job.status === 'COMPLETED' ? tracked.job.jobId : ''
-  const latest = useApiData(`recipe-storyboard:${recipeId}:${finishedJobId}`, () => RecipeStoryboardApi.getLatest(recipeId))
-
-  const storyboard = latest.data
-  if (!storyboard || !storyboard.imageUrl) return null
+export default function RecipeStoryboardSection({ storyboard, anchorId }: { storyboard: RecipeStoryboardResponse; anchorId: string }) {
+  if (!storyboard.imageUrl) return null
 
   return (
     <section id={anchorId} className="rp-section" aria-labelledby={`${anchorId}-title`}>

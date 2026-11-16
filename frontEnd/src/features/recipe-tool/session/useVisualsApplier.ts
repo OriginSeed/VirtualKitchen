@@ -1,7 +1,7 @@
 import { useEffect, useRef } from 'react'
 import type { JobTracker } from '../jobs/jobTracker'
 import { withRecipeStepVisualization } from '../model/recipeStepData'
-import { storyboardStepImages } from '../model/storyboardView'
+import { storyboardStepChanges } from '../model/storyboardView'
 import type { SessionStore } from './persistence/sessionStore'
 
 /**
@@ -52,10 +52,10 @@ export function useVisualsApplier({ enabled, recipeId, jobTracker, store, onAppl
         fresh.forEach((step) => appliedStepsRef.current.add(`${tracked.job.jobId}:${step.stepId}`))
         changed = true
       }
-      // A storyboard puts its panel images on the steps of both processes: same rule, one step list for the recipe.
+      // A storyboard puts each panel's image on one step, in either process: same rule, one step list for the recipe.
       for (const tracked of jobTracker.all()) {
         if (tracked.kind !== 'storyboard' || tracked.recipeId !== recipeId) continue
-        const fresh = storyboardStepImages(tracked.job).filter((step) =>
+        const fresh = storyboardStepChanges(tracked.job).filter((step) =>
           !appliedStepsRef.current.has(`${tracked.job.jobId}:${step.stepId}`))
         if (fresh.length === 0) continue
 
@@ -67,7 +67,8 @@ export function useVisualsApplier({ enabled, recipeId, jobTracker, store, onAppl
             if (!step || node.kind !== 'STEP' || step.processId !== process.id) return node
             return {
               ...node,
-              data: withRecipeStepVisualization(node.data, {
+              // A step an earlier storyboard had illustrated, and this one did not, has its image removed.
+              data: withRecipeStepVisualization(node.data, step.cleared ? { status: 'not_generated' } : {
                 assetId: step.visualizationAssetId ?? undefined,
                 imagePrompt: step.imagePrompt ?? undefined,
                 imageUrl: step.imageUrl ?? undefined,

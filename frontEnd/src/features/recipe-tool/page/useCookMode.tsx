@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { RecipeStoryboardApi } from '../../../api'
 import { useRecipeSession } from '../session/sessionContext'
 import { useCookModeGate } from '../session/useRecipeReadiness'
 import { buildCookModeSlides } from '../view/model/cookModeSlides'
@@ -21,7 +22,9 @@ export function useCookMode(recipeId: number) {
     if (!session || !available) return
     const decision = await gate()
     if (!decision) return
-    const presentation = buildRecipePresentation(session.getProcesses())
+    // With a storyboard, steps that share a panel show its image; without one (or if it cannot be read) nothing changes.
+    const storyboard = await RecipeStoryboardApi.getLatest(recipeId).catch(() => null)
+    const presentation = buildRecipePresentation(session.getProcesses(), storyboard?.panels ?? [])
     // The gate has already saved the owner's edits, so narration can follow the saved steps right away.
     setWalkthrough({ steps: buildCookModeSlides(presentation.sections), preview: decision === 'preview', ready: Promise.resolve(true) })
   }

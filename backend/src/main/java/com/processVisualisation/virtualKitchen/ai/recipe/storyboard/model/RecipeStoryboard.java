@@ -147,7 +147,10 @@ public class RecipeStoryboard {
         private int columns;
     }
 
-    /** One covered step: the panel it belongs to and whether the panel's image was put on the step. */
+    /**
+     * What happened to one step when the panel images were put on the steps: the last step of a panel (given the
+     * panel's image, or keeping its own), or a step whose image from an earlier storyboard was removed.
+     */
     @Data
     public static class StepResult {
         private Long processId;
@@ -156,7 +159,9 @@ public class RecipeStoryboard {
         private Long visualizationAssetId;
         private String imageUrl;
         private String imagePrompt;
-        /** False when the step kept the image it already had. */
+        /** True when the panel's image was put on the step; false when it kept the image it already had. */
         private boolean attached;
+        /** True when the image an earlier storyboard put on the step was removed (the step now has none). */
+        private boolean cleared;
     }
 }

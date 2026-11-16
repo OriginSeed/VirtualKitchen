@@ -179,7 +179,7 @@ export default function RecipeStoryboardDialog({ recipeId, onClose }: { recipeId
             </div>
           )}
 
-          {storyboard && <RecipeStoryboardResult storyboard={storyboard} />}
+          {storyboard && <RecipeStoryboardResult storyboard={storyboard} showPanels showPrompt />}
         </div>
 
         {storyboard && (

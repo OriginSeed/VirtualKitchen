@@ -81,14 +81,28 @@ export const storyboardLayoutText = (storyboard: Pick<RecipeStoryboardResponse, 
 export const storyboardStepImages = (storyboard: Pick<RecipeStoryboardResponse, 'steps'>): RecipeStoryboardStep[] =>
   (storyboard.steps ?? []).filter((step) => step.attached && Boolean(step.imageUrl))
 
-/** e.g. "Panel images were added to 9 steps; 3 kept the image they already had." Empty when no step is covered. */
+/** The steps whose image an earlier storyboard had put there and this one removed. */
+export const storyboardStepsCleared = (storyboard: Pick<RecipeStoryboardResponse, 'steps'>): RecipeStoryboardStep[] =>
+  (storyboard.steps ?? []).filter((step) => Boolean(step.cleared))
+
+/** Every step whose image a storyboard changed: given a panel image, or cleared. What the editor has to apply. */
+export const storyboardStepChanges = (storyboard: Pick<RecipeStoryboardResponse, 'steps'>): RecipeStoryboardStep[] =>
+  [...storyboardStepImages(storyboard), ...storyboardStepsCleared(storyboard)]
+
+/**
+ * e.g. "Each panel's image was added to the last step it shows: 7 steps. 1 step kept the image it already had."
+ * Empty when the storyboard touched no step.
+ */
 export const storyboardStepSummary = (storyboard: Pick<RecipeStoryboardResponse, 'steps'>): string => {
   const steps = storyboard.steps ?? []
   if (steps.length === 0) return ''
   const attached = storyboardStepImages(storyboard).length
-  const kept = steps.length - attached
+  const cleared = storyboardStepsCleared(storyboard).length
+  const kept = steps.length - attached - cleared
   const stepsText = (count: number) => `${count} step${count === 1 ? '' : 's'}`
-  if (attached === 0) return `No step was changed: ${stepsText(kept)} kept the image ${kept === 1 ? 'it' : 'they'} already had.`
-  const added = `Panel images were added to ${stepsText(attached)}`
-  return kept > 0 ? `${added}; ${kept} kept the image ${kept === 1 ? 'it' : 'they'} already had.` : `${added}.`
+  const parts: string[] = []
+  if (attached > 0) parts.push(`Each panel's image was added to the last step it shows: ${stepsText(attached)}.`)
+  if (kept > 0) parts.push(`${stepsText(kept)} kept the image ${kept === 1 ? 'it' : 'they'} already had.`)
+  if (cleared > 0) parts.push(`An earlier storyboard's image was removed from ${stepsText(cleared)}.`)
+  return parts.join(' ')
 }
