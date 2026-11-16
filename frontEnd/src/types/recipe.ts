@@ -216,6 +216,78 @@ export interface RecipeActiveJobsResponse {
   visualizations: RecipeProcessVisualizationJobResponse[]
   /** The open AI Recipe Creation workflow, else a recently finished one not yet dismissed (older backends: absent). */
   workflow?: RecipeAiWorkflowResponse | null
+  /** The storyboard generation still running for this recipe (older backends: absent). */
+  storyboard?: RecipeStoryboardResponse | null
+}
+
+/**
+ * A recipe storyboard: the whole recipe told as panels in ONE generated image, which is also cut into one image per
+ * panel and put on the steps each panel covers. The same shape is the running job (status, stage) and its result.
+ * Mirrors the backend's `RecipeStoryboardResponseDTO`.
+ */
+export type RecipeStoryboardStatus = 'QUEUED' | 'IN_PROGRESS' | 'COMPLETED' | 'FAILED'
+
+/** What a storyboard generation is working on: planning panels, writing the image prompt, drawing, cutting. */
+export type RecipeStoryboardStage = 'PLAN' | 'PROMPT' | 'IMAGE' | 'CROP'
+
+export interface RecipeStoryboardPanel {
+  panelId: string
+  sequence: number
+  group: 'PREPARATION' | 'MAIN'
+  component?: string | null
+  /** Short title of the action the panel shows. */
+  description: string
+  /** Ids of the recipe nodes this panel stands for. */
+  sourceStepIds: string[]
+  /** Owner only. */
+  imagePrompt?: string | null
+  dependsOn: string[]
+  referencePanels: string[]
+  ingredients: string[]
+  equipment: string[]
+  expectedState?: string | null
+  /** The panel cut out of the combined image; null when it could not be cut. */
+  imageUrl?: string | null
+}
+
+/** What happened to one covered step when the panel images were put on the steps. */
+export interface RecipeStoryboardStep {
+  processId: number
+  stepId: string
+  panelId: string
+  visualizationAssetId?: number | null
+  imageUrl?: string | null
+  imagePrompt?: string | null
+  /** False when the step kept the image it already had. */
+  attached: boolean
+}
+
+export interface RecipeStoryboardResponse {
+  jobId: string
+  recipeId: number
+  status: RecipeStoryboardStatus
+  stage?: RecipeStoryboardStage | null
+  failedStage?: RecipeStoryboardStage | null
+  errorMessage?: string | null
+  warnings: string[]
+  /** True when the start request joined a storyboard already being generated for this recipe. */
+  reused?: boolean
+  /** True when the recipe changed after this storyboard was made. */
+  outdated?: boolean
+  title?: string | null
+  /** The combined storyboard image. */
+  imageUrl?: string | null
+  rows?: number | null
+  columns?: number | null
+  panels: RecipeStoryboardPanel[]
+  omittedSteps: { stepId: string; reason?: string | null }[]
+  /** The prompt the image was requested with (owner only). */
+  masterPrompt?: string | null
+  steps: RecipeStoryboardStep[]
+  textModelKey?: string | null
+  imageModelKey?: string | null
+  createdAt?: string | null
+  completedAt?: string | null
 }
 
 export interface RecipeIngredient {

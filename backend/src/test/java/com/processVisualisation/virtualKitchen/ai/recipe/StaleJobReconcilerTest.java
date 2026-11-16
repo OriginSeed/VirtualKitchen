@@ -56,6 +56,11 @@ class StaleJobReconcilerTest {
         ArgumentCaptor<Update> visualization = ArgumentCaptor.forClass(Update.class);
         verify(mongoTemplate).updateMulti(any(Query.class), visualization.capture(), eq(VisualizationJob.class));
         assertFailedAndUnlocked(visualization.getValue());
+
+        ArgumentCaptor<Update> storyboard = ArgumentCaptor.forClass(Update.class);
+        verify(mongoTemplate).updateMulti(any(Query.class), storyboard.capture(),
+                eq(com.processVisualisation.virtualKitchen.ai.recipe.storyboard.model.RecipeStoryboard.class));
+        assertFailedAndUnlocked(storyboard.getValue());
     }
 
     @Test

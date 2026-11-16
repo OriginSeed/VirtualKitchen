@@ -17,9 +17,11 @@ import { normalizeConditionNodeData } from '../../model/recipeConditionData'
 import { normalizeRecipeStepNodeData } from '../../model/recipeStepData'
 import { mergePreparations, PREPARATION_NAME } from '../../model/mergePreparations'
 import { getPreparationFlows, getPreparationProcess } from '../../model/preparationFlows'
-import { generationJobKey, isTrackedJobActive, isWorkflowOpen, workflowJobKey } from '../../jobs/jobTracker'
+import { generationJobKey, isTrackedJobActive, isWorkflowOpen, storyboardJobKey, workflowJobKey } from '../../jobs/jobTracker'
 import { useJobTracker, useTrackedJob } from '../../jobs/useJobTracker'
 import RecipeAiCreationModal from '../../workflow/components/RecipeAiCreationModal'
+import RecipeStoryboardDialog from './RecipeStoryboardDialog'
+import { storyboardProgressBadge } from '../../model/storyboardView'
 import type { RunModels } from '../../workflow/model/workflowSelection'
 import { clearDraft, draftKeys } from '../../../../shared/drafts/draftStore'
 import { workflowBadge, workflowChipLabel, workflowHeadline } from '../../workflow/model/workflowView'
@@ -94,6 +96,8 @@ export default function RecipeEditorView({
   // AI Recipe Creation (process → review/approval → visuals + narration), followed by the same tracker.
   const workflow = useTrackedJob(workflowJobKey(recipeId))?.job ?? null
   const [showAiCreation, setShowAiCreation] = useState(openAiCreationOnStart && isOwner)
+  const storyboardJob = useTrackedJob(storyboardJobKey(recipeId))
+  const [showStoryboard, setShowStoryboard] = useState(false)
   // What the AI menu item that opened AI Recipe Creation pre-ticks (undefined: the user's last selection).
   const [aiCreationTasks, setAiCreationTasks] = useState<RecipeAiTaskType[] | undefined>(undefined)
   const openAiCreation = useCallback((tasks?: RecipeAiTaskType[]) => {
@@ -558,8 +562,16 @@ export default function RecipeEditorView({
       onOpenAiEdit: editableTarget ? () => setShowGenerationModal(true) : undefined,
       status: aiStatus && { badge: aiStatus.badge, title: aiStatus.title },
       generationProgress,
+      storyboard: {
+        onOpen: () => setShowStoryboard(true),
+        progress: isTrackedJobActive(storyboardJob) && storyboardJob ? storyboardProgressBadge(storyboardJob.job) : null,
+      },
     }
     : undefined
+
+  const storyboardDialog = showStoryboard && isOwner && (
+    <RecipeStoryboardDialog recipeId={recipeId} onClose={() => setShowStoryboard(false)} />
+  )
 
   const aiCreationModal = showAiCreation && (
     <RecipeAiCreationModal
@@ -642,6 +654,7 @@ export default function RecipeEditorView({
       />
       {generationModal}
       {aiCreationModal}
+      {storyboardDialog}
     </>
   )
 }

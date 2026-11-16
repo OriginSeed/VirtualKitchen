@@ -16,6 +16,8 @@ export type RecipeAiActions = {
   status?: { badge: string; title: string } | null
   /** An AI generation/edit job running for this recipe. */
   generationProgress?: { percent: number; stageLabel: string } | null
+  /** The recipe storyboard: opens its dialog; `progress` (e.g. "2/4") while one is being generated. */
+  storyboard?: { onOpen: () => void; progress: string | null }
 }
 
 type AiActionsMenuProps = {
@@ -47,16 +49,19 @@ export default function AiActionsMenu({
   const credits = useAiCredit(jobsFinishedSignal)
   if (!recipeActions && !onGenerateVisuals) return null
 
-  const { status, generationProgress } = recipeActions ?? {}
+  const { status, generationProgress, storyboard } = recipeActions ?? {}
   const busyLabel = status?.badge
     ?? (generationProgress ? `✨ ${generationProgress.percent}%` : null)
     ?? (isGeneratingVisuals ? '✨ Visuals…' : null)
+    ?? (storyboard?.progress ? '✨ Storyboard…' : null)
   const busy = busyLabel != null && busyLabel !== '✨ AI'
   const buttonTitle = status?.title
     ? `AI Recipe Creation — ${status.title}`
     : generationProgress
       ? `Generating with AI — ${generationProgress.stageLabel}`
-      : (isGeneratingVisuals ? (generateVisualsStatus?.text ?? 'Generating step visuals') : 'AI actions')
+      : isGeneratingVisuals
+        ? (generateVisualsStatus?.text ?? 'Generating step visuals')
+        : (storyboard?.progress ? 'Generating the recipe storyboard' : 'AI actions')
 
   return (
     <ToolbarMenu
@@ -116,6 +121,15 @@ export default function AiActionsMenu({
             disabled={isGeneratingVisuals}
             title={isGeneratingVisuals ? 'Visuals are being generated for this process' : undefined}
             onSelect={onGenerateVisuals}
+          />
+        )}
+        {storyboard && (
+          <MenuItem
+            icon="🎞️"
+            label="Recipe Storyboard"
+            description="The whole recipe as one image of panels"
+            trailing={storyboard.progress ?? undefined}
+            onSelect={storyboard.onOpen}
           />
         )}
         {recipeActions && (

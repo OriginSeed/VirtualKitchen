@@ -21,6 +21,7 @@ public class CorrelationResolver {
     static final String GENERATION_JOBS = "process_generation_job";
     static final String VISUALIZATION_JOBS = "visualization_job";
     static final String WORKFLOWS = "recipe_ai_workflow";
+    static final String STORYBOARDS = "recipe_storyboard";
 
     private final MongoTemplate mongoTemplate;
 
@@ -54,6 +55,13 @@ public class CorrelationResolver {
                 processId = string(job.get("processId"));
                 if (recipeId == null) recipeId = string(job.get("recipeId"));
                 jobUserId = job.get("userId") instanceof Number n ? n.longValue() : null;
+            }
+        } else if (jobId != null && (context == OperationContext.STORYBOARD_PLANNING || context == OperationContext.STORYBOARD_IMAGE)) {
+            // A storyboard's job id is its document id.
+            Document storyboard = mongoTemplate.findById(jobId, Document.class, STORYBOARDS);
+            if (storyboard != null) {
+                recipeId = string(storyboard.get("recipeId"));
+                jobUserId = storyboard.get("userId") instanceof Number n ? n.longValue() : null;
             }
         }
 

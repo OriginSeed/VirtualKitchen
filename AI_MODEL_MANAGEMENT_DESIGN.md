@@ -1231,3 +1231,13 @@ Provider support:
 - **Text model failures.** A missing or invalid focus falls back to the action's default; missing equipment falls back to the configured defaults; a step the batch leaves out writes its own focused prompt.
 - **Not used.** Mask-based inpainting (no mask source, and edit models make localized changes without one).
 
+## 28. Recipe Storyboard
+
+The whole recipe (Preparation and main process) told as panels in ONE generated image. Code: `ai/recipe/storyboard`.
+
+- **Stages.** PLAN: one text call reads the recipe as JSON (node ids replaced by short aliases) and groups its nodes into panels, one panel per visually meaningful action; the plan is validated (every step in a panel or listed as omitted, preparation before main, main in cooking order, links only to earlier panels) with one retry. PROMPT: a second text call writes the one image prompt from the panels; the grid is computed in code, and a fixed template stands in when the call does not name every panel. IMAGE: exactly one image request, no reference images. CROP: the image is cut into its grid cells (`VisualizationGridSlicer.sliceGrid`), each panel image is stored, and it is put on every step the panel covers through the step's `VisualizationAsset` (`sourceGridKey = storyboard:<id>`) and `ProcessRepository.setStepVisualization`.
+- **Persistence.** One `recipe_storyboard` document per generation: status, stage, panels (source node ids, prompt, dependsOn, referencePanels, crop, image URL), omitted steps, layout, master prompt, combined image URL, models, per-step results, and the hash of the recipe it was planned from. The recipe's storyboard is the latest COMPLETED one; a different current hash marks it outdated.
+- **Jobs.** One running storyboard per recipe (`activeKey`). A new start after a failure on an unchanged recipe continues from the failed stage. Start is refused while step visuals are being generated for the recipe. `StaleJobReconciler` fails abandoned ones.
+- **API.** `POST /api/v1/recipes/{id}/storyboard/jobs` (owner), `GET .../storyboard/jobs/{jobId}`, `GET .../storyboard` (owner, or anyone for a public recipe); the active-jobs endpoint also returns the running storyboard.
+- **Settings.** `ai.storyboard.*` (max panels 1-16, max source steps, image size); `ai.generation.storyboard-plan` / `storyboard-prompt` (Admin > Config > Generation).
+- **Keep or replace.** Steps that already have an image keep it unless the run was started with "regenerate and replace".

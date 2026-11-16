@@ -11,6 +11,7 @@ import RecipeHero from './RecipeHero'
 import RecipeIngredientsList from './RecipeIngredientsList'
 import RecipeNutritionPanel from './RecipeNutritionPanel'
 import RecipeStepsTimeline from './RecipeStepsTimeline'
+import RecipeStoryboardSection from './RecipeStoryboardSection'
 import AddToMyRecipesButton from '../../page/AddToMyRecipesButton'
 import type { AddToMyRecipes } from '../../page/useAddToMyRecipes'
 
@@ -27,6 +28,7 @@ type RecipeViewPageProps = {
 const ANCHORS = {
   ingredients: 'recipe-ingredients',
   steps: 'recipe-steps',
+  storyboard: 'recipe-storyboard',
   nutrition: 'recipe-nutrition',
 }
 
@@ -137,6 +139,8 @@ export default function RecipeViewPage({ recipe, isOwner, addToMyRecipes, onNutr
             </div>
           )}
         </section>
+
+        {hasSteps && <RecipeStoryboardSection recipeId={recipe.id} anchorId={ANCHORS.storyboard} />}
 
         <section id={ANCHORS.nutrition} className="rp-section" aria-labelledby={`${ANCHORS.nutrition}-title`}>
           <div className="rp-section-header">

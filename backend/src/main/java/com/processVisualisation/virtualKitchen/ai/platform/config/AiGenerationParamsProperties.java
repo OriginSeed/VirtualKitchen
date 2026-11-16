@@ -27,6 +27,12 @@ public class AiGenerationParamsProperties {
     /** Image prompts for a batch of steps in one call. */
     private PromptBatch promptBatch = new PromptBatch();
 
+    /** Recipe storyboard: grouping the recipe's nodes into panels (one prompt per panel, so it needs room). */
+    private Call storyboardPlan = new Call(0.3, 8000);
+
+    /** Recipe storyboard: writing the one image prompt from the panels. */
+    private Call storyboardPrompt = new Call(0.3, 4000);
+
     /** The free-form AI chat endpoint. */
     private Call chat = new Call(0.2, 300);
 

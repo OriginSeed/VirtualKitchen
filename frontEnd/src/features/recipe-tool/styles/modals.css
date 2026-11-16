@@ -352,3 +352,124 @@
 @keyframes recipe-ai-spin {
   to { transform: rotate(360deg); }
 }
+
+/* --- Recipe storyboard dialog (RecipeStoryboardDialog) --- */
+.recipe-storyboard-dialog {
+  width: min(980px, calc(100vw - 32px));
+}
+
+.recipe-storyboard-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 14px 18px;
+  border-bottom: 1px solid var(--flow-border);
+}
+
+.recipe-storyboard-title {
+  font-weight: 700;
+  font-size: 14px;
+  color: var(--flow-text);
+}
+
+.recipe-storyboard-subtitle,
+.recipe-storyboard-hint {
+  font-size: 11.5px;
+  color: var(--flow-text-subtle);
+  line-height: 1.45;
+}
+
+.recipe-storyboard-subtitle {
+  margin-top: 2px;
+}
+
+.recipe-storyboard-close {
+  flex: 0 0 auto;
+  width: 28px;
+  height: 28px;
+  border: 1px solid var(--flow-border);
+  border-radius: 8px;
+  background: var(--flow-surface);
+  color: var(--flow-text-muted);
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.recipe-storyboard-body {
+  padding: 16px 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  overflow-y: auto;
+  min-height: 0;
+}
+
+.recipe-storyboard-progress {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px 12px;
+  border: 1px solid var(--flow-magic-border);
+  border-radius: var(--flow-radius-md);
+  background: var(--flow-magic-soft);
+}
+
+.recipe-storyboard-progress-label {
+  font-size: 12.5px;
+  font-weight: 700;
+  color: var(--flow-text);
+}
+
+.recipe-storyboard-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 28px 12px;
+  text-align: center;
+  font-size: 13px;
+  color: var(--flow-text);
+}
+
+.recipe-storyboard-empty p {
+  margin: 0;
+}
+
+.recipe-storyboard-actions {
+  margin-top: 8px;
+  display: flex;
+  gap: 8px;
+}
+
+.recipe-storyboard-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 18px;
+  border-top: 1px solid var(--flow-border);
+}
+
+.recipe-storyboard-button {
+  flex: 0 0 auto;
+  padding: 8px 16px;
+  border-radius: 8px;
+  border: 1px solid var(--flow-border);
+  background: var(--flow-surface);
+  color: var(--flow-text-muted);
+  font-size: 12.5px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.recipe-storyboard-button.is-primary {
+  border-color: var(--flow-accent);
+  background: var(--flow-accent);
+  color: white;
+}
+
+.recipe-storyboard-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+}

@@ -74,6 +74,66 @@ public final class VisualizationGridSlicer {
         return encoded;
     }
 
+    /**
+     * One cell of a grid image.
+     *
+     * @param png the cell as a PNG
+     * @param x left edge in the source image, in pixels (with {@code y}, {@code width}, {@code height}: where it was cut)
+     */
+    public record Tile(byte[] png, int x, int y, int width, int height) {
+    }
+
+    /**
+     * Cuts {@code image} into a grid of {@code rows} x {@code columns} cells, read left to right, top to bottom. Each
+     * inner boundary is cut at the gutter found near where an even grid puts it, or exactly there when none is found.
+     *
+     * @throws IOException when the image cannot be read or written
+     */
+    public static List<Tile> sliceGrid(byte[] image, int rows, int columns) throws IOException {
+        if (rows < 1 || columns < 1) {
+            throw new IllegalArgumentException("A grid has at least one row and one column");
+        }
+        BufferedImage source = image == null ? null : ImageIO.read(new ByteArrayInputStream(image));
+        if (source == null) {
+            throw new IOException("Unreadable panel image");
+        }
+        int[][] columnBounds = cellBounds(source, true, columns);
+        int[][] rowBounds = cellBounds(source, false, rows);
+        List<Tile> tiles = new ArrayList<>();
+        for (int[] row : rowBounds) {
+            for (int[] column : columnBounds) {
+                BufferedImage part = crop(source, column[0], row[0], column[1], row[1]);
+                ByteArrayOutputStream out = new ByteArrayOutputStream();
+                if (!ImageIO.write(part, "png", out)) {
+                    throw new IOException("Could not encode a panel as PNG");
+                }
+                tiles.add(new Tile(out.toByteArray(), column[0], row[0], part.getWidth(), part.getHeight()));
+            }
+        }
+        return tiles;
+    }
+
+    /** The {@code [start, end)} extent of each of {@code cells} equal cells along one side, gutters cut out. */
+    private static int[][] cellBounds(BufferedImage image, boolean vertical, int cells) {
+        int size = vertical ? image.getWidth() : image.getHeight();
+        // Narrower cells mean a narrower search and a narrower gutter, so a cut never wanders into a neighbour.
+        double span = Math.min(SEARCH_SPAN, 0.25 / cells);
+        double maxGutter = Math.min(MAX_GUTTER, 0.2 / cells);
+        int[][] bounds = new int[cells][2];
+        int start = 0;
+        for (int cell = 0; cell < cells; cell++) {
+            bounds[cell][0] = start;
+            if (cell == cells - 1) {
+                bounds[cell][1] = size;
+            } else {
+                Band gutter = findGutter(image, vertical, (cell + 1) / (double) cells, span, maxGutter);
+                bounds[cell][1] = Math.max(start + 1, gutter.start());
+                start = Math.max(bounds[cell][1], gutter.end());
+            }
+        }
+        return bounds;
+    }
+
     /** The gutter between two panels: lines {@code start} (inclusive) to {@code end} (exclusive) are cut out. */
     record Band(int start, int end) {
     }
@@ -83,10 +143,18 @@ public final class VisualizationGridSlicer {
      * horizontal one (a row band). An empty band at the exact middle when none is found.
      */
     static Band findGutter(BufferedImage image, boolean vertical) {
+        return findGutter(image, vertical, 0.5, SEARCH_SPAN, MAX_GUTTER);
+    }
+
+    /**
+     * The gutter near {@code centre} (a share of the side): searched within {@code span} of it on either side, and
+     * at most {@code maxGutter} of the side wide. An empty band exactly at {@code centre} when none is found.
+     */
+    static Band findGutter(BufferedImage image, boolean vertical, double centre, double span, double maxGutter) {
         int size = vertical ? image.getWidth() : image.getHeight();
-        int middle = size / 2;
-        int from = Math.max(1, (int) Math.floor(size * (0.5 - SEARCH_SPAN)));
-        int to = Math.min(size - 2, (int) Math.ceil(size * (0.5 + SEARCH_SPAN)));
+        int middle = (int) (size * centre);
+        int from = Math.max(1, (int) Math.floor(size * (centre - span)));
+        int to = Math.min(size - 2, (int) Math.ceil(size * (centre + span)));
         int best = -1;
         double bestScore = Double.NEGATIVE_INFINITY;
         for (int line = from; line <= to; line++) {
@@ -102,7 +170,7 @@ public final class VisualizationGridSlicer {
         if (best < 0) {
             return new Band(middle, middle);
         }
-        int maxBand = Math.max(1, (int) (size * MAX_GUTTER));
+        int maxBand = Math.max(1, (int) (size * maxGutter));
         int start = best;
         int end = best + 1;
         while (start - 1 >= 1 && end - (start - 1) <= maxBand && isGutter(lineStats(image, vertical, start - 1))) {

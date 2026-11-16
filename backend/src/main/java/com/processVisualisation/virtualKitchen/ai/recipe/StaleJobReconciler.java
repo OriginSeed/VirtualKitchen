@@ -8,6 +8,8 @@ import com.processVisualisation.virtualKitchen.ai.platform.queue.AiRequestJob;
 import com.processVisualisation.virtualKitchen.ai.platform.queue.AiRequestStatus;
 import com.processVisualisation.virtualKitchen.ai.recipe.generation.model.RecipeProcessGenerationJob;
 import com.processVisualisation.virtualKitchen.ai.recipe.generation.model.RecipeProcessGenerationJobStatus;
+import com.processVisualisation.virtualKitchen.ai.recipe.storyboard.model.RecipeStoryboard;
+import com.processVisualisation.virtualKitchen.ai.recipe.storyboard.model.StoryboardStatus;
 import com.processVisualisation.virtualKitchen.ai.recipe.visualization.model.VisualizationJob;
 import com.processVisualisation.virtualKitchen.ai.recipe.visualization.model.VisualizationJobStatus;
 import com.processVisualisation.virtualKitchen.common.logging.MdcKeys;
@@ -82,6 +84,7 @@ public class StaleJobReconciler {
             Instant now = Instant.now();
             failStaleGenerationJobs(now);
             failStaleVisualizationJobs(now);
+            failStaleStoryboards(now);
             failStaleAiRequests(now);
         } catch (Exception e) {
             // Never let one bad sweep kill the schedule; the next run retries.
@@ -107,6 +110,17 @@ public class StaleJobReconciler {
                 VisualizationJob.class).getModifiedCount();
         if (failed > 0) {
             log.warn("event=stale_visualization_jobs_failed count={}", failed);
+        }
+        return failed;
+    }
+
+    long failStaleStoryboards(Instant now) {
+        Query stale = Query.query(where("status").in(StoryboardStatus.QUEUED, StoryboardStatus.IN_PROGRESS)
+                .and("updatedAt").lt(now.minus(jobStaleAfter)));
+        long failed = mongoTemplate.updateMulti(stale, interruptedUpdate(StoryboardStatus.FAILED, now),
+                RecipeStoryboard.class).getModifiedCount();
+        if (failed > 0) {
+            log.warn("event=stale_storyboards_failed count={}", failed);
         }
         return failed;
     }

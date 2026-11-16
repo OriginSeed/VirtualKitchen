@@ -8,6 +8,10 @@ public enum OperationContext {
     STEP_IMAGE_GENERATION,
     STEP_NARRATION,
     GLOBAL_ASSET_IMAGE,
+    /** Recipe storyboard: planning the panels and writing the one image prompt. */
+    STORYBOARD_PLANNING,
+    /** Recipe storyboard: the one combined image. */
+    STORYBOARD_IMAGE,
     CHAT,
     UNKNOWN;
 
@@ -23,6 +27,8 @@ public enum OperationContext {
             case "process-visualization-image", "process-visualization-scene" -> STEP_IMAGE_GENERATION;
             case "step-narration" -> STEP_NARRATION;
             case "global-asset-image" -> GLOBAL_ASSET_IMAGE;
+            case "recipe-storyboard-plan", "recipe-storyboard-prompt" -> STORYBOARD_PLANNING;
+            case "recipe-storyboard-image" -> STORYBOARD_IMAGE;
             case "chat" -> CHAT;
             default -> UNKNOWN;
         };

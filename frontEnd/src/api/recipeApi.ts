@@ -9,7 +9,7 @@ import type { UiActionOptions } from './client'
 import { API } from './endpoints'
 import type { Process, ProcessBatchUpdateItem, ProcessBatchUpdateResult, ProcessCreateRequest, ProcessUpdateRequest } from '../types/process'
 import type { RecipeAssetImportRequest, RecipeAssetImportResponse } from '../types/recipe'
-import type { NutritionInfo, RecipeActiveJobsResponse, RecipeProcessGenerationJobResponse, RecipeProcessGenerationRequest, RecipeProcessVisualizationJobResponse, RecipeDetail, RecipeIngredient } from '../types/recipe'
+import type { NutritionInfo, RecipeActiveJobsResponse, RecipeProcessGenerationJobResponse, RecipeProcessGenerationRequest, RecipeProcessVisualizationJobResponse, RecipeDetail, RecipeIngredient, RecipeStoryboardResponse } from '../types/recipe'
 import type { UnitType } from '../types/kitchen'
 
 export type RecipeVisibility = 'PUBLIC' | 'PRIVATE'
@@ -255,6 +255,38 @@ export const RecipeProcessGenerationApi = {
 export const RecipeJobsApi = {
   async getActive(recipeId: number): Promise<RecipeActiveJobsResponse> {
     return apiGet<RecipeActiveJobsResponse>(API.recipeJobs.active(recipeId))
+  },
+}
+
+/**
+ * The recipe storyboard: the whole recipe (Preparation and main process) told as panels in one generated image.
+ * Generation is an async job; starting it requires ownership.
+ */
+export const RecipeStoryboardApi = {
+  /** The recipe's latest finished storyboard, or null when it has none. */
+  async getLatest(recipeId: number): Promise<RecipeStoryboardResponse | null> {
+    return (await apiGet<RecipeStoryboardResponse | null>(API.recipeStoryboard.latest(recipeId))) ?? null
+  },
+
+  /**
+   * `modelKeys`: the models picked for this run (text for the panels and the image prompt, image for the picture).
+   * `overwriteExisting`: replace images the covered steps already have (default: keep them).
+   * `regenerate`: plan the panels again even when the last attempt failed on the same recipe.
+   */
+  async startJob(
+    recipeId: number,
+    options: { modelKeys?: RecipeProcessGenerationRequest['modelKeys']; overwriteExisting?: boolean; regenerate?: boolean } = {},
+  ): Promise<RecipeStoryboardResponse> {
+    const { modelKeys, overwriteExisting, regenerate } = options
+    return apiPost<RecipeStoryboardResponse>(API.recipeStoryboard.startJob(recipeId), {
+      ...(modelKeys && Object.keys(modelKeys).length > 0 ? { modelKeys } : {}),
+      ...(overwriteExisting ? { overwriteExisting: true } : {}),
+      ...(regenerate ? { regenerate: true } : {}),
+    })
+  },
+
+  async getJobStatus(recipeId: number, jobId: string, signal?: AbortSignal): Promise<RecipeStoryboardResponse> {
+    return apiGet<RecipeStoryboardResponse>(API.recipeStoryboard.jobStatus(recipeId, jobId), { signal })
   },
 }
 
