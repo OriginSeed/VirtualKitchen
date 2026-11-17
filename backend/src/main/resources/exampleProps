@@ -119,7 +119,14 @@ ai.artifact.sweeper.max-recovery-attempts=${AI_ARTIFACT_SWEEPER_MAX_RECOVERY_ATT
 #ai.openai.base-url=https://api.openai.com
 #ai.openai.chat-endpoint=/v1/chat/completions
 #ai.openai.default-model=gpt-4o-mini
-#ai.openai.timeout-ms=30000
+#ai.openai.timeout-ms=180000
+# Image and speech reuse the key and base URL above. See application.properties for the model registry entries.
+#ai.openai.image.model=gpt-image-1
+#ai.openai.image.size=1024x1024
+#ai.openai.image.quality=medium
+#ai.openai.tts.model=gpt-4o-mini-tts
+#ai.openai.tts.voice=alloy
+#ai.openai.tts.response-format=mp3
 
 #ai.provider=gemini
 

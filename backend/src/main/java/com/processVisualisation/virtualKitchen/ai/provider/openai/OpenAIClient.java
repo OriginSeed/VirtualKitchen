@@ -10,6 +10,7 @@ import com.processVisualisation.virtualKitchen.ai.provider.dto.AiResponse;
 import com.processVisualisation.virtualKitchen.ai.provider.exception.AiAuthenticationException;
 import com.processVisualisation.virtualKitchen.ai.provider.exception.AiCommunicationException;
 import com.processVisualisation.virtualKitchen.ai.provider.exception.AiInvalidResponseException;
+import com.processVisualisation.virtualKitchen.ai.provider.exception.AiRateLimitedException;
 import com.processVisualisation.virtualKitchen.ai.provider.exception.AiTimeoutException;
 
 import org.slf4j.Logger;
@@ -23,6 +24,7 @@ import org.springframework.web.client.ResourceAccessException;
 import org.springframework.web.client.RestClient;
 import org.springframework.web.client.RestClientResponseException;
 
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -43,7 +45,7 @@ public class OpenAIClient implements AiClient {
 
     private final RestClient restClient;
     private final OpenAIProperties properties;
-        private final ObjectMapper objectMapper = new ObjectMapper();
+    private final ObjectMapper objectMapper = new ObjectMapper();
 
     /**
      * Creates a client bound to the OpenAI REST client and configuration.
@@ -119,7 +121,11 @@ public class OpenAIClient implements AiClient {
                 } catch (Exception parseEx) {
                     // ignore JSON parse errors and keep generic message
                 }
-                throw new AiCommunicationException(errorMessage, ex);
+                // insufficient_quota means the credits are spent: retrying cannot help. Any other 429 is a rate limit.
+                if (errorMessage.contains("insufficient_quota")) {
+                    throw new AiCommunicationException(errorMessage, ex);
+                }
+                throw new AiRateLimitedException(errorMessage, retryAfter(ex), ex);
             }
 
             log.debug("event=ai_provider_http_error provider=openai status={} body={}", status, truncate(responseBody));
@@ -142,11 +148,12 @@ public class OpenAIClient implements AiClient {
         messages.add(Map.of("role", "user", "content", request.getUserPrompt()));
         payload.put("messages", messages);
 
-        if (request.getTemperature() != null) {
+        if (request.getTemperature() != null && !isReasoningModel(model)) {
             payload.put("temperature", request.getTemperature());
         }
         if (request.getMaxTokens() != null) {
-            payload.put("max_tokens", request.getMaxTokens());
+            // Newer models (gpt-5, o-series) reject max_tokens.
+            payload.put(isReasoningModel(model) ? "max_completion_tokens" : "max_tokens", request.getMaxTokens());
         }
         if (request.getResponseSchema() != null) {
             // Non-strict: strict mode would force every property to be present, defeating omit-when-empty schemas.
@@ -162,6 +169,25 @@ public class OpenAIClient implements AiClient {
             payload.put("response_format", Map.of("type", request.getResponseFormat()));
         }
         return payload;
+    }
+
+    /** gpt-5 and the o-series only accept the default temperature and need max_completion_tokens. */
+    static boolean isReasoningModel(String model) {
+        return model != null && model.toLowerCase(java.util.Locale.ROOT).matches("^(gpt-5|o\\d).*");
+    }
+
+    /** The {@code Retry-After} header in whole seconds, or null when absent or not a number. */
+    static Duration retryAfter(RestClientResponseException ex) {
+        HttpHeaders headers = ex.getResponseHeaders();
+        String value = headers == null ? null : headers.getFirst(HttpHeaders.RETRY_AFTER);
+        if (value == null) {
+            return null;
+        }
+        try {
+            return Duration.ofSeconds(Long.parseLong(value.trim()));
+        } catch (NumberFormatException ignored) {
+            return null;
+        }
     }
 
     private AiResponse parseResponse(String rawResponse) throws JsonProcessingException {
