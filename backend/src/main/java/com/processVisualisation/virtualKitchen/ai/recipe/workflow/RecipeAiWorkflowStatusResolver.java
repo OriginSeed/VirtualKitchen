@@ -231,8 +231,10 @@ public class RecipeAiWorkflowStatusResolver {
      */
     private TaskDTO resolveStoryboardVisuals(RecipeStoryboard storyboard) {
         if (storyboard == null || storyboard.getStatus() == null) {
-            return countedTask(RecipeAiTaskType.VISUALS, STORYBOARD_STAGES, 0, STORYBOARD_STAGES, false, false,
+            TaskDTO notStarted = countedTask(RecipeAiTaskType.VISUALS, STORYBOARD_STAGES, 0, STORYBOARD_STAGES, false, false,
                     "Visualize could not be started", null);
+            notStarted.setStage(StoryboardStage.PLAN.name());
+            return notStarted;
         }
         int reached = storyboard.getStage() == null ? 0 : storyboard.getStage().ordinal();
         TaskDTO task = switch (storyboard.getStatus()) {

@@ -16,7 +16,7 @@ const STAGES: RecipeStoryboardStage[] = ['PLAN', 'PROMPT', 'IMAGE', 'CROP']
 export const STORYBOARD_STAGE_LABELS: Record<RecipeStoryboardStage, string> = {
   PLAN: 'Planning the panels…',
   PROMPT: 'Writing the image prompt…',
-  IMAGE: 'Drawing the storyboard…',
+  IMAGE: 'Drawing the image…',
   CROP: 'Cutting the panels and adding them to the steps…',
 }
 
@@ -24,8 +24,8 @@ export const STORYBOARD_STAGE_LABELS: Record<RecipeStoryboardStage, string> = {
 const FAILED_STAGE_LABELS: Record<RecipeStoryboardStage, string> = {
   PLAN: 'The panels could not be planned',
   PROMPT: 'The image prompt could not be written',
-  IMAGE: 'The storyboard image could not be drawn',
-  CROP: 'The storyboard could not be cut into panels',
+  IMAGE: 'The image could not be drawn',
+  CROP: 'The image could not be cut into panels',
 }
 
 export const isStoryboardRunning = (storyboard: Pick<RecipeStoryboardResponse, 'status'> | null | undefined): boolean =>
@@ -36,7 +36,7 @@ export type StoryboardProgress = { percent: number; label: string; stageNumber: 
 /** Where a running generation is: the stage in words, and how far through the stages it is. */
 export const storyboardProgress = (storyboard: Pick<RecipeStoryboardResponse, 'status' | 'stage'>): StoryboardProgress => {
   const stageCount = STAGES.length
-  if (storyboard.status === 'COMPLETED') return { percent: 100, label: 'Storyboard ready', stageNumber: stageCount, stageCount }
+  if (storyboard.status === 'COMPLETED') return { percent: 100, label: 'Visuals ready', stageNumber: stageCount, stageCount }
   if (storyboard.status === 'QUEUED' || !storyboard.stage) {
     return { percent: 5, label: 'Waiting to start…', stageNumber: 1, stageCount }
   }
@@ -54,7 +54,7 @@ export const storyboardProgressBadge = (storyboard: Pick<RecipeStoryboardRespons
 
 /** The error line of a failed generation: what failed, then the backend's reason when it gave one. */
 export const storyboardFailureText = (storyboard: Pick<RecipeStoryboardResponse, 'failedStage' | 'errorMessage'>): string => {
-  const what = storyboard.failedStage ? FAILED_STAGE_LABELS[storyboard.failedStage] : 'The storyboard could not be generated'
+  const what = storyboard.failedStage ? FAILED_STAGE_LABELS[storyboard.failedStage] : 'Visualize did not finish'
   const reason = storyboard.errorMessage?.trim()
   return reason ? `${what}: ${reason}` : `${what}. Please try again.`
 }
@@ -103,6 +103,6 @@ export const storyboardStepSummary = (storyboard: Pick<RecipeStoryboardResponse,
   const parts: string[] = []
   if (attached > 0) parts.push(`Each panel's image was added to the last step it shows: ${stepsText(attached)}.`)
   if (kept > 0) parts.push(`${stepsText(kept)} kept the image ${kept === 1 ? 'it' : 'they'} already had.`)
-  if (cleared > 0) parts.push(`An earlier storyboard's image was removed from ${stepsText(cleared)}.`)
+  if (cleared > 0) parts.push(`An earlier visual was removed from ${stepsText(cleared)}.`)
   return parts.join(' ')
 }

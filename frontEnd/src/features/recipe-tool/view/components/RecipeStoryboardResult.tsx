@@ -30,7 +30,7 @@ export default function RecipeStoryboardResult({ storyboard, showPanels = false,
         <figure className="recipe-storyboard-image">
           <ZoomableImage
             src={storyboard.imageUrl}
-            alt={`Storyboard of ${title}`}
+            alt={`Visuals of ${title}`}
             caption={`${title} — ${storyboardLayoutText(storyboard)}`}
             loading="lazy"
           />

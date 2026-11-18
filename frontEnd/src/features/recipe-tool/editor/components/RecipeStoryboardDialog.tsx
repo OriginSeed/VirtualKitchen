@@ -88,7 +88,7 @@ export default function RecipeStoryboardDialog({ recipeId, onClose }: { recipeId
     try {
       await jobTracker.startStoryboard(recipeId, { modelKeys, mode: START_COPY[kind].mode })
     } catch (error) {
-      setStartError(errorMessage(error, 'Unable to generate the storyboard right now.'))
+      setStartError(errorMessage(error, 'Unable to visualize this recipe right now.'))
     } finally {
       setStarting(false)
     }
@@ -121,9 +121,9 @@ export default function RecipeStoryboardDialog({ recipeId, onClose }: { recipeId
       >
         <div className="recipe-storyboard-header">
           <div>
-            <div id={titleId} className="recipe-storyboard-title">🎞️ Recipe storyboard</div>
+            <div id={titleId} className="recipe-storyboard-title">🎞️ Recipe visuals</div>
             <div className="recipe-storyboard-subtitle">
-              The whole recipe as one AI image of panels, one per cooking action. Its panels are also added to the steps they show.
+              The whole recipe drawn as one AI image of panels, one per cooking action. Each panel is also put on the last step it shows; fix any step image from that step.
             </div>
           </div>
           <button ref={closeRef} type="button" className="recipe-storyboard-close" onClick={onClose} aria-label="Close">✕</button>
@@ -150,7 +150,7 @@ export default function RecipeStoryboardDialog({ recipeId, onClose }: { recipeId
 
           {tracked?.pollError && (
             <div className="recipe-builder-status recipe-builder-status-error" role="alert">
-              Lost track of the storyboard generation: {tracked.pollError}
+              Lost track of Visualize: {tracked.pollError}
             </div>
           )}
 
@@ -172,12 +172,12 @@ export default function RecipeStoryboardDialog({ recipeId, onClose }: { recipeId
 
           {!storyboard && !loading && !running && !failed && !latest.error && (
             <div className="recipe-storyboard-empty">
-              <p>This recipe has no storyboard yet.</p>
+              <p>This recipe has no visuals yet.</p>
               <p className="recipe-storyboard-hint">
                 AI reads the whole recipe, groups its steps into panels, and draws them as one image.
               </p>
               <button type="button" className="recipe-storyboard-button is-primary" disabled={busy} onClick={() => setStartKind('generate')}>
-                Generate storyboard
+                Visualize
               </button>
             </div>
           )}

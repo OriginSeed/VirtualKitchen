@@ -108,7 +108,7 @@ export type JobNotifier = {
 
 const ALREADY_GENERATING = 'The AI is already working on this recipe — showing its progress.'
 const ALREADY_VISUALIZING = 'Visuals are already being generated for this process — showing their progress.'
-const ALREADY_STORYBOARDING = 'A storyboard is already being generated for this recipe — showing its progress.'
+const ALREADY_STORYBOARDING = 'Visualize is already running for this recipe — showing its progress.'
 
 export class JobTracker {
   private jobs = new Map<JobKey, TrackedJob>()
@@ -230,7 +230,7 @@ export class JobTracker {
       this.track(key, tracked)
       this.notifier.info(job.reused
         ? ALREADY_STORYBOARDING
-        : 'Generating the storyboard in the background. You can keep working or come back later.')
+        : 'Visualizing the recipe in the background. You can keep working or come back later.')
       return tracked
     } finally {
       this.starting.delete(key)
@@ -464,10 +464,10 @@ export class JobTracker {
       const { job } = tracked
       if (job.status === 'COMPLETED') {
         this.notifier.success(job.warnings.length > 0
-          ? 'The storyboard is ready, with a note — open it from the AI menu.'
-          : 'The storyboard is ready — open it from the AI menu.')
+          ? 'The visuals are ready, with a note — open them from the AI menu.'
+          : 'The visuals are ready — open them from the AI menu.')
       } else {
-        this.notifier.error(job.errorMessage || 'Unable to generate the storyboard right now.')
+        this.notifier.error(job.errorMessage || 'Unable to visualize this recipe right now.')
       }
     } else if (tracked.kind === 'stepfix') {
       const { job } = tracked

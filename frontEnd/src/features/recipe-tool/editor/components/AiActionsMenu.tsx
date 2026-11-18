@@ -38,13 +38,13 @@ export default function AiActionsMenu({ recipeActions }: AiActionsMenuProps) {
   const { status, generationProgress, storyboard } = recipeActions ?? {}
   const busyLabel = status?.badge
     ?? (generationProgress ? `✨ ${generationProgress.percent}%` : null)
-    ?? (storyboard?.progress ? '✨ Storyboard…' : null)
+    ?? (storyboard?.progress ? '✨ Visualizing…' : null)
   const busy = busyLabel != null && busyLabel !== '✨ AI'
   const buttonTitle = status?.title
     ? `AI Recipe Creation — ${status.title}`
     : generationProgress
       ? `Generating with AI — ${generationProgress.stageLabel}`
-      : (storyboard?.progress ? 'Generating the recipe storyboard' : 'AI actions')
+      : (storyboard?.progress ? 'Visualizing the recipe' : 'AI actions')
 
   return (
     <ToolbarMenu
@@ -77,46 +77,54 @@ export default function AiActionsMenu({ recipeActions }: AiActionsMenuProps) {
             <MenuDivider />
           </>
         )}
-        <MenuHeading>Create with AI</MenuHeading>
-        {recipeActions && (
-          <MenuItem
-            icon="🧭"
-            label="Generate Recipe Process"
-            description="Turn your recipe text into steps"
-            onSelect={() => recipeActions.onOpenAiCreation(['PROCESS'])}
-          />
-        )}
-        {recipeActions?.onOpenAiEdit && (
-          <MenuItem
-            icon="✏️"
-            label="Edit Process with AI"
-            description="Describe a change to this process"
-            trailing={generationProgress ? `${generationProgress.percent}%` : undefined}
-            onSelect={recipeActions.onOpenAiEdit}
-          />
-        )}
-        {storyboard && (
-          <MenuItem
-            icon="🎞️"
-            label="Recipe Storyboard"
-            description="The whole recipe as one image of panels"
-            trailing={storyboard.progress ?? undefined}
-            onSelect={storyboard.onOpen}
-          />
-        )}
         {recipeActions && (
           <>
+            <MenuHeading>Run AI</MenuHeading>
+            <MenuItem
+              icon="🧭"
+              label="Create Flow from Text"
+              description="Turn your recipe text into steps, with a spoken summary per step"
+              onSelect={() => recipeActions.onOpenAiCreation(['PROCESS'])}
+            />
+            {recipeActions.onOpenAiEdit && (
+              <MenuItem
+                icon="✏️"
+                label="Edit Process with AI"
+                description="Describe a change to this process"
+                trailing={generationProgress ? `${generationProgress.percent}%` : undefined}
+                onSelect={recipeActions.onOpenAiEdit}
+              />
+            )}
+            <MenuItem
+              icon="🎞️"
+              label="Visualize"
+              description="Draw the recipe as one image of panels and put them on its steps"
+              trailing={storyboard?.progress ?? undefined}
+              onSelect={() => recipeActions.onOpenAiCreation(['VISUALS'])}
+            />
             <MenuItem
               icon="🔊"
-              label="Generate Narration"
-              description="Voice narration for the steps"
+              label="Narration"
+              description="Read each step's summary aloud"
               onSelect={() => recipeActions.onOpenAiCreation(['NARRATION'])}
             />
             <MenuItem
               icon="✨"
-              label="Complete Recipe Experience"
-              description="Process, visuals and narration"
+              label="Do Everything"
+              description="Flow from text, then visuals and narration"
               onSelect={() => recipeActions.onOpenAiCreation(['PROCESS', 'VISUALS', 'NARRATION'])}
+            />
+          </>
+        )}
+        {storyboard && (
+          <>
+            <MenuDivider />
+            <MenuItem
+              icon="🖼️"
+              label="View Visuals"
+              description="See the recipe's visuals, update them or redo them"
+              trailing={storyboard.progress ?? undefined}
+              onSelect={storyboard.onOpen}
             />
           </>
         )}

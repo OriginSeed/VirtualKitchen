@@ -74,7 +74,7 @@ export interface RecipeAiWorkflowTask {
   completed: number
   failed: number
   total: number
-  /** PROCESS only: the generation job's stage. */
+  /** PROCESS: the generation job's stage. VISUALS run as Visualize: the storyboard's stage. */
   stage?: string | null
   errorMessage?: string | null
   retryable: boolean

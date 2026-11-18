@@ -13,13 +13,13 @@ import type {
 
 export const WORKFLOW_TASK_LABELS: Record<RecipeAiTaskType, string> = {
   PROCESS: 'Recipe Process',
-  VISUALS: 'Step Visuals',
+  VISUALS: 'Visualize',
   NARRATION: 'Voice Narration',
 }
 
 export const WORKFLOW_TASK_DESCRIPTIONS: Record<RecipeAiTaskType, string> = {
   PROCESS: 'Build the recipe steps, conditions and subprocesses',
-  VISUALS: 'Generate images for recipe steps',
+  VISUALS: 'Draw the whole recipe as one image of panels and put them on its steps',
   NARRATION: 'Generate narration for each step',
 }
 
@@ -77,6 +77,17 @@ export const formatCreditRange = (min: number, max: number) => {
 
 const unitFor = (type: RecipeAiTaskType) => (type === 'VISUALS' ? 'images' : 'steps')
 
+/** What Visualize (one storyboard) is doing, by its stage; mirrors model/storyboardView.ts. */
+const VISUALIZE_STAGE_LABELS: Record<string, string> = {
+  PLAN: 'Planning the panels…',
+  PROMPT: 'Writing the image prompt…',
+  IMAGE: 'Drawing the image…',
+  CROP: 'Cutting it into panels…',
+}
+
+/** A visuals task that runs as Visualize reports its stage instead of per-image counts. */
+const isVisualize = (task: RecipeAiWorkflowTask) => task.type === 'VISUALS' && Boolean(task.stage)
+
 const countedDetail = (task: RecipeAiWorkflowTask) => {
   const base = `${task.completed} / ${task.total} ${unitFor(task.type)}`
   return task.failed > 0 ? `${base} · ${task.failed} failed` : base
@@ -95,12 +106,17 @@ export const describeWorkflowTask = (task: RecipeAiWorkflowTask, processSummary:
   switch (task.status) {
     case 'COMPLETED':
       if (task.type === 'PROCESS') return row('done', '✓', 'Complete', processSummary ? formatProcessSummary(processSummary) : 'Recipe process created')
+      if (isVisualize(task)) return row('done', '✓', 'Complete', 'Panels drawn and put on the steps')
       return row('done', '✓', 'Complete', `${task.completed} ${unitFor(task.type)}`)
     case 'RUNNING':
     case 'QUEUED':
       if (task.type === 'PROCESS') {
         const stage = PROCESS_STAGE_LABELS[task.stage ?? ''] ?? 'Generating recipe process…'
         return row('running', '⟳', task.status === 'QUEUED' ? 'Queued' : 'Running', stage, task.progressPercent)
+      }
+      if (isVisualize(task)) {
+        return row('running', '⟳', task.status === 'QUEUED' ? 'Queued' : 'Running',
+          VISUALIZE_STAGE_LABELS[task.stage ?? ''] ?? 'Visualizing…', task.progressPercent)
       }
       return row('running', '⟳', task.total > 0 ? `${task.completed} / ${task.total}` : 'Starting', task.total > 0 ? countedDetail(task) : 'Starting…', task.progressPercent)
     case 'WAITING_FOR_APPROVAL':
@@ -110,7 +126,9 @@ export const describeWorkflowTask = (task: RecipeAiWorkflowTask, processSummary:
     case 'FAILED': {
       const failed = task.type === 'PROCESS'
         ? row('failed', '⚠', 'Failed', task.errorMessage || 'Unable to generate the recipe process.')
-        : row('failed', '⚠', task.completed > 0 ? `${task.completed} / ${task.total}` : 'Failed',
+        : isVisualize(task)
+          ? row('failed', '⚠', 'Failed', task.errorMessage || 'Visualize did not finish.')
+          : row('failed', '⚠', task.completed > 0 ? `${task.completed} / ${task.total}` : 'Failed',
           task.total > 0 ? countedDetail(task) : (task.errorMessage || 'Failed'))
       if (task.retryable) {
         failed.retry = {

@@ -14,7 +14,7 @@ export default function RecipeStoryboardSection({ storyboard, anchorId }: { stor
       <div className="rp-section-header">
         <h2 id={`${anchorId}-title`} className="rp-section-title">
           <span className="rp-section-title-icon" aria-hidden>🎞️</span>
-          Storyboard
+          Visuals
         </h2>
         <p className="rp-section-subtitle">The whole recipe at a glance, one panel per cooking action.</p>
       </div>
