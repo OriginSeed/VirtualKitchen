@@ -96,6 +96,10 @@ class OpenAIProvidersTest {
         assertTrue(OpenAIClient.isReasoningModel("o3-mini"));
         assertFalse(OpenAIClient.isReasoningModel("gpt-4.1"));
         assertFalse(OpenAIClient.isReasoningModel("gpt-4o-mini"));
+        assertTrue(OpenAIClient.isReasoningModel("gpt-6-luna"), "a new family gets the new parameters");
+        assertTrue(OpenAIClient.isReasoningModel("gpt-5.1"));
+        assertFalse(OpenAIClient.isReasoningModel("gpt-4"));
+        assertFalse(OpenAIClient.isReasoningModel("gpt-3.5-turbo"));
         server.expect(once(), requestTo(BASE_URL + "/v1/chat/completions"))
                 .andExpect(jsonPath("$.max_completion_tokens").value(100))
                 .andExpect(jsonPath("$.max_tokens").doesNotExist())

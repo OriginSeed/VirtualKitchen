@@ -129,7 +129,8 @@ public class OpenAIClient implements AiClient {
             }
 
             log.debug("event=ai_provider_http_error provider=openai status={} body={}", status, truncate(responseBody));
-            throw new AiCommunicationException("OpenAI API request failed with status: " + ex.getStatusCode(), ex);
+            throw new AiCommunicationException("OpenAI API request failed with status: " + ex.getStatusCode()
+                    + errorMessage(responseBody), ex);
         } catch (ResourceAccessException ex) {
             throw new AiTimeoutException("OpenAI request timed out or could not connect", ex);
         } catch (JsonProcessingException ex) {
@@ -152,7 +153,7 @@ public class OpenAIClient implements AiClient {
             payload.put("temperature", request.getTemperature());
         }
         if (request.getMaxTokens() != null) {
-            // Newer models (gpt-5, o-series) reject max_tokens.
+            // Newer models (gpt-5 and later, o-series) reject max_tokens.
             payload.put(isReasoningModel(model) ? "max_completion_tokens" : "max_tokens", request.getMaxTokens());
         }
         if (request.getResponseSchema() != null) {
@@ -171,9 +172,24 @@ public class OpenAIClient implements AiClient {
         return payload;
     }
 
-    /** gpt-5 and the o-series only accept the default temperature and need max_completion_tokens. */
+    /**
+     * Whether the model takes the newer chat parameters: {@code max_completion_tokens} instead of {@code max_tokens}, and
+     * only the default temperature. True for every model except the older gpt-3.5 / gpt-4 families (gpt-4, gpt-4o,
+     * gpt-4.1), so new families (gpt-5, gpt-6-luna, the o-series, ...) work without a code change.
+     */
     static boolean isReasoningModel(String model) {
-        return model != null && model.toLowerCase(java.util.Locale.ROOT).matches("^(gpt-5|o\\d).*");
+        if (model == null) return false;
+        return !model.toLowerCase(java.util.Locale.ROOT).matches("^(chatgpt-4o|gpt-3\\.5|gpt-4).*");
+    }
+
+    /** OpenAI's own error message (e.g. an unsupported parameter), so a failure says why in the logs; "" when none. */
+    private String errorMessage(String responseBody) {
+        try {
+            String message = objectMapper.readTree(responseBody).path("error").path("message").asText(null);
+            return StringUtils.hasText(message) ? ": " + message : "";
+        } catch (Exception e) {
+            return "";
+        }
     }
 
     /** The {@code Retry-After} header in whole seconds, or null when absent or not a number. */
