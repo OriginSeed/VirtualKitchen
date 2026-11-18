@@ -48,7 +48,10 @@ public final class CostCalculator {
         }
 
         boolean hasTokens = usage != null && (usage.getInputTokens() != null || usage.getOutputTokens() != null);
-        if (hasTokens) {
+        boolean hasTokenPrices = card.getInputPerMTok() != null && card.getOutputPerMTok() != null;
+        // An image model priced per image (e.g. one added from the admin panel) still reports tokens (gpt-image-*):
+        // without token prices it is priced per image rather than left unpriced.
+        if (hasTokens && (hasTokenPrices || card.getPerImage() == null || usage.getImageCount() == null)) {
             return tokens(cost, card, usage);
         }
         if (usage != null && card.getPerImage() != null && usage.getImageCount() != null) {

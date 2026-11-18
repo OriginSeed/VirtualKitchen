@@ -46,9 +46,18 @@ const clearAuthDrafts = () => {
 
 const isTab = (view: View): view is AuthDraft['view'] => view === 'signup' || view === 'login'
 
+/** Deeper steps belong to the tab they started from (a reset or code login starts from Login). */
+const tabOf = (view: View): AuthDraft['view'] => (isTab(view) ? view : view === 'verify-signup-otp' ? 'signup' : 'login')
+
 export default function Auth({ onLoginSuccess, onClose, initialMode, notice }: LoginPageProps) {
   const [initialDraft] = useState(() => readDraft<Partial<AuthDraft>>(draftKeys.auth()))
-  const [view, setView] = useState<View>(secretsDraft.view ?? initialMode ?? initialDraft?.view ?? 'signup')
+  // The button the visitor pressed decides the tab ("Log in" opens Log in, "Get started" Sign up). A step left half
+  // done is resumed only when it belongs to that same tab (e.g. the sign-up code after "Get started").
+  const [view, setView] = useState<View>(() => {
+    const saved = secretsDraft.view
+    if (!initialMode) return saved ?? initialDraft?.view ?? 'signup'
+    return saved && tabOf(saved) === initialMode ? saved : initialMode
+  })
 
   const [name, setName] = useState(initialDraft?.name ?? '')
   const [email, setEmail] = useState(initialDraft?.email ?? '')
@@ -58,8 +67,7 @@ export default function Auth({ onLoginSuccess, onClose, initialMode, notice }: L
   const [newPassword, setNewPassword] = useState(secretsDraft.newPassword)
   const [confirmNewPassword, setConfirmNewPassword] = useState(secretsDraft.confirmNewPassword)
 
-  // Deeper steps belong to the tab they started from (a reset or code login starts from Login).
-  const tab: AuthDraft['view'] = isTab(view) ? view : view === 'verify-signup-otp' ? 'signup' : 'login'
+  const tab: AuthDraft['view'] = tabOf(view)
   useEffect(() => {
     if (name || email || tab !== 'signup') writeDraft<AuthDraft>(draftKeys.auth(), { view: tab, name, email })
     else clearDraft(draftKeys.auth())
