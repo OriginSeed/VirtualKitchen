@@ -74,6 +74,12 @@ public class RecipeStoryboard {
     /** The combined storyboard image. */
     private String imageUrl;
 
+    /**
+     * Set on a FILL run that reused this earlier storyboard's plan, prompt and image (no AI call): only its panels are
+     * cut again if needed and put back on the steps.
+     */
+    private String reusedFrom;
+
     private Integer imageWidth;
 
     private Integer imageHeight;

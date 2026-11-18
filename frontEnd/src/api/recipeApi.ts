@@ -9,7 +9,7 @@ import type { UiActionOptions } from './client'
 import { API } from './endpoints'
 import type { Process, ProcessBatchUpdateItem, ProcessBatchUpdateResult, ProcessCreateRequest, ProcessUpdateRequest } from '../types/process'
 import type { RecipeAssetImportRequest, RecipeAssetImportResponse } from '../types/recipe'
-import type { NutritionInfo, RecipeActiveJobsResponse, RecipeProcessGenerationJobResponse, RecipeProcessGenerationRequest, RecipeProcessVisualizationJobResponse, RecipeDetail, RecipeIngredient, RecipeStoryboardResponse } from '../types/recipe'
+import type { NutritionInfo, RecipeActiveJobsResponse, RecipeProcessGenerationJobResponse, RecipeProcessGenerationRequest, RecipeProcessVisualizationJobResponse, RecipeDetail, RecipeIngredient, RecipeStoryboardResponse, StoryboardMode } from '../types/recipe'
 import type { UnitType } from '../types/kitchen'
 
 export type RecipeVisibility = 'PUBLIC' | 'PRIVATE'
@@ -272,14 +272,22 @@ export const RecipeStoryboardApi = {
    * `modelKeys`: the models picked for this run (text for the panels and the image prompt, image for the picture).
    * `overwriteExisting`: replace images the covered steps already have (default: keep them).
    * `regenerate`: plan the panels again even when the last attempt failed on the same recipe.
+   * `mode`: FILL (spend only what is needed; reuse the storyboard when the recipe is unchanged) or REPLACE (redo it
+   * and replace the steps' images). When given it decides instead of `overwriteExisting` and `regenerate`.
    */
   async startJob(
     recipeId: number,
-    options: { modelKeys?: RecipeProcessGenerationRequest['modelKeys']; overwriteExisting?: boolean; regenerate?: boolean } = {},
+    options: {
+      modelKeys?: RecipeProcessGenerationRequest['modelKeys']
+      overwriteExisting?: boolean
+      regenerate?: boolean
+      mode?: StoryboardMode
+    } = {},
   ): Promise<RecipeStoryboardResponse> {
-    const { modelKeys, overwriteExisting, regenerate } = options
+    const { modelKeys, overwriteExisting, regenerate, mode } = options
     return apiPost<RecipeStoryboardResponse>(API.recipeStoryboard.startJob(recipeId), {
       ...(modelKeys && Object.keys(modelKeys).length > 0 ? { modelKeys } : {}),
+      ...(mode ? { mode } : {}),
       ...(overwriteExisting ? { overwriteExisting: true } : {}),
       ...(regenerate ? { regenerate: true } : {}),
     })

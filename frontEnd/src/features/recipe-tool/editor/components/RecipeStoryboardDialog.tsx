@@ -1,14 +1,12 @@
-import { useEffect, useId, useMemo, useRef, useState } from 'react'
+import { useEffect, useId, useRef, useState } from 'react'
 import { RecipeStoryboardApi } from '../../../../api'
 import type { RunModelCapability } from '../../../../types/recipeAiWorkflow'
-import type { RecipeStoryboardResponse } from '../../../../types/recipe'
+import type { RecipeStoryboardResponse, StoryboardMode } from '../../../../types/recipe'
 import { errorMessage } from '../../../../shared/errors'
 import { useApiData } from '../../../../shared/hooks/useApiData'
 import { isTrackedJobActive, storyboardJobKey } from '../../jobs/jobTracker'
 import { useJobTracker, useTrackedJob } from '../../jobs/useJobTracker'
-import { normalizeRecipeStepNodeData } from '../../model/recipeStepData'
 import { storyboardFailureText, storyboardProgress, storyboardStepSummary } from '../../model/storyboardView'
-import { useRecipeSession } from '../../session/sessionContext'
 import RecipeStoryboardResult from '../../view/components/RecipeStoryboardResult'
 import { ModelChoiceDialog } from '../../workflow/components/RunModelPicker'
 import type { RunModels } from '../../workflow/model/workflowSelection'
@@ -17,12 +15,25 @@ import '../../styles/modals.css'
 const STORYBOARD_MODELS: RunModelCapability[] = ['TEXT_TO_TEXT', 'TEXT_TO_IMAGE']
 
 /** What the model dialog was opened for. */
-type StartKind = 'generate' | 'retry' | 'regenerate'
+type StartKind = 'generate' | 'retry' | 'fill' | 'replace'
 
-const START_COPY: Record<StartKind, { title: string; confirm: string }> = {
-  generate: { title: '🎞️ Generate storyboard', confirm: 'Generate' },
-  retry: { title: '🎞️ Retry the storyboard', confirm: 'Retry' },
-  regenerate: { title: '🎞️ Generate the storyboard again', confirm: 'Generate again' },
+const START_COPY: Record<StartKind, { title: string; confirm: string; description: string; mode: StoryboardMode }> = {
+  generate: {
+    title: '🎞️ Visualize the recipe', confirm: 'Visualize', mode: 'FILL',
+    description: 'The text model plans the panels and writes the image prompt; the image model draws one image of panels. Steps that already have their own image keep it.',
+  },
+  retry: {
+    title: '🎞️ Retry Visualize', confirm: 'Retry', mode: 'FILL',
+    description: 'Carries on from where it stopped: work that already succeeded is not paid for again.',
+  },
+  fill: {
+    title: '🎞️ Update visuals', confirm: 'Update', mode: 'FILL',
+    description: 'If the recipe is unchanged, the panels are put back on any step that lost its image, with no AI cost. If it changed, a new image is drawn and steps with their own image keep it.',
+  },
+  replace: {
+    title: '🎞️ Redo visuals', confirm: 'Redo everything', mode: 'REPLACE',
+    description: 'Plans the panels again, writes a new image prompt, draws a new image and replaces every step image it covers, including ones you fixed.',
+  },
 }
 
 /**
@@ -33,7 +44,6 @@ const START_COPY: Record<StartKind, { title: string; confirm: string }> = {
  */
 export default function RecipeStoryboardDialog({ recipeId, onClose }: { recipeId: number; onClose: () => void }) {
   const jobTracker = useJobTracker()
-  const session = useRecipeSession()
   const tracked = useTrackedJob(storyboardJobKey(recipeId))
   const running = isTrackedJobActive(tracked)
   const trackedJob = tracked?.job
@@ -71,19 +81,12 @@ export default function RecipeStoryboardDialog({ recipeId, onClose }: { recipeId
     }
   }, [])
 
-  // How many steps already show an image: the model dialog then asks whether to keep or replace them.
-  const existingImages = useMemo(() => {
-    if (!session || session.loading) return 0
-    return session.getProcesses().reduce((count, process) => count + process.nodes.filter((node) =>
-      node.kind === 'STEP' && Boolean(normalizeRecipeStepNodeData(node.data).visualization?.imageUrl)).length, 0)
-  }, [session])
-
-  const start = async (kind: StartKind, modelKeys: RunModels, overwriteExisting: boolean) => {
+  const start = async (kind: StartKind, modelKeys: RunModels) => {
     setStartKind(null)
     setStartError(null)
     setStarting(true)
     try {
-      await jobTracker.startStoryboard(recipeId, { modelKeys, overwriteExisting, regenerate: kind === 'regenerate' })
+      await jobTracker.startStoryboard(recipeId, { modelKeys, mode: START_COPY[kind].mode })
     } catch (error) {
       setStartError(errorMessage(error, 'Unable to generate the storyboard right now.'))
     } finally {
@@ -185,9 +188,16 @@ export default function RecipeStoryboardDialog({ recipeId, onClose }: { recipeId
         {storyboard && (
           <div className="recipe-storyboard-footer">
             <span className="recipe-storyboard-hint">{storyboardStepSummary(storyboard)}</span>
-            <button type="button" className="recipe-storyboard-button" disabled={busy} onClick={() => setStartKind('regenerate')}>
-              {running ? 'Generating…' : 'Generate again'}
-            </button>
+            <div className="recipe-storyboard-actions">
+              <button type="button" className="recipe-storyboard-button" disabled={busy} onClick={() => setStartKind('fill')}
+                title="Put the panels back on steps that lost their image, or draw a new image if the recipe changed">
+                {running ? 'Working…' : 'Update'}
+              </button>
+              <button type="button" className="recipe-storyboard-button" disabled={busy} onClick={() => setStartKind('replace')}
+                title="Plan, prompt and draw again, replacing every step image it covers">
+                Redo everything
+              </button>
+            </div>
           </div>
         )}
       </div>
@@ -195,11 +205,10 @@ export default function RecipeStoryboardDialog({ recipeId, onClose }: { recipeId
       {startKind && (
         <ModelChoiceDialog
           title={START_COPY[startKind].title}
-          description="The text model plans the panels and writes the image prompt; the image model draws the one storyboard image."
+          description={START_COPY[startKind].description}
           capabilities={STORYBOARD_MODELS}
-          existing={existingImages > 0 ? { images: existingImages } : undefined}
           confirmLabel={START_COPY[startKind].confirm}
-          onConfirm={(modelKeys, overwriteExisting) => void start(startKind, modelKeys, overwriteExisting)}
+          onConfirm={(modelKeys) => void start(startKind, modelKeys)}
           onCancel={() => setStartKind(null)}
         />
       )}

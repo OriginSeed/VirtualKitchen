@@ -60,6 +60,15 @@ public class RecipeAiWorkflow {
     /** The latest visualization job per approved process (VISUALS task); a retry replaces the entry. */
     private List<VisualizationJobRef> visualizationJobs = new ArrayList<>();
 
+    /**
+     * True when the VISUALS task runs as Visualize (one recipe storyboard) rather than per-process step visuals;
+     * {@link #storyboardJobId} is then its storyboard, or null when it could not be started.
+     */
+    private boolean storyboardVisuals;
+
+    /** The storyboard the VISUALS task started (latest attempt; a retry replaces it). */
+    private String storyboardJobId;
+
     /** The exact recipe state downstream tasks were started from; null until approval. */
     private ApprovedSnapshot approvedSnapshot;
 

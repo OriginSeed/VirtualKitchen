@@ -1,5 +1,6 @@
 package com.processVisualisation.virtualKitchen.ai.recipe.storyboard.dto;
 
+import com.processVisualisation.virtualKitchen.ai.recipe.storyboard.StoryboardMode;
 import lombok.Data;
 
 import java.util.Map;
@@ -19,4 +20,7 @@ public class StoryboardJobRequestDTO {
 
     /** Replace images the covered steps already have (otherwise only steps without an image get a panel image). */
     private boolean overwriteExisting;
+
+    /** FILL or REPLACE; when set it decides instead of {@link #regenerate} and {@link #overwriteExisting}. */
+    private StoryboardMode mode;
 }

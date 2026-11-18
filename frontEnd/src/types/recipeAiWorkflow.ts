@@ -2,7 +2,7 @@
  * AI Recipe Creation (backend `RecipeAiWorkflow`): one user-controlled workflow over process
  * generation, step visuals and narration. Mirrors the backend's ai/workflow DTOs.
  */
-import type { RecipeProcessGenerationJobResponse, RecipeProcessVisualizationJobResponse } from './recipe'
+import type { RecipeProcessGenerationJobResponse, RecipeProcessVisualizationJobResponse, RecipeStoryboardResponse } from './recipe'
 
 export type RecipeAiTaskType = 'PROCESS' | 'VISUALS' | 'NARRATION'
 
@@ -96,6 +96,8 @@ export interface RecipeAiWorkflowResponse {
   /** Only on create/retry: the generation job to start tracking. */
   generation?: RecipeProcessGenerationJobResponse | null
   visualizationJobs: RecipeProcessVisualizationJobResponse[]
+  /** The storyboard the visuals task runs as (Visualize); null for older per-process step visuals. */
+  storyboardJob?: RecipeStoryboardResponse | null
   approvedRevision?: number | null
   approvedAt?: string | null
   createdAt?: string | null

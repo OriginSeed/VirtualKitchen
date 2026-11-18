@@ -10,6 +10,12 @@ import com.processVisualisation.virtualKitchen.ai.recipe.generation.dto.RecipePr
 import com.processVisualisation.virtualKitchen.ai.recipe.generation.model.RecipeProcessGenerationJob;
 import com.processVisualisation.virtualKitchen.ai.recipe.narration.StepNarrationService;
 import com.processVisualisation.virtualKitchen.ai.recipe.narration.dto.StepNarrationResponseDTO;
+import com.processVisualisation.virtualKitchen.ai.recipe.storyboard.RecipeStoryboardJobService;
+import com.processVisualisation.virtualKitchen.ai.recipe.storyboard.RecipeStoryboardRepository;
+import com.processVisualisation.virtualKitchen.ai.recipe.storyboard.StoryboardMode;
+import com.processVisualisation.virtualKitchen.ai.recipe.storyboard.StoryboardProperties;
+import com.processVisualisation.virtualKitchen.ai.recipe.storyboard.dto.RecipeStoryboardResponseDTO;
+import com.processVisualisation.virtualKitchen.ai.recipe.storyboard.model.RecipeStoryboard;
 import com.processVisualisation.virtualKitchen.ai.recipe.visualization.RecipeProcessVisualizationJobService;
 import com.processVisualisation.virtualKitchen.ai.recipe.visualization.RecipeProcessVisualizationService;
 import com.processVisualisation.virtualKitchen.ai.recipe.visualization.VisualizationJobRepository;
@@ -156,6 +162,27 @@ public class RecipeAiWorkflowService {
 
     /** Checks per-run model choices; null when not injected (tests), and choices then pass through unchecked. */
     private PreferredModelResolver modelChoices;
+
+    /**
+     * Visualize (the recipe storyboard), which the VISUALS task runs unless the legacy per-process step visuals are
+     * switched back on ({@code ai.storyboard.legacy-step-visuals-enabled}). Null when not injected (tests): the task
+     * then runs as step visuals, as before.
+     */
+    private RecipeStoryboardJobService storyboardJobService;
+    private RecipeStoryboardRepository storyboardRepository;
+    private StoryboardProperties storyboardProperties;
+
+    @Autowired
+    void setStoryboard(RecipeStoryboardJobService storyboardJobService, RecipeStoryboardRepository storyboardRepository,
+                       StoryboardProperties storyboardProperties) {
+        this.storyboardJobService = storyboardJobService;
+        this.storyboardRepository = storyboardRepository;
+        this.storyboardProperties = storyboardProperties;
+    }
+
+    private boolean visualsAsStoryboard() {
+        return storyboardJobService != null && (storyboardProperties == null || !storyboardProperties.isLegacyStepVisualsEnabled());
+    }
 
     @Autowired
     void setModelChoices(PreferredModelResolver modelChoices) {
@@ -392,7 +419,14 @@ public class RecipeAiWorkflowService {
                 approvedProcesses.stream().mapToInt(process -> process.getStepIds().size()).sum());
 
         // Both only submit work to their own pools and return: neither waits for the other.
-        if (approved.isSelected(RecipeAiTaskType.VISUALS)) {
+        if (approved.isSelected(RecipeAiTaskType.VISUALS) && visualsAsStoryboard()) {
+            approved.setStoryboardVisuals(true);
+            approved.setStoryboardJobId(startStoryboard(userId, recipeId, workflow.getId(), approved.getModelKeys(),
+                    overwrite ? StoryboardMode.REPLACE : StoryboardMode.FILL));
+            Update storyboardUpdate = new Update().set("storyboardVisuals", true).set("updatedAt", now());
+            if (approved.getStoryboardJobId() != null) storyboardUpdate.set("storyboardJobId", approved.getStoryboardJobId());
+            mongoTemplate.updateFirst(query(where("_id").is(workflowId)), storyboardUpdate, RecipeAiWorkflow.class);
+        } else if (approved.isSelected(RecipeAiTaskType.VISUALS)) {
             approved.setVisualizationJobs(startVisuals(userId, recipeId, workflow.getId(), approved.getModelKeys(), approvedProcesses.stream()
                     .map(ApprovedProcess::getProcessId).toList(), approved.getVisualizationJobs(), overwrite));
             mongoTemplate.updateFirst(query(where("_id").is(workflowId)),
@@ -450,6 +484,15 @@ public class RecipeAiWorkflowService {
                 update.set("generationJobId", generation.getJobId()).set("status", RecipeAiWorkflowStatus.GENERATING_PROCESS);
             }
             case VISUALS -> {
+                if (workflow.isStoryboardVisuals()) {
+                    // FILL continues a failed storyboard from the stage it stopped at; nothing drawn is replaced.
+                    String storyboardId = startStoryboard(userId, recipeId, workflow.getId(), workflow.getModelKeys(), StoryboardMode.FILL);
+                    workflow.setStoryboardJobId(storyboardId);
+                    workflow.setStatus(RecipeAiWorkflowStatus.RUNNING_DOWNSTREAM_TASKS);
+                    update.set("status", workflow.getStatus());
+                    if (storyboardId != null) update.set("storyboardJobId", storyboardId);
+                    break;
+                }
                 Map<String, VisualizationJob> jobs = visualizationJobs(workflow);
                 List<Long> toRestart = workflow.getVisualizationJobs().stream()
                         .filter(ref -> needsVisualsRetry(jobs.get(ref.getJobId())))
@@ -585,6 +628,17 @@ public class RecipeAiWorkflowService {
         return new ArrayList<>(refs.values());
     }
 
+    /** Starts (or joins) the recipe's storyboard; null when it can't be started (the task then reports a failure). */
+    private String startStoryboard(Long userId, Long recipeId, String workflowId, Map<String, String> modelKeys, StoryboardMode mode) {
+        try (MDC.MDCCloseable ignored = MDC.putCloseable(AiAnalyticsRecorder.WORKFLOW_ID_MDC, workflowId);
+             AiRunModels.Scope models = AiRunModels.open(modelKeys)) {
+            return storyboardJobService.startJob(userId, recipeId, mode).getJobId();
+        } catch (RuntimeException e) {
+            FailureLogger.logFailure(log, "ai_workflow_storyboard_start_failed", e, "recipeId=" + recipeId + " mode=" + mode);
+            return null;
+        }
+    }
+
     private void startNarration(Long userId, Long recipeId, String workflowId, Map<String, String> modelKeys,
                                 Long processId, List<String> stepIds, boolean overwriteExisting) {
         try (MDC.MDCCloseable ignored = MDC.putCloseable(AiAnalyticsRecorder.WORKFLOW_ID_MDC, workflowId);
@@ -660,7 +714,8 @@ public class RecipeAiWorkflowService {
                 generationJob(workflow),
                 approved && workflow.isSelected(RecipeAiTaskType.VISUALS) ? visualizationJobs(workflow) : Map.of(),
                 approved && workflow.isSelected(RecipeAiTaskType.NARRATION) ? narrations(userId, workflow) : Map.of(),
-                now()));
+                now(),
+                storyboardOf(workflow)));
     }
 
     private Optional<RecipeAiWorkflow> findOpen(Long userId, Long recipeId) {
@@ -675,6 +730,11 @@ public class RecipeAiWorkflowService {
     private RecipeProcessGenerationJob generationJob(RecipeAiWorkflow workflow) {
         return workflow.getGenerationJobId() == null ? null
                 : generationJobRepository.findById(workflow.getGenerationJobId()).orElse(null);
+    }
+
+    private RecipeStoryboard storyboardOf(RecipeAiWorkflow workflow) {
+        return workflow.getStoryboardJobId() == null || storyboardRepository == null ? null
+                : storyboardRepository.findById(workflow.getStoryboardJobId()).orElse(null);
     }
 
     private Map<String, VisualizationJob> visualizationJobs(RecipeAiWorkflow workflow) {
@@ -837,6 +897,7 @@ public class RecipeAiWorkflowService {
                 .generationApplied(generationJob != null && generationJob.getResultAppliedAt() != null)
                 .generation(generation)
                 .visualizationJobs(visualizationJobs)
+                .storyboardJob(storyboardJob(workflow))
                 .approvedRevision(workflow.getApprovedSnapshot() != null ? workflow.getApprovedSnapshot().getRevision() : null)
                 .approvedAt(workflow.getApprovedSnapshot() != null ? workflow.getApprovedSnapshot().getApprovedAt() : null)
                 .createdAt(workflow.getCreatedAt())
@@ -845,6 +906,15 @@ public class RecipeAiWorkflowService {
                 .overwriteExisting(workflow.isOverwriteExisting())
                 .reused(reused)
                 .build();
+    }
+
+    private RecipeStoryboardResponseDTO storyboardJob(RecipeAiWorkflow workflow) {
+        if (workflow.getStoryboardJobId() == null || storyboardJobService == null) return null;
+        try {
+            return storyboardJobService.getJobStatus(workflow.getUserId(), workflow.getRecipeId(), workflow.getStoryboardJobId());
+        } catch (NoSuchElementException e) {
+            return null;
+        }
     }
 
     private Instant now() {

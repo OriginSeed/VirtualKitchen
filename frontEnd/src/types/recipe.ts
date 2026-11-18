@@ -269,6 +269,9 @@ export interface RecipeStoryboardStep {
   cleared?: boolean
 }
 
+/** How a Visualize run treats what the recipe already has (see StoryboardMode.java). */
+export type StoryboardMode = 'FILL' | 'REPLACE'
+
 export interface RecipeStoryboardResponse {
   jobId: string
   recipeId: number

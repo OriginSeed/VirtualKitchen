@@ -1,6 +1,7 @@
 package com.processVisualisation.virtualKitchen.ai.recipe.workflow.dto;
 
 import com.processVisualisation.virtualKitchen.ai.recipe.generation.dto.RecipeProcessGenerationJobResponseDTO;
+import com.processVisualisation.virtualKitchen.ai.recipe.storyboard.dto.RecipeStoryboardResponseDTO;
 import com.processVisualisation.virtualKitchen.ai.recipe.visualization.dto.VisualizationJobResponseDTO;
 import com.processVisualisation.virtualKitchen.ai.recipe.workflow.model.RecipeAiTaskStatus;
 import com.processVisualisation.virtualKitchen.ai.recipe.workflow.model.RecipeAiTaskType;
@@ -43,6 +44,9 @@ public class RecipeAiWorkflowResponseDTO {
     private RecipeProcessGenerationJobResponseDTO generation;
     /** Latest visualization job per approved process, so the editor can show images as they arrive. */
     private List<VisualizationJobResponseDTO> visualizationJobs;
+
+    /** The storyboard the VISUALS task runs as (Visualize); null for per-process step visuals. */
+    private RecipeStoryboardResponseDTO storyboardJob;
     private Long approvedRevision;
     private Instant approvedAt;
     private Instant createdAt;

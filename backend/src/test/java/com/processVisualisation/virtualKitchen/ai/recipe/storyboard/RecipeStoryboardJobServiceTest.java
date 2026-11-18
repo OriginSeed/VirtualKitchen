@@ -478,6 +478,68 @@ class RecipeStoryboardJobServiceTest {
 
     // ------------------------------------------------------------------------------------------------- helpers
 
+    @Test
+    void fill_onAnUnchangedRecipe_reusesTheLatestStoryboard_withoutAnyAiCall_andPutsItsPanelsBackOnTheSteps() throws Exception {
+        RecipeStoryboard completed = completedStoryboard();
+        org.mockito.Mockito.clearInvocations(planner, masterPromptWriter, imageClient, processRepository, mongoTemplate);
+
+        RecipeStoryboardResponseDTO filled = service.startJob(OWNER, RECIPE_ID, StoryboardMode.FILL);
+
+        verify(planner, never()).plan(any(), any(), any(), anyInt());
+        verify(masterPromptWriter, never()).write(any(), any(), any(), any());
+        verify(imageClient, never()).generate(anyString(), any(), any());
+        verify(imageStorageClient, never()).download(anyString());
+        assertEquals(List.of(StoryboardStage.CROP), allSet("stage"));
+        assertEquals(StoryboardStatus.COMPLETED, lastSet("status"));
+        assertEquals(completed.getImageUrl(), filled.getImageUrl());
+        assertEquals(7, filled.getSteps().size());
+        verify(processRepository, times(7)).setStepVisualization(anyLong(), anyString(), any(), any(), any());
+    }
+
+    @Test
+    void fill_cutsAReusedStoryboardAgain_whenItsPanelsHaveNoImage() throws Exception {
+        RecipeStoryboard completed = completedStoryboard();
+        completed.getPanels().forEach(panel -> panel.setImageUrl(null));
+        when(imageStorageClient.download(completed.getImageUrl())).thenReturn(
+                new ImageStorageClient.StoredImage("image/png", StoryboardGridSlicingTest.grid(300, 300, 3, 3, 4, 0)));
+        service.setImageStorageClient(imageStorageClient);
+        org.mockito.Mockito.clearInvocations(imageClient);
+
+        RecipeStoryboardResponseDTO filled = service.startJob(OWNER, RECIPE_ID, StoryboardMode.FILL);
+
+        verify(imageClient, never()).generate(anyString(), any(), any());
+        verify(imageStorageClient).download(completed.getImageUrl());
+        assertTrue(filled.getPanels().stream().allMatch(panel -> panel.getImageUrl() != null));
+        assertEquals(7, filled.getSteps().size());
+    }
+
+    @Test
+    void fill_onAChangedRecipe_drawsANewStoryboard_keepingTheStepsOwnImages_andReplaceRedoesEverything() throws Exception {
+        RecipeStoryboard completed = completedStoryboard();
+        completed.setSourceHash("another-hash");
+        org.mockito.Mockito.clearInvocations(planner, imageClient);
+
+        service.startJob(OWNER, RECIPE_ID, StoryboardMode.FILL);
+        verify(planner, times(1)).plan(any(), any(), any(), anyInt());
+        verify(imageClient, times(1)).generate(anyString(), any(), any());
+        assertFalse(stored.values().stream().filter(sb -> sb != completed).findFirst().orElseThrow().isOverwriteExisting());
+
+        completed.setSourceHash(source.hash());
+        service.startJob(OWNER, RECIPE_ID, StoryboardMode.REPLACE);
+        verify(planner, times(2)).plan(any(), any(), any(), anyInt());
+        verify(imageClient, times(2)).generate(anyString(), any(), any());
+    }
+
+    /** Runs a first storyboard to completion and makes it the recipe's latest completed one. */
+    private RecipeStoryboard completedStoryboard() {
+        RecipeStoryboardResponseDTO first = service.startJob(OWNER, RECIPE_ID, false, false);
+        RecipeStoryboard completed = stored.get(first.getJobId());
+        completed.setStatus(StoryboardStatus.COMPLETED);
+        when(storyboardRepository.findFirstByRecipeIdAndStatusOrderByCreatedAtDesc(RECIPE_ID, StoryboardStatus.COMPLETED))
+                .thenReturn(Optional.of(completed));
+        return completed;
+    }
+
     /** An earlier attempt that planned its panels and wrote its prompt, then failed to get its image. */
     private RecipeStoryboard failedAtImage(String sourceHash) {
         StoryboardSpecValidator.Result plan = StoryboardSpecValidator.validate(StoryboardTestFixtures.layeredPlan(source), source, 16);

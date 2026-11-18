@@ -2,6 +2,7 @@ package com.processVisualisation.virtualKitchen.ai.recipe.storyboard.controller;
 
 import com.processVisualisation.virtualKitchen.ai.platform.preference.RunModelChoices;
 import com.processVisualisation.virtualKitchen.ai.recipe.storyboard.RecipeStoryboardJobService;
+import com.processVisualisation.virtualKitchen.ai.recipe.storyboard.StoryboardMode;
 import com.processVisualisation.virtualKitchen.ai.recipe.storyboard.dto.RecipeStoryboardResponseDTO;
 import com.processVisualisation.virtualKitchen.ai.recipe.storyboard.dto.StoryboardJobRequestDTO;
 import com.processVisualisation.virtualKitchen.auth.exception.AuthException;
@@ -46,10 +47,16 @@ public class RecipeStoryboardController {
     public ApiResponse<RecipeStoryboardResponseDTO> startJob(@PathVariable Long recipeId,
                                                             @RequestBody(required = false) StoryboardJobRequestDTO request) {
         Long userId = currentUserId();
-        boolean regenerate = request != null && request.isRegenerate();
-        boolean overwriteExisting = request != null && request.isOverwriteExisting();
-        RecipeStoryboardResponseDTO data = runModelChoices.startWith(request != null ? request.getModelKeys() : null,
-                () -> storyboardJobService.startJob(userId, recipeId, regenerate, overwriteExisting));
+        RecipeStoryboardResponseDTO data;
+        if (request != null && request.getMode() != null) {
+            StoryboardMode mode = request.getMode();
+            data = runModelChoices.startWith(request.getModelKeys(), () -> storyboardJobService.startJob(userId, recipeId, mode));
+        } else {
+            boolean regenerate = request != null && request.isRegenerate();
+            boolean overwriteExisting = request != null && request.isOverwriteExisting();
+            data = runModelChoices.startWith(request != null ? request.getModelKeys() : null,
+                    () -> storyboardJobService.startJob(userId, recipeId, regenerate, overwriteExisting));
+        }
         return build(data, "Storyboard generation started");
     }
 

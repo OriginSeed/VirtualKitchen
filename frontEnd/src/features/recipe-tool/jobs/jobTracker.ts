@@ -7,6 +7,7 @@ import type {
   RecipeProcessGenerationRequest,
   RecipeProcessVisualizationJobResponse,
   RecipeStoryboardResponse,
+  StoryboardMode,
 } from '../../../types/recipe'
 import type { RecipeAiWorkflowCreateRequest, RecipeAiWorkflowResponse, RecipeAiWorkflowStatus } from '../../../types/recipeAiWorkflow'
 import { errorMessage } from '../../../shared/errors'
@@ -205,7 +206,7 @@ export class JobTracker {
    */
   async startStoryboard(
     recipeId: number,
-    options: { modelKeys?: RunModels; overwriteExisting?: boolean; regenerate?: boolean } = {},
+    options: { modelKeys?: RunModels; overwriteExisting?: boolean; regenerate?: boolean; mode?: StoryboardMode } = {},
   ): Promise<TrackedStoryboard | undefined> {
     const key = storyboardJobKey(recipeId)
     if (this.starting.has(key)) return undefined
@@ -269,6 +270,14 @@ export class JobTracker {
       const current = this.jobs.get(key)
       if (current?.kind !== 'generation' || current.job.jobId !== workflow.generation.jobId) {
         this.track(key, { kind: 'generation', recipeId, job: workflow.generation, connectionLost: false, pollError: null, requestedMode: 'CREATE' })
+      }
+    }
+    if (workflow.storyboardJob) {
+      const key = storyboardJobKey(recipeId)
+      const current = this.jobs.get(key)
+      const job = workflow.storyboardJob
+      if (isRunningStatus(job.status) && (current?.kind !== 'storyboard' || current.job.jobId !== job.jobId)) {
+        this.track(key, { kind: 'storyboard', recipeId, job, connectionLost: false, pollError: null })
       }
     }
     for (const job of workflow.visualizationJobs ?? []) {
