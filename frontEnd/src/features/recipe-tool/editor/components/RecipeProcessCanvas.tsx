@@ -1242,6 +1242,8 @@ function RecipeProcessCanvasContent({
                           onDeleteNode={(id) => void requestDeleteNode(id)}
                           onDuplicateNode={duplicateNode}
                           onOpenSubprocess={handleOpenSubprocess}
+                          recipeId={recipeId}
+                          processId={processId}
                           issues={readiness?.issues.filter((issue) => issue.nodeId === popupNode.id && issue.processId === processId) ?? []}
                           autoFocusDescription={Boolean(normalizeRecipeStepNodeData(popupNode.data).step.action)}
                           onClose={closeStepPopup}
@@ -1305,6 +1307,8 @@ function RecipeProcessCanvasContent({
                   onDeleteNode={(id) => void requestDeleteNode(id)}
                   onDuplicateNode={duplicateNode}
                   onOpenSubprocess={handleOpenSubprocess}
+                  recipeId={recipeId}
+                  processId={processId}
                 />
               ) : (
                 <RecipeConditionPanel

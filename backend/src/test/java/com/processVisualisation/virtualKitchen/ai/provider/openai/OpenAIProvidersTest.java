@@ -34,6 +34,7 @@ import static org.springframework.test.web.client.ExpectedCount.once;
 import static org.springframework.test.web.client.match.MockRestRequestMatchers.header;
 import static org.springframework.test.web.client.match.MockRestRequestMatchers.jsonPath;
 import static org.springframework.test.web.client.match.MockRestRequestMatchers.method;
+import static org.springframework.test.web.client.match.MockRestRequestMatchers.content;
 import static org.springframework.test.web.client.match.MockRestRequestMatchers.requestTo;
 import static org.springframework.test.web.client.response.MockRestResponseCreators.withStatus;
 import static org.springframework.test.web.client.response.MockRestResponseCreators.withSuccess;
@@ -188,8 +189,27 @@ class OpenAIProvidersTest {
     }
 
     @Test
-    void imageClientIsPromptOnly() {
-        assertFalse(imageClient().supportsReferenceImages());
+    void gptImageWithAReferenceUsesTheEditsEndpoint_andDalleIgnoresReferences() throws Exception {
+        server.expect(once(), requestTo(BASE_URL + "/v1/images/edits"))
+                .andExpect(method(HttpMethod.POST))
+                .andExpect(header(HttpHeaders.AUTHORIZATION, "Bearer " + API_KEY))
+                .andExpect(content().contentTypeCompatibleWith(MediaType.MULTIPART_FORM_DATA))
+                .andRespond(withSuccess(imageJson(PNG), MediaType.APPLICATION_JSON));
+        ImageGenerationClient client = imageClient();
+        assertTrue(client.supportsReferenceImages());
+        ImageGenerationClient.GeneratedImage edited = client.generate("make the onions golden",
+                List.of(new ImageGenerationClient.ReferenceImage("image/png", PNG)),
+                new ImageGenerationClient.ImageGenerationSettings(1024, 1024, null, "gpt-image-1", null));
+        server.verify();
+        assertArrayEquals(PNG, edited.data());
+
+        server.reset();
+        server.expect(once(), requestTo(BASE_URL + "/v1/images/generations"))
+                .andRespond(withSuccess(imageJson(PNG), MediaType.APPLICATION_JSON));
+        client.generate("a pan", List.of(new ImageGenerationClient.ReferenceImage("image/png", PNG)),
+                new ImageGenerationClient.ImageGenerationSettings(1024, 1024, null, "dall-e-3", null));
+        server.verify();
+        assertEquals("/v1/images/edits", OpenAIImageClient.editsEndpoint("/v1/images/generations"));
     }
 
     // ---- speech ----

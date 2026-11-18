@@ -85,6 +85,7 @@ public class StaleJobReconciler {
             failStaleGenerationJobs(now);
             failStaleVisualizationJobs(now);
             failStaleStoryboards(now);
+            failStaleStepFixes(now);
             failStaleAiRequests(now);
         } catch (Exception e) {
             // Never let one bad sweep kill the schedule; the next run retries.
@@ -121,6 +122,17 @@ public class StaleJobReconciler {
                 RecipeStoryboard.class).getModifiedCount();
         if (failed > 0) {
             log.warn("event=stale_storyboards_failed count={}", failed);
+        }
+        return failed;
+    }
+
+    long failStaleStepFixes(Instant now) {
+        Query stale = Query.query(where("status").in(StoryboardStatus.QUEUED, StoryboardStatus.IN_PROGRESS)
+                .and("updatedAt").lt(now.minus(jobStaleAfter)));
+        long failed = mongoTemplate.updateMulti(stale, interruptedUpdate(StoryboardStatus.FAILED, now),
+                com.processVisualisation.virtualKitchen.ai.recipe.storyboard.model.StoryboardStepFix.class).getModifiedCount();
+        if (failed > 0) {
+            log.warn("event=stale_step_fixes_failed count={}", failed);
         }
         return failed;
     }

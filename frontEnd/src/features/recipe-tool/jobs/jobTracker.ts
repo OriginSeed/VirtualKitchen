@@ -8,6 +8,7 @@ import type {
   RecipeProcessVisualizationJobResponse,
   RecipeStoryboardResponse,
   StoryboardMode,
+  StoryboardStepFixResponse,
 } from '../../../types/recipe'
 import type { RecipeAiWorkflowCreateRequest, RecipeAiWorkflowResponse, RecipeAiWorkflowStatus } from '../../../types/recipeAiWorkflow'
 import { errorMessage } from '../../../shared/errors'
@@ -39,12 +40,14 @@ export type GenerationJobKey = `gen:${number}`
 export type VisualsJobKey = `viz:${number}`
 export type WorkflowJobKey = `wf:${number}`
 export type StoryboardJobKey = `sb:${number}`
-export type JobKey = GenerationJobKey | VisualsJobKey | WorkflowJobKey | StoryboardJobKey
+export type StepFixJobKey = `sf:${number}:${string}`
+export type JobKey = GenerationJobKey | VisualsJobKey | WorkflowJobKey | StoryboardJobKey | StepFixJobKey
 
 export const generationJobKey = (recipeId: number): GenerationJobKey => `gen:${recipeId}`
 export const visualsJobKey = (processId: number): VisualsJobKey => `viz:${processId}`
 export const workflowJobKey = (recipeId: number): WorkflowJobKey => `wf:${recipeId}`
 export const storyboardJobKey = (recipeId: number): StoryboardJobKey => `sb:${recipeId}`
+export const stepFixJobKey = (recipeId: number, stepId: string): StepFixJobKey => `sf:${recipeId}:${stepId}`
 
 type TrackedBase = {
   recipeId: number
@@ -65,11 +68,14 @@ export type TrackedVisualsJob = TrackedBase & { kind: 'visuals'; processId: numb
 export type TrackedWorkflow = TrackedBase & { kind: 'workflow'; job: RecipeAiWorkflowResponse }
 /** A recipe storyboard being generated; `job` is the storyboard itself (its id is `jobId`). */
 export type TrackedStoryboard = TrackedBase & { kind: 'storyboard'; job: RecipeStoryboardResponse }
-export type TrackedJob = TrackedGenerationJob | TrackedVisualsJob | TrackedWorkflow | TrackedStoryboard
+/** One step's image being fixed from feedback; `job` is the fix itself (its id is `fixId`). */
+export type TrackedStepFix = TrackedBase & { kind: 'stepfix'; job: StoryboardStepFixResponse }
+export type TrackedJob = TrackedGenerationJob | TrackedVisualsJob | TrackedWorkflow | TrackedStoryboard | TrackedStepFix
 export type TrackedJobFor<K extends JobKey> = K extends GenerationJobKey
   ? TrackedGenerationJob
   : K extends WorkflowJobKey ? TrackedWorkflow
-    : K extends StoryboardJobKey ? TrackedStoryboard : TrackedVisualsJob
+    : K extends StoryboardJobKey ? TrackedStoryboard
+      : K extends StepFixJobKey ? TrackedStepFix : TrackedVisualsJob
 
 const isRunningStatus = (status: string | undefined) => status === 'QUEUED' || status === 'IN_PROGRESS'
 
@@ -88,7 +94,8 @@ export const isTrackedJobActive = (tracked: TrackedJob | undefined) => {
 }
 
 /** The backend id of whatever is tracked: a job id, or a workflow id. */
-const trackedId = (tracked: TrackedJob) => (tracked.kind === 'workflow' ? tracked.job.workflowId : tracked.job.jobId)
+const trackedId = (tracked: TrackedJob) => (tracked.kind === 'workflow' ? tracked.job.workflowId
+  : tracked.kind === 'stepfix' ? tracked.job.fixId : tracked.job.jobId)
 
 const pollInterval = (tracked: TrackedJob) =>
   tracked.kind === 'workflow' && tracked.job.status === 'WAITING_FOR_APPROVAL' ? WAITING_POLL_INTERVAL_MS : POLL_INTERVAL_MS
@@ -228,6 +235,39 @@ export class JobTracker {
     } finally {
       this.starting.delete(key)
     }
+  }
+
+  /** Starts (or joins the running) fix of one step's image from the cook's feedback. Resolves once accepted. */
+  async startStepFix(
+    recipeId: number, processId: number, stepId: string, feedback: string, modelKeys?: RunModels,
+  ): Promise<TrackedStepFix | undefined> {
+    const key = stepFixJobKey(recipeId, stepId)
+    if (this.starting.has(key)) return undefined
+    const current = this.jobs.get(key)
+    if (current?.kind === 'stepfix' && isTrackedJobActive(current)) return current
+
+    this.starting.add(key)
+    try {
+      const job = await RecipeStoryboardApi.fixStep(recipeId, stepId, { processId, feedback, modelKeys })
+      const tracked: TrackedStepFix = { kind: 'stepfix', recipeId, job, connectionLost: false, pollError: null }
+      this.track(key, tracked)
+      this.notifier.info(job.reused
+        ? 'This step image is already being fixed — showing its progress.'
+        : 'Fixing this step image in the background.')
+      return tracked
+    } finally {
+      this.starting.delete(key)
+    }
+  }
+
+  /** Undoes a finished step image fix; the session then shows the step's previous image again. */
+  async revertStepFix(recipeId: number, stepId: string): Promise<void> {
+    const key = stepFixJobKey(recipeId, stepId)
+    const current = this.jobs.get(key)
+    if (current?.kind !== 'stepfix' || current.job.status !== 'COMPLETED' || current.job.reverted) return
+    const job = await RecipeStoryboardApi.revertFix(recipeId, current.job.fixId)
+    this.set(key, { ...current, job })
+    this.notifier.info('The step image is back to how it was.')
   }
 
   /**
@@ -371,6 +411,8 @@ export class JobTracker {
         next = { ...tracked, connectionLost: false, job: await RecipeProcessVisualizationApi.getJobStatus(tracked.recipeId, tracked.processId, tracked.job.jobId, controller.signal) }
       } else if (tracked.kind === 'storyboard') {
         next = { ...tracked, connectionLost: false, job: await RecipeStoryboardApi.getJobStatus(tracked.recipeId, tracked.job.jobId, controller.signal) }
+      } else if (tracked.kind === 'stepfix') {
+        next = { ...tracked, connectionLost: false, job: await RecipeStoryboardApi.getFix(tracked.recipeId, tracked.job.fixId, controller.signal) }
       } else {
         next = { ...tracked, connectionLost: false, job: await RecipeAiWorkflowApi.get(tracked.recipeId, tracked.job.workflowId, controller.signal) }
       }
@@ -427,6 +469,10 @@ export class JobTracker {
       } else {
         this.notifier.error(job.errorMessage || 'Unable to generate the storyboard right now.')
       }
+    } else if (tracked.kind === 'stepfix') {
+      const { job } = tracked
+      if (job.status === 'COMPLETED') this.notifier.success('The step image was redrawn. You can undo it from the step.')
+      else this.notifier.error(job.errorMessage || 'Unable to fix this step image right now.')
     } else if (tracked.job.status === 'FAILED') {
       // A successful generation is announced by the editor once it has loaded the result.
       this.notifier.error(tracked.job.errorMessage

@@ -80,6 +80,29 @@ export function useVisualsApplier({ enabled, recipeId, jobTracker, store, onAppl
         fresh.forEach((step) => appliedStepsRef.current.add(`${tracked.job.jobId}:${step.stepId}`))
         changed = true
       }
+      // A step image fixed from feedback: the new image and prompt, on that one step, once it finished.
+      for (const tracked of jobTracker.all()) {
+        if (tracked.kind !== 'stepfix' || tracked.recipeId !== recipeId) continue
+        const { job } = tracked
+        const appliedKey = `${job.fixId}:${job.reverted ? 'reverted' : 'fixed'}`
+        if (job.status !== 'COMPLETED' || !job.imageUrl || appliedStepsRef.current.has(appliedKey)) continue
+        store.setProcesses(store.processes.map((process) => (process.id !== job.processId ? process : {
+          ...process,
+          nodes: process.nodes.map((node) => (node.id !== job.stepId || node.kind !== 'STEP' ? node : {
+            ...node,
+            data: withRecipeStepVisualization(node.data, job.reverted
+              ? (job.previousImageUrl ? { imageUrl: job.previousImageUrl, imagePrompt: job.previousPrompt ?? undefined, status: 'generated' } : { status: 'not_generated' })
+              : {
+                assetId: job.visualizationAssetId ?? undefined,
+                imagePrompt: job.imagePrompt ?? undefined,
+                imageUrl: job.imageUrl ?? undefined,
+                status: 'generated',
+              }) as unknown as Record<string, unknown>,
+          })),
+        })))
+        appliedStepsRef.current.add(appliedKey)
+        changed = true
+      }
       if (changed) onApplied()
     }
     applyVisuals()

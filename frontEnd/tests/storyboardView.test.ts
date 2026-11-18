@@ -93,3 +93,11 @@ describe('a running storyboard in the navbar summary', () => {
     assert.deepEqual(summarizeActiveJobs(jobs), { count: 1, recipeId: 62, needsReview: false, label: 'AI working…' })
   })
 })
+
+describe('active jobs: a step image fix', () => {
+  it('round-trips through the indicator key like any other AI job', () => {
+    const jobs = [{ kind: 'stepfix' as const, recipeId: 62, waitingForApproval: false }]
+    assert.deepEqual(parseActiveJobsKey(activeJobsKey(jobs)), jobs)
+    assert.equal(summarizeActiveJobs(jobs).label, 'AI working…')
+  })
+})

@@ -4,7 +4,7 @@ import '../../../../styles/flow-ui.css'
 import SearchableSelect, { type SearchableSelectOption } from '../../../../shared/components/SearchableSelect'
 import { useConfirm } from '../../../../shared/components/confirm/confirmContext'
 import IngredientSelector from './IngredientSelector'
-import ZoomableImage from '../../../../shared/components/image-viewer/ZoomableImage'
+import StepVisualFix from './StepVisualFix'
 import { draftKeys } from '../../../../shared/drafts/draftStore'
 import type { Process } from '../../../../types/process'
 import { PreparationStyleSelect, UnitSelect } from './StepFieldInputs'
@@ -65,6 +65,9 @@ type RecipeStepPanelProps = {
   onDuplicateNode?: (nodeId: string) => void
   /** Opens the Preparation on the step that makes a used component (`stepId` absent for a legacy whole-process use). */
   onOpenSubprocess?: (processId: number, stepId?: string) => void
+  /** The recipe and process this step belongs to: needed to fix its image from feedback (omitted: no Visual block). */
+  recipeId?: number
+  processId?: number
   /** Readiness issues about this step (shown under its description). */
   issues?: ReadinessIssue[]
   /** 'popup': the editor opened on the node itself — a close button, and Save & close at the bottom. */
@@ -114,6 +117,8 @@ export default function RecipeStepPanel({
   onDeleteNode,
   onDuplicateNode,
   onOpenSubprocess,
+  recipeId,
+  processId,
   issues = [],
   variant = 'panel',
   autoFocusDescription,
@@ -784,18 +789,17 @@ export default function RecipeStepPanel({
           </>
         )}
 
-        {visualization?.imageUrl && (
+        {recipeId != null && processId != null && (
           <>
             <div className="mt-2 h-px" style={{ background: 'var(--flow-border)' }} />
             <div className="flow-editor-section-heading">Visual</div>
-            <div style={{ width: '100%', aspectRatio: '16 / 10', borderRadius: 10, overflow: 'hidden', border: '1px solid var(--flow-border)', background: '#0f172a' }}>
-              <ZoomableImage
-                src={visualization.imageUrl}
-                alt="Step visual"
-                caption="Step visual"
-                style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
-              />
-            </div>
+            <StepVisualFix
+              recipeId={recipeId}
+              processId={processId}
+              stepId={node.id}
+              imageUrl={visualization?.imageUrl}
+              imagePrompt={visualization?.imagePrompt}
+            />
           </>
         )}
 

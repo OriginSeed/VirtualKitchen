@@ -27,8 +27,8 @@ public enum OperationContext {
             case "process-visualization-image", "process-visualization-scene" -> STEP_IMAGE_GENERATION;
             case "step-narration" -> STEP_NARRATION;
             case "global-asset-image" -> GLOBAL_ASSET_IMAGE;
-            case "recipe-storyboard-plan", "recipe-storyboard-prompt" -> STORYBOARD_PLANNING;
-            case "recipe-storyboard-image" -> STORYBOARD_IMAGE;
+            case "recipe-storyboard-plan", "recipe-storyboard-prompt", "recipe-storyboard-step-fix-prompt" -> STORYBOARD_PLANNING;
+            case "recipe-storyboard-image", "recipe-storyboard-step-fix" -> STORYBOARD_IMAGE;
             case "chat" -> CHAT;
             default -> UNKNOWN;
         };

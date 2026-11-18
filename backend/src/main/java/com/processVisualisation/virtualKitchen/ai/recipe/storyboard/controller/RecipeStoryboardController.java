@@ -3,6 +3,9 @@ package com.processVisualisation.virtualKitchen.ai.recipe.storyboard.controller;
 import com.processVisualisation.virtualKitchen.ai.platform.preference.RunModelChoices;
 import com.processVisualisation.virtualKitchen.ai.recipe.storyboard.RecipeStoryboardJobService;
 import com.processVisualisation.virtualKitchen.ai.recipe.storyboard.StoryboardMode;
+import com.processVisualisation.virtualKitchen.ai.recipe.storyboard.StoryboardStepFixService;
+import com.processVisualisation.virtualKitchen.ai.recipe.storyboard.dto.StoryboardStepFixRequestDTO;
+import com.processVisualisation.virtualKitchen.ai.recipe.storyboard.dto.StoryboardStepFixResponseDTO;
 import com.processVisualisation.virtualKitchen.ai.recipe.storyboard.dto.RecipeStoryboardResponseDTO;
 import com.processVisualisation.virtualKitchen.ai.recipe.storyboard.dto.StoryboardJobRequestDTO;
 import com.processVisualisation.virtualKitchen.auth.exception.AuthException;
@@ -29,10 +32,13 @@ import java.time.LocalDateTime;
 public class RecipeStoryboardController {
 
     private final RecipeStoryboardJobService storyboardJobService;
+    private final StoryboardStepFixService stepFixService;
     private final RunModelChoices runModelChoices;
 
-    public RecipeStoryboardController(RecipeStoryboardJobService storyboardJobService, RunModelChoices runModelChoices) {
+    public RecipeStoryboardController(RecipeStoryboardJobService storyboardJobService, StoryboardStepFixService stepFixService,
+                                      RunModelChoices runModelChoices) {
         this.storyboardJobService = storyboardJobService;
+        this.stepFixService = stepFixService;
         this.runModelChoices = runModelChoices;
     }
 
@@ -70,6 +76,31 @@ public class RecipeStoryboardController {
     @GetMapping
     public ApiResponse<RecipeStoryboardResponseDTO> getStoryboard(@PathVariable Long recipeId) {
         return build(storyboardJobService.findLatest(currentUserId(), recipeId).orElse(null), "Recipe storyboard");
+    }
+
+    /**
+     * Redraws one step's image from the cook's feedback (owner only) and returns at once; poll {@link #getFix}. A fix
+     * already running for the step is returned with {@code reused=true}.
+     */
+    @PostMapping("/steps/{stepId}/fix")
+    public ApiResponse<StoryboardStepFixResponseDTO> fixStep(@PathVariable Long recipeId, @PathVariable String stepId,
+                                                             @RequestBody StoryboardStepFixRequestDTO request) {
+        Long userId = currentUserId();
+        StoryboardStepFixResponseDTO data = runModelChoices.startWith(request.getModelKeys(),
+                () -> stepFixService.startFix(userId, recipeId, request.getProcessId(), stepId, request.getFeedback()));
+        return build(data, "Step image fix started");
+    }
+
+    /** The status (and, once done, the new image) of a step image fix the caller started. */
+    @GetMapping("/fixes/{fixId}")
+    public ApiResponse<StoryboardStepFixResponseDTO> getFix(@PathVariable Long recipeId, @PathVariable String fixId) {
+        return build(stepFixService.getFix(currentUserId(), recipeId, fixId), "Step image fix status");
+    }
+
+    /** Puts the step back to the prompt and image it had before the fix. */
+    @PostMapping("/fixes/{fixId}/revert")
+    public ApiResponse<StoryboardStepFixResponseDTO> revertFix(@PathVariable Long recipeId, @PathVariable String fixId) {
+        return build(stepFixService.revert(currentUserId(), recipeId, fixId), "Step image fix undone");
     }
 
     private Long currentUserId() {

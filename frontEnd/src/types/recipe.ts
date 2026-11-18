@@ -269,6 +269,30 @@ export interface RecipeStoryboardStep {
   cleared?: boolean
 }
 
+/** A "fix this step's image" request (StoryboardStepFixResponseDTO.java). */
+export interface StoryboardStepFixResponse {
+  fixId: string
+  recipeId: number
+  processId: number
+  stepId: string
+  status: 'QUEUED' | 'IN_PROGRESS' | 'COMPLETED' | 'FAILED'
+  feedback: string
+  reused: boolean
+  imagePrompt?: string | null
+  imageUrl?: string | null
+  visualizationAssetId?: number | null
+  previousImageUrl?: string | null
+  previousPrompt?: string | null
+  /** The step's current image was sent along for the model to redraw. */
+  usedReference: boolean
+  /** The text model gave no usable prompt, so the feedback was appended to the old one. */
+  promptFromTemplate: boolean
+  errorMessage?: string | null
+  reverted: boolean
+  createdAt?: string
+  completedAt?: string | null
+}
+
 /** How a Visualize run treats what the recipe already has (see StoryboardMode.java). */
 export type StoryboardMode = 'FILL' | 'REPLACE'
 

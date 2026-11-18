@@ -12,9 +12,13 @@ import com.processVisualisation.virtualKitchen.ai.provider.exception.AiInvalidRe
 import com.processVisualisation.virtualKitchen.ai.provider.exception.AiRateLimitedException;
 import com.processVisualisation.virtualKitchen.ai.provider.exception.AiTimeoutException;
 import org.springframework.beans.factory.annotation.Qualifier;
+import org.springframework.core.io.ByteArrayResource;
+import org.springframework.http.HttpEntity;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.stereotype.Component;
+import org.springframework.util.LinkedMultiValueMap;
+import org.springframework.util.MultiValueMap;
 import org.springframework.util.StringUtils;
 import org.springframework.web.client.ResourceAccessException;
 import org.springframework.web.client.RestClient;
@@ -30,7 +34,8 @@ import java.util.Map;
 /**
  * {@link ImageGenerationClient} for OpenAI's image generation API ({@code gpt-image-1}, {@code dall-e-3}, ...).
  * Reuses the OpenAI API key, base URL and REST client of the text client; only {@code ai.openai.image.*} is
- * image-specific. Prompt-only: reference images are ignored, so callers do not chain them.
+ * image-specific. With reference images and a {@code gpt-image} model the request goes to the image edits endpoint
+ * ({@code /v1/images/edits}), so an image can be redrawn from the one it corrects; other models ignore references.
  * <p>
  * The model is chosen per request (the registry's provider model id), so one bean serves several registry
  * entries. {@code gpt-image-1} always answers with base64 and rejects {@code response_format}; DALL-E answers
@@ -74,15 +79,27 @@ public class OpenAIImageClient implements ImageGenerationClient {
         String model = StringUtils.hasText(requested.modelId()) ? requested.modelId() : image.getModel();
         validate(prompt, model);
         String size = size(requested, image.getSize());
+        List<ReferenceImage> usable = references == null ? List.of()
+                : references.stream().filter(reference -> reference != null && reference.data() != null && reference.data().length > 0)
+                        .limit(maxReferenceImages()).toList();
         try {
-            String response = restClient.post()
-                    .uri(image.getEndpoint())
-                    .header(HttpHeaders.AUTHORIZATION, "Bearer " + properties.getApiKey())
-                    .contentType(MediaType.APPLICATION_JSON)
-                    .accept(MediaType.APPLICATION_JSON)
-                    .body(buildRequestPayload(prompt, model, size))
-                    .retrieve()
-                    .body(String.class);
+            String response = !usable.isEmpty() && isGptImage(model)
+                    ? restClient.post()
+                            .uri(editsEndpoint(image.getEndpoint()))
+                            .header(HttpHeaders.AUTHORIZATION, "Bearer " + properties.getApiKey())
+                            .contentType(MediaType.MULTIPART_FORM_DATA)
+                            .accept(MediaType.APPLICATION_JSON)
+                            .body(buildEditPayload(prompt, model, size, usable))
+                            .retrieve()
+                            .body(String.class)
+                    : restClient.post()
+                            .uri(image.getEndpoint())
+                            .header(HttpHeaders.AUTHORIZATION, "Bearer " + properties.getApiKey())
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .accept(MediaType.APPLICATION_JSON)
+                            .body(buildRequestPayload(prompt, model, size))
+                            .retrieve()
+                            .body(String.class);
             return parseImage(response, size);
         } catch (RestClientResponseException ex) {
             int status = ex.getStatusCode().value();
@@ -126,6 +143,45 @@ public class OpenAIImageClient implements ImageGenerationClient {
             payload.put("response_format", "b64_json");
         }
         return payload;
+    }
+
+    /** gpt-image models take reference images through the edits endpoint; DALL-E models ignore them. */
+    @Override
+    public boolean supportsReferenceImages() {
+        return true;
+    }
+
+    @Override
+    public int maxReferenceImages() {
+        return 4;
+    }
+
+    /** The edits endpoint next to the configured generations endpoint. */
+    static String editsEndpoint(String generationsEndpoint) {
+        return generationsEndpoint.endsWith("/generations")
+                ? generationsEndpoint.substring(0, generationsEndpoint.length() - "/generations".length()) + "/edits"
+                : generationsEndpoint.replaceAll("/+$", "") + "/edits";
+    }
+
+    /** The multipart body of an edit: the generation fields plus one {@code image[]} part per reference. */
+    MultiValueMap<String, Object> buildEditPayload(String prompt, String model, String size, List<ReferenceImage> references) {
+        MultiValueMap<String, Object> body = new LinkedMultiValueMap<>();
+        buildRequestPayload(prompt, model, size).forEach((key, value) -> body.add(key, String.valueOf(value)));
+        for (int i = 0; i < references.size(); i++) {
+            ReferenceImage reference = references.get(i);
+            String mimeType = StringUtils.hasText(reference.mimeType()) ? reference.mimeType() : MediaType.IMAGE_PNG_VALUE;
+            String extension = mimeType.endsWith("jpeg") || mimeType.endsWith("jpg") ? "jpg" : mimeType.endsWith("webp") ? "webp" : "png";
+            String filename = "reference-" + (i + 1) + "." + extension;
+            HttpHeaders partHeaders = new HttpHeaders();
+            partHeaders.setContentType(MediaType.parseMediaType(mimeType));
+            body.add("image[]", new HttpEntity<>(new ByteArrayResource(reference.data()) {
+                @Override
+                public String getFilename() {
+                    return filename;
+                }
+            }, partHeaders));
+        }
+        return body;
     }
 
     private static boolean isGptImage(String model) {
