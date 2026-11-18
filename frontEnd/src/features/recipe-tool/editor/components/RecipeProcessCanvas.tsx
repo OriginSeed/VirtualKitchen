@@ -70,7 +70,7 @@ import {
 import { RecipeProcessGraphProvider } from '../context/RecipeProcessGraphContext'
 import { useRecipeSession, type RecipeSessionContextValue } from '../../session/sessionContext'
 import type { Process } from '../../../../types/process'
-import type { RecipeProcessBreadcrumbEntry, RecipeProcessVisualizationStepResult, RecipeStoryboardStep } from '../../../../types/recipe'
+import type { RecipeProcessBreadcrumbEntry, RecipeStoryboardStep } from '../../../../types/recipe'
 import { useNotifications } from '../../../../shared/components/notifications/notificationContext'
 import { useConfirm } from '../../../../shared/components/confirm/confirmContext'
 import RecipeConditionPanel from './RecipeConditionPanel'
@@ -87,10 +87,7 @@ import { startPanelResize } from './panelResize'
 import { useCanvasShortcuts } from '../hooks/useCanvasShortcuts'
 import EmptyCanvasPrompt from './EmptyCanvasPrompt'
 import ShortcutHelpDialog from './ShortcutHelpDialog'
-import { useProcessVisuals } from '../hooks/useProcessVisuals'
 import { useStoryboardStepImages } from '../hooks/useStoryboardStepImages'
-import { ModelChoiceDialog } from '../../workflow/components/RunModelPicker'
-import type { RunModelCapability } from '../../../../types/recipeAiWorkflow'
 import { buildCanvasSlideshowSteps } from '../model/canvasSlideshow'
 import { describeNodeDeletion } from '../model/nodeDeletion'
 import '../../../../styles/flow-ui.css'
@@ -130,8 +127,6 @@ type RecipeProcessCanvasProps = {
 
 // Default sizes of a new node (see createRecipeStepNode/createConditionNode).
 const NEW_STEP_SIZE = DEFAULT_NODE_SIZE.step
-/** Generate Visuals: the text model writes the image prompts, the image model draws them. */
-const VISUALS_MODELS: RunModelCapability[] = ['TEXT_TO_TEXT', 'TEXT_TO_IMAGE']
 /** Size of the step popup (see .flow-step-popup) and its gap to the node — for placing it where it fits. */
 const STEP_POPUP_WIDTH = 420
 const STEP_POPUP_HEIGHT = 540
@@ -843,22 +838,6 @@ function RecipeProcessCanvasContent({
 
   const buildSlideshowSteps = () => buildCanvasSlideshowSteps(process, nodes, edges, recipeProcesses, stepOutputGraph)
 
-  const applyStepVisualization = useCallback((stepResult: RecipeProcessVisualizationStepResult) => {
-    if (!stepResult.success || stepResult.visualizationAssetId == null) return
-    setNodes((nds) => nds.map((node) => {
-      if (node.id !== stepResult.stepId || !isRecipeStepNode(node)) return node
-      return {
-        ...node,
-        data: withRecipeStepVisualization(node.data, {
-          assetId: stepResult.visualizationAssetId,
-          imageUrl: stepResult.imageUrl ?? undefined,
-          status: 'generated',
-        }),
-      }
-    }))
-  }, [setNodes])
-
-  // The Preparation gets one image per flow (attached to its output step); every other process one per step.
   const isPreparationProcess = process.type === 'SUBPROCESS'
   // A storyboard that finishes while this canvas is open changes step images too (see useStoryboardStepImages).
   const applyStoryboardSteps = useCallback((steps: RecipeStoryboardStep[]) => {
@@ -879,20 +858,6 @@ function RecipeProcessCanvasContent({
   }, [setNodes])
   useStoryboardStepImages({ recipeId, processId, applySteps: applyStoryboardSteps })
 
-  const visuals = useProcessVisuals({
-    recipeId,
-    processId,
-    stepCount: isPreparationProcess
-      ? getPreparationFlows(flowToProcess(process, nodes, edges)).filter((flow) => flow.output != null).length
-      : nodes.filter(isRecipeStepNode).length,
-    unit: isPreparationProcess ? 'flows' : 'steps',
-    applyStep: applyStepVisualization,
-  })
-  // Generating visuals spends image credits: the user picks the models first (ModelChoiceDialog below).
-  const [visualsModelsOpen, setVisualsModelsOpen] = useState(false)
-  const askForVisualsModels = useCallback(() => {
-    if (!visuals.generating) setVisualsModelsOpen(true)
-  }, [visuals.generating])
 
   /**
    * Guards actually leaving via onBack. Pending edits are simply saved on the way out (autosave
@@ -1111,10 +1076,6 @@ function RecipeProcessCanvasContent({
         canAutoArrange={nodes.length > 0}
         onPreview={openSlideshow}
         onExport={() => void handleExport()}
-        onGenerateVisuals={askForVisualsModels}
-        isGeneratingVisuals={visuals.generating}
-        visualsProgressLabel={visuals.progressLabel}
-        generateVisualsStatus={visuals.status}
         aiActions={aiActions}
         // With a process sidebar, adding lives in its "+ Add" menu (and its collapsed rail's "+").
         onAddStep={sidebarHeader ? undefined : addStep}
@@ -1281,9 +1242,6 @@ function RecipeProcessCanvasContent({
                           onDeleteNode={(id) => void requestDeleteNode(id)}
                           onDuplicateNode={duplicateNode}
                           onOpenSubprocess={handleOpenSubprocess}
-                          onGenerateVisuals={askForVisualsModels}
-                          isGeneratingVisuals={visuals.generating}
-                          visualsProgressLabel={visuals.progressLabel}
                           issues={readiness?.issues.filter((issue) => issue.nodeId === popupNode.id && issue.processId === processId) ?? []}
                           autoFocusDescription={Boolean(normalizeRecipeStepNodeData(popupNode.data).step.action)}
                           onClose={closeStepPopup}
@@ -1347,9 +1305,6 @@ function RecipeProcessCanvasContent({
                   onDeleteNode={(id) => void requestDeleteNode(id)}
                   onDuplicateNode={duplicateNode}
                   onOpenSubprocess={handleOpenSubprocess}
-                  onGenerateVisuals={askForVisualsModels}
-                  isGeneratingVisuals={visuals.generating}
-                  visualsProgressLabel={visuals.progressLabel}
                 />
               ) : (
                 <RecipeConditionPanel
@@ -1375,23 +1330,6 @@ function RecipeProcessCanvasContent({
           processId={processId}
           narrationReady={narrationReady}
           onClose={() => setShowSlideshow(false)}
-        />
-      )}
-
-      {visualsModelsOpen && (
-        <ModelChoiceDialog
-          title="🖼️ Generate visuals"
-          description={isPreparationProcess
-            ? 'One image per preparation flow. The text model writes the image prompts; the image model draws them.'
-            : 'One image for every step of this process. The text model writes the image prompts; the image model draws them.'}
-          capabilities={VISUALS_MODELS}
-          existing={{ images: nodes.filter((node) => isRecipeStepNode(node) && normalizeRecipeStepNodeData(node.data).visualization?.imageUrl).length }}
-          confirmLabel="Generate visuals"
-          onCancel={() => setVisualsModelsOpen(false)}
-          onConfirm={(modelKeys, overwriteExisting) => {
-            setVisualsModelsOpen(false)
-            void visuals.generate(modelKeys, overwriteExisting)
-          }}
         />
       )}
 

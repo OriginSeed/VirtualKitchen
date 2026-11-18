@@ -65,16 +65,6 @@ type RecipeStepPanelProps = {
   onDuplicateNode?: (nodeId: string) => void
   /** Opens the Preparation on the step that makes a used component (`stepId` absent for a legacy whole-process use). */
   onOpenSubprocess?: (processId: number, stepId?: string) => void
-  /**
-   * Triggers the whole-process visualization job (see RecipeProcessCanvas's generateVisuals) — V1 has no
-   * single-step generation endpoint, so "Regenerate" here re-runs the same process-wide job rather
-   * than a step-scoped call; steps that already have an image are still re-checked cheaply (the
-   * backend's asset lookup only regenerates what's actually missing).
-   */
-  onGenerateVisuals?: () => void
-  isGeneratingVisuals?: boolean
-  /** Button label while generating, e.g. "Generating… 2/5" — falls back to "Generating…". */
-  visualsProgressLabel?: string
   /** Readiness issues about this step (shown under its description). */
   issues?: ReadinessIssue[]
   /** 'popup': the editor opened on the node itself — a close button, and Save & close at the bottom. */
@@ -124,9 +114,6 @@ export default function RecipeStepPanel({
   onDeleteNode,
   onDuplicateNode,
   onOpenSubprocess,
-  onGenerateVisuals,
-  isGeneratingVisuals,
-  visualsProgressLabel,
   issues = [],
   variant = 'panel',
   autoFocusDescription,
@@ -773,38 +760,17 @@ export default function RecipeStepPanel({
           </>
         )}
 
-        {onGenerateVisuals && (
+        {visualization?.imageUrl && (
           <>
             <div className="mt-2 h-px" style={{ background: 'var(--flow-border)' }} />
-            <div className="flow-editor-section-heading">Visualization</div>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-              {visualization?.imageUrl && (
-                <div style={{ width: '100%', aspectRatio: '16 / 10', borderRadius: 10, overflow: 'hidden', border: '1px solid var(--flow-border)', background: '#0f172a' }}>
-                  <ZoomableImage
-                    src={visualization.imageUrl}
-                    alt="Generated visualization"
-                    caption="Generated visualization"
-                    style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
-                  />
-                </div>
-              )}
-              <button
-                type="button"
-                onClick={onGenerateVisuals}
-                disabled={isGeneratingVisuals}
-                style={{
-                  alignSelf: 'flex-start', padding: '6px 12px', borderRadius: 7,
-                  border: '1px solid var(--flow-magic-border)', background: 'var(--flow-magic-soft)', color: 'var(--flow-magic)',
-                  fontSize: 11.5, fontWeight: 700, cursor: isGeneratingVisuals ? 'wait' : 'pointer', opacity: isGeneratingVisuals ? 0.7 : 1,
-                }}
-              >
-                {isGeneratingVisuals ? (visualsProgressLabel ?? 'Generating…') : visualization?.imageUrl ? '🔄 Regenerate visuals' : '🖼️ Generate visuals'}
-              </button>
-              <div style={{ fontSize: 10, color: 'var(--flow-text-subtle)' }}>
-                {isPreparation
-                  ? 'Generates one image per preparation flow (a storyboard of its steps), shown on the step that makes its output.'
-                  : 'Generates an image for every step of this process — not only this one.'}
-              </div>
+            <div className="flow-editor-section-heading">Visual</div>
+            <div style={{ width: '100%', aspectRatio: '16 / 10', borderRadius: 10, overflow: 'hidden', border: '1px solid var(--flow-border)', background: '#0f172a' }}>
+              <ZoomableImage
+                src={visualization.imageUrl}
+                alt="Step visual"
+                caption="Step visual"
+                style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
+              />
             </div>
           </>
         )}

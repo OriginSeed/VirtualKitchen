@@ -22,46 +22,29 @@ export type RecipeAiActions = {
 
 type AiActionsMenuProps = {
   recipeActions?: RecipeAiActions
-  /** Starts the AI visualization job for the open process's own steps. */
-  onGenerateVisuals?: () => void
-  isGeneratingVisuals?: boolean
-  /** e.g. "Generating… 2/5". */
-  visualsProgressLabel?: string
-  generateVisualsStatus?: { type: 'success' | 'error' | 'info'; text: string } | null
 }
-
-const STATUS_COLORS = { success: 'var(--flow-success)', info: 'var(--flow-magic)', error: 'var(--flow-danger)' } as const
 
 /**
  * "✨ AI": every AI operation of the Recipe Editor in one menu, with the user's AI credit balance —
  * credits sit here because only these actions spend them. The button itself reflects what AI is
  * doing right now (AI Recipe Creation's badge, or a running generation/visuals job).
  */
-export default function AiActionsMenu({
-  recipeActions,
-  onGenerateVisuals,
-  isGeneratingVisuals = false,
-  visualsProgressLabel,
-  generateVisualsStatus,
-}: AiActionsMenuProps) {
+export default function AiActionsMenu({ recipeActions }: AiActionsMenuProps) {
   // Refetch the credit balance whenever a background AI job finishes (it charged or refunded credits).
   const jobsFinishedSignal = useJobsFinishedSignal()
   const credits = useAiCredit(jobsFinishedSignal)
-  if (!recipeActions && !onGenerateVisuals) return null
+  if (!recipeActions) return null
 
   const { status, generationProgress, storyboard } = recipeActions ?? {}
   const busyLabel = status?.badge
     ?? (generationProgress ? `✨ ${generationProgress.percent}%` : null)
-    ?? (isGeneratingVisuals ? '✨ Visuals…' : null)
     ?? (storyboard?.progress ? '✨ Storyboard…' : null)
   const busy = busyLabel != null && busyLabel !== '✨ AI'
   const buttonTitle = status?.title
     ? `AI Recipe Creation — ${status.title}`
     : generationProgress
       ? `Generating with AI — ${generationProgress.stageLabel}`
-      : isGeneratingVisuals
-        ? (generateVisualsStatus?.text ?? 'Generating step visuals')
-        : (storyboard?.progress ? 'Generating the recipe storyboard' : 'AI actions')
+      : (storyboard?.progress ? 'Generating the recipe storyboard' : 'AI actions')
 
   return (
     <ToolbarMenu
@@ -112,17 +95,6 @@ export default function AiActionsMenu({
             onSelect={recipeActions.onOpenAiEdit}
           />
         )}
-        {onGenerateVisuals && (
-          <MenuItem
-            icon="🖼️"
-            label="Generate Step Visuals"
-            description="An AI image for every step of this process"
-            trailing={isGeneratingVisuals ? (visualsProgressLabel ?? 'Generating…') : undefined}
-            disabled={isGeneratingVisuals}
-            title={isGeneratingVisuals ? 'Visuals are being generated for this process' : undefined}
-            onSelect={onGenerateVisuals}
-          />
-        )}
         {storyboard && (
           <MenuItem
             icon="🎞️"
@@ -147,11 +119,6 @@ export default function AiActionsMenu({
               onSelect={() => recipeActions.onOpenAiCreation(['PROCESS', 'VISUALS', 'NARRATION'])}
             />
           </>
-        )}
-        {generateVisualsStatus && (
-          <div className="recipe-toolbar-menu-status" role="status" style={{ color: STATUS_COLORS[generateVisualsStatus.type] }}>
-            {generateVisualsStatus.text}
-          </div>
         )}
         {credits && (
           <>

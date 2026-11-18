@@ -39,12 +39,6 @@ type RecipeProcessTopBarProps = {
   /** Opens the slideshow player (visuals + narration) of this process only (Cook mode plays the whole recipe). */
   onPreview?: () => void
   onExport?: () => void
-  /** Starts the AI visualization job for this process's own steps (see RecipeProcessCanvas's generateVisuals). */
-  onGenerateVisuals?: () => void
-  isGeneratingVisuals?: boolean
-  /** Progress while generating, e.g. "Generating… 2/5". */
-  visualsProgressLabel?: string
-  generateVisualsStatus?: { type: 'success' | 'error' | 'info'; text: string } | null
   /** Recipe-level AI actions (AI Recipe Creation, Edit with AI) — omitted where the editor has none (standalone route). */
   aiActions?: RecipeAiActions
   /**
@@ -60,8 +54,6 @@ type RecipeProcessTopBarProps = {
   /** Selects a node on the canvas and opens its properties — kept separate from process navigation (the breadcrumb), which moves between processes. */
   onSelectNode?: (nodeId: string) => void
 }
-
-const STATUS_COLORS = { success: 'var(--flow-success)', info: 'var(--flow-magic)', error: 'var(--flow-danger)' } as const
 
 /**
  * The Process Editor's top bar, grouped by what the user is doing:
@@ -96,10 +88,6 @@ export default function RecipeProcessTopBar({
   canAutoArrange = false,
   onPreview,
   onExport,
-  onGenerateVisuals,
-  isGeneratingVisuals = false,
-  visualsProgressLabel,
-  generateVisualsStatus,
   aiActions,
   onAddStep,
   onAddCondition,
@@ -219,23 +207,7 @@ export default function RecipeProcessTopBar({
           <span className="recipe-topbar-divider" aria-hidden />
 
           <div className="recipe-topbar-group">
-            {generateVisualsStatus && (
-              <span
-                className="recipe-topbar-status hidden @6xl:inline"
-                role="status"
-                title={generateVisualsStatus.text}
-                style={{ color: STATUS_COLORS[generateVisualsStatus.type] }}
-              >
-                {generateVisualsStatus.text}
-              </span>
-            )}
-            <AiActionsMenu
-              recipeActions={aiActions}
-              onGenerateVisuals={onGenerateVisuals}
-              isGeneratingVisuals={isGeneratingVisuals}
-              visualsProgressLabel={visualsProgressLabel}
-              generateVisualsStatus={generateVisualsStatus}
-            />
+            <AiActionsMenu recipeActions={aiActions} />
 
             {onPreview && (
               <button type="button" onClick={onPreview} className="recipe-topbar-button" aria-label="Preview this process" title="Preview this process as a slideshow with its visuals and narration (Cook mode, in the header, plays the whole recipe)">

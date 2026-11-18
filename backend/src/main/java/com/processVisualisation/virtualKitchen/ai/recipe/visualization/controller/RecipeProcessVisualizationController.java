@@ -3,6 +3,8 @@ package com.processVisualisation.virtualKitchen.ai.recipe.visualization.controll
 import com.processVisualisation.virtualKitchen.common.logging.LogAction;
 
 import com.processVisualisation.virtualKitchen.ai.platform.preference.RunModelChoices;
+import com.processVisualisation.virtualKitchen.ai.recipe.storyboard.StoryboardProperties;
+import com.processVisualisation.virtualKitchen.ai.recipe.visualization.LegacyVisualsDisabledException;
 import com.processVisualisation.virtualKitchen.ai.recipe.visualization.RecipeProcessVisualizationJobService;
 import com.processVisualisation.virtualKitchen.ai.recipe.visualization.dto.VisualizationJobRequestDTO;
 import com.processVisualisation.virtualKitchen.ai.recipe.visualization.dto.VisualizationJobResponseDTO;
@@ -32,10 +34,13 @@ public class RecipeProcessVisualizationController {
     private final RecipeProcessVisualizationJobService recipeProcessVisualizationJobService;
     private final RunModelChoices runModelChoices;
 
+    private final StoryboardProperties storyboardProperties;
+
     public RecipeProcessVisualizationController(RecipeProcessVisualizationJobService recipeProcessVisualizationJobService,
-                                                RunModelChoices runModelChoices) {
+                                                RunModelChoices runModelChoices, StoryboardProperties storyboardProperties) {
         this.recipeProcessVisualizationJobService = recipeProcessVisualizationJobService;
         this.runModelChoices = runModelChoices;
+        this.storyboardProperties = storyboardProperties;
     }
 
     /**
@@ -52,6 +57,9 @@ public class RecipeProcessVisualizationController {
     public ApiResponse<VisualizationJobResponseDTO> startJob(@PathVariable Long recipeId, @PathVariable Long processId,
                                                              @RequestBody(required = false) VisualizationJobRequestDTO request) {
         Long userId = currentUserId();
+        if (!storyboardProperties.isLegacyStepVisualsEnabled()) {
+            throw new LegacyVisualsDisabledException();
+        }
         boolean overwriteExisting = request != null && request.isOverwriteExisting();
         VisualizationJobResponseDTO data = runModelChoices.startWith(request != null ? request.getModelKeys() : null,
                 () -> recipeProcessVisualizationJobService.startJob(userId, recipeId, processId, overwriteExisting));

@@ -24,6 +24,13 @@ public class StoryboardProperties {
 
     private int imageHeight = 1024;
 
+    /**
+     * Whether the older per-process step-visuals endpoint may still start jobs. The storyboard is the app's one way
+     * of making step images, so this is off; set {@code ai.storyboard.legacy-step-visuals-enabled=true} to bring the
+     * old path back.
+     */
+    private boolean legacyStepVisualsEnabled = false;
+
     /** {@link #maxPanels} kept within 1..{@link #PANEL_LIMIT}. */
     public int effectiveMaxPanels() {
         return Math.max(1, Math.min(PANEL_LIMIT, maxPanels));
