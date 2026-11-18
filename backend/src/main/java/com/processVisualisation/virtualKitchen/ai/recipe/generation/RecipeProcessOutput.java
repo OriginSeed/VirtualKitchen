@@ -39,8 +39,11 @@ public record RecipeProcessOutput(
             String flameLevel,
             String duration,
             String repeatInterval,
+            /* CONDITION: the question. STEP: an optional short title. */
             String title,
-            String expectedResult
+            String expectedResult,
+            /* STEP: the spoken explanation of the step, continuing from the step before it. */
+            String summary
     ) {}
 
     public record Ingredient(

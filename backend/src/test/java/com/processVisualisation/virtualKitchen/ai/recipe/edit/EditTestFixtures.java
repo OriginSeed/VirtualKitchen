@@ -71,7 +71,7 @@ final class EditTestFixtures {
 
     static RecipeProcessOutput.Node newStep(String action, List<RecipeProcessOutput.Ingredient> ingredients, String description) {
         return new RecipeProcessOutput.Node(null, null, action, null, ingredients, null, null, description, null,
-                null, null, null, null, null, null, null);
+                null, null, null, null, null, null, null, null);
     }
 
     static RecipeProcessOutput.Ingredient outIngredient(String id, Double quantity, String unit) {
@@ -120,15 +120,15 @@ final class EditTestFixtures {
     }
 
     static RecipeProcessEditOutput.StepPatch patchDuration(String duration) {
-        return new RecipeProcessEditOutput.StepPatch(null, null, null, null, null, null, null, duration, null, null, null);
+        return new RecipeProcessEditOutput.StepPatch(null, null, null, null, null, null, null, duration, null, null, null, null, null);
     }
 
     static RecipeProcessEditOutput.StepPatch patchUses(List<String> uses) {
-        return new RecipeProcessEditOutput.StepPatch(null, null, null, null, null, null, null, null, null, null, uses);
+        return new RecipeProcessEditOutput.StepPatch(null, null, null, null, null, null, null, null, null, null, null, null, uses);
     }
 
     static RecipeProcessEditOutput.StepPatch patchFlame(String flameLevel) {
-        return new RecipeProcessEditOutput.StepPatch(null, null, null, null, null, null, flameLevel, null, null, null, null);
+        return new RecipeProcessEditOutput.StepPatch(null, null, null, null, null, null, flameLevel, null, null, null, null, null, null);
     }
 
     static RecipeProcessEditOutput output(RecipeProcessEditOutput.Operation... operations) {

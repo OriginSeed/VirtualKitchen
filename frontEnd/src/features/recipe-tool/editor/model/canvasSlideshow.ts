@@ -46,6 +46,7 @@ export const buildCanvasSlideshowSteps = (
       .filter(Boolean)
     // The action description is the slide's instruction text; the rest are supporting details.
     const descriptionParts = [
+      step.summary.trim(),
       ingredientNames.length > 0 ? `On: ${ingredientNames.join(', ')}` : '',
       subprocessNames.length > 0 ? `Using: ${subprocessNames.join(', ')}` : '',
       getRecipeStepDurationLabel(step),

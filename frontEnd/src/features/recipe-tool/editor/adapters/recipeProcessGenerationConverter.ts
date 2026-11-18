@@ -109,6 +109,8 @@ export const buildStepNode = (
       },
       actionDescription: resolveGeneratedAnnotations(step.actionDescription ?? '', preparedByRef, stepIdToNodeId),
       expectedOutput: step.expectedOutput ?? '',
+      title: step.title ?? '',
+      summary: step.summary ?? '',
       flameLevelId: step.flameLevel ?? '',
       customFlameLevel: '',
       // normalizeRecipeStepFields falls back to parsing the legacy free-text `temperature` when no value is given.

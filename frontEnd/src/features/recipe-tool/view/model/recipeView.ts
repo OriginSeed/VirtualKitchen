@@ -512,7 +512,7 @@ export const buildRecipePresentation = (processes: Process[], storyboardPanels: 
         ...step.actionOn.steps.map((entry) => rootIngredientName(stepById.get(entry.stepId), stepById)),
         ...step.actionOn.processes.map(productOf),
       ].filter(Boolean)
-      titles.set(node.id, buildStepHeading(step, earlierBases, resolveLabel))
+      titles.set(node.id, step.title.trim() || buildStepHeading(step, earlierBases, resolveLabel))
     }
 
     const relativeDirection = (fromId: string, toId: string): CheckOutcome['direction'] => {
@@ -638,7 +638,11 @@ export const buildRecipePresentation = (processes: Process[], storyboardPanels: 
       }
       const instruction = composed.length > 0 ? composed : [{ text: description || name }]
       const sentence = instructionText(instruction)
-      const explanation = composed.length > 0 && remaining && !restatesText(remaining, [sentence]) ? remaining : ''
+      // The step's summary is written to explain it in context, so it takes the place of the description's remainder.
+      const summary = step.summary.trim()
+      const explanation = summary
+        ? (restatesText(summary, [sentence]) ? '' : summary)
+        : composed.length > 0 && remaining && !restatesText(remaining, [sentence]) ? remaining : ''
       const expected = step.expectedOutput.trim()
       const readyWhen = expected && !restatesText(expected, [sentence, explanation]) ? expected : ''
 

@@ -56,13 +56,15 @@ export interface GeneratedRecipeStep {
   duration?: string | null
   repeatInterval?: string | null
 
-  // CONDITION-only
+  // CONDITION: the question. STEP: an optional short title (absent = derived from the action).
   title?: string | null
   expectedResult?: string | null
 
   // shared
   actionDescription: string
   expectedOutput: string
+  /** STEP only: the spoken explanation of the step, continuing from the one before (used by narration). */
+  summary?: string | null
 }
 
 export interface GeneratedRecipeProcess {

@@ -38,7 +38,7 @@ public class RecipeProcessGenerationPromptBuilder {
      * Logged with every generation so a change in output quality can be tied to a prompt change.
      * Bump it whenever the system/initial/retry prompt wording or structure changes.
      */
-    public static final String PROMPT_VERSION = "6";
+    public static final String PROMPT_VERSION = "7";
 
     /** Aliases shown per ingredient — enough to recognise regional names without bloating the prompt. */
     private static final int MAX_INGREDIENT_ALIASES = 3;
@@ -113,6 +113,20 @@ public class RecipeProcessGenerationPromptBuilder {
                 - expectedOutput: the expected result/state after this step. Include it whenever it can be
                   reasonably inferred from the recipe (e.g. "onions turn golden brown"); omit it only when the
                   recipe gives no basis for it. Do not invent specific, unstated outcomes.
+                - title (optional): a short imperative title of at most 6 words (e.g. "Temper the spices"). Omit it
+                  when the action and its ingredients already say it.
+
+                STEP SUMMARY (summary, REQUIRED ON EVERY STEP)
+                - summary is what a cooking guide would SAY aloud for this step: 1-3 plain sentences in the second
+                  person ("Now add ...", "Keep stirring until ..."). It is read by text-to-speech, so no annotations,
+                  no markdown, no lists, no abbreviations like "tbsp" or "min" (say "tablespoons", "minutes").
+                - It continues the story: open from where the previous step left the food ("Once the onions are
+                  golden, ..."), and say what to look for before moving on (the expectedOutput in natural words).
+                - The first step of a preparation starts that component fresh; its last step names what is ready.
+                - The first MAIN step that uses a prepared component names it and says it was made earlier
+                  ("Bring back the marinated chicken you set aside ...").
+                - Mention amounts only when they help the cook (e.g. "two cups of water"); never read out every
+                  ingredient quantity. Never invent facts the recipe does not support.
 
                 ANNOTATIONS (IN actionDescription)
                 - @[onions](ingredient:<that ingredient's ingredientId; its "name" when custom>),

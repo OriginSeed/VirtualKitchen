@@ -25,7 +25,7 @@ import java.util.Objects;
 public class RecipeProcessEditPromptBuilder {
 
     /** Logged with every edit; bump it whenever the edit prompt wording or structure changes. */
-    public static final String PROMPT_VERSION = "2";
+    public static final String PROMPT_VERSION = "3";
 
     private final RecipeProcessGenerationPromptBuilder generationPromptBuilder;
     private final RecipeProcessEditOutputSchema outputSchema;
@@ -223,6 +223,8 @@ public class RecipeProcessEditPromptBuilder {
         node.put("fromSteps", step.getActionOn().getSteps());
         node.put("actionDescription", step.getActionDescription());
         node.put("expectedOutput", step.getExpectedOutput());
+        node.put("title", step.getTitle());
+        node.put("summary", step.getSummary());
         node.put("temperatureValue", step.getTemperatureValue());
         node.put("temperatureUnit", step.getTemperatureUnit());
         if (step.getTemperatureValue() == null) node.put("temperature", step.getTemperature());

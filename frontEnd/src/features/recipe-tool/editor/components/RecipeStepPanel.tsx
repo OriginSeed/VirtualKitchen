@@ -422,6 +422,30 @@ export default function RecipeStepPanel({
           />
         </div>
 
+        <div className="flow-editor-section-heading">Step Summary</div>
+        <div className="flow-properties-field">
+          <textarea
+            className="flow-properties-textarea"
+            rows={3}
+            value={step.summary}
+            onChange={(e) => updateStepField(node.id, 'summary', e.target.value)}
+            placeholder="Explain this step as you would say it aloud, carrying on from the step before"
+            aria-label="Step summary"
+          />
+          <div style={{ marginTop: 4, fontSize: 10.5, color: 'var(--flow-text-subtle)' }}>
+            Shown on the recipe page and in Cook mode, and read aloud by narration.
+          </div>
+        </div>
+        <div className="flow-properties-field">
+          <label className="flow-properties-label">Title (optional)</label>
+          <input
+            className="flow-properties-input"
+            value={step.title}
+            onChange={(e) => updateStepField(node.id, 'title', e.target.value)}
+            placeholder="Leave empty to name it from the action"
+          />
+        </div>
+
         {issues.length > 0 && (
           <div className="flow-step-issues" role="status">
             {issues.map((issue, index) => (

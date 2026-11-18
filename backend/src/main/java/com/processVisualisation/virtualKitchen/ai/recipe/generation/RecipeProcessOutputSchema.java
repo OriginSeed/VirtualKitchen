@@ -53,11 +53,13 @@ public class RecipeProcessOutputSchema {
                 new Field("stepId", string(), false),
                 new Field("action", string(), true),
                 new Field("customActionName", string(), false),
+                new Field("title", string(), false),
                 new Field("ingredients", arrayOf(object(ingredientFields)), false),
                 new Field("uses", arrayOf(string()), false),
                 new Field("fromSteps", arrayOf(string()), false),
                 new Field("actionDescription", string(), true),
                 new Field("expectedOutput", string(), false),
+                new Field("summary", string(), true),
                 new Field("temperatureValue", number(), false),
                 new Field("temperatureUnit", enumOf(vocabulary.temperatureUnitIds()), false),
                 new Field("flameLevel", enumOf(List.copyOf(vocabulary.flameLevelIdSet())), false),
@@ -101,7 +103,7 @@ public class RecipeProcessOutputSchema {
                 CONDITION {%s}   (expectedResult defaults to success)
                 INGREDIENT {%s}
 
-                Example STEP:      {"action":"saute","uses":["chopped_onions"],"ingredients":[{"ingredientId":"garlic","name":"garlic","quantity":2,"unit":"clove","preparationStyle":"minced"}],"actionDescription":"Saute the onions and garlic","expectedOutput":"golden onions","flameLevel":"medium","duration":"5 minutes"}
+                Example STEP:      {"action":"saute","uses":["chopped_onions"],"ingredients":[{"ingredientId":"garlic","name":"garlic","quantity":2,"unit":"clove","preparationStyle":"minced"}],"actionDescription":"Saute the onions and garlic","expectedOutput":"golden onions","title":"Saute onions and garlic","summary":"Tip the chopped onions into the hot pan with the minced garlic and keep them moving until they turn golden and smell sweet.","flameLevel":"medium","duration":"5 minutes"}
                 Example CONDITION: {"nodeType":"CONDITION","title":"Is the oil hot?","actionDescription":"Drop in a pinch of batter; it should rise at once"}
                 """.formatted(
                 describe(List.of(new Field("preparations", Map.of(), false), new Field("main", Map.of(), true))),

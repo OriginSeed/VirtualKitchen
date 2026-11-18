@@ -181,10 +181,22 @@ public class RecipeProcessOutputNormalizer {
         step.setFlameLevel(node.flameLevel());
         step.setDuration(node.duration());
         step.setRepeatInterval(node.repeatInterval());
+        step.setTitle(node.title() == null || node.title().isBlank() ? null : node.title().trim());
+        step.setSummary(plainSummary(node.summary(), label, repairs));
         if (action != null) normalizeStepFields(step, action, label, repairs);
         // Step annotations are fitted once the flow's step references are resolved (see fitStepAnnotations).
         step.setActionDescription(normalizeAnnotations(step.getActionDescription(), step, node.ingredients(), false, label, repairs));
         return step;
+    }
+
+    /** A step summary is spoken, so any annotation in it becomes its plain words; blank means none. */
+    private static String plainSummary(String summary, String label, List<String> repairs) {
+        if (summary == null || summary.isBlank()) return null;
+        if (StepAnnotations.hasAnnotations(summary)) {
+            repairs.add(label + ": a summary has no annotations — kept as plain text");
+            return StepAnnotations.toPlainText(summary).trim();
+        }
+        return summary.trim();
     }
 
     /**
