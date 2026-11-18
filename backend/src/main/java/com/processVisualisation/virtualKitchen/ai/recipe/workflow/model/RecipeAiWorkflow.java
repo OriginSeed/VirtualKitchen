@@ -69,6 +69,9 @@ public class RecipeAiWorkflow {
     /** The storyboard the VISUALS task started (latest attempt; a retry replaces it). */
     private String storyboardJobId;
 
+    /** The PROCESS task refines the cook's saved flow (REFINE) instead of generating one from recipe text. */
+    private boolean refine;
+
     /** The exact recipe state downstream tasks were started from; null until approval. */
     private ApprovedSnapshot approvedSnapshot;
 

@@ -71,7 +71,7 @@ final class EditTestFixtures {
 
     static RecipeProcessOutput.Node newStep(String action, List<RecipeProcessOutput.Ingredient> ingredients, String description) {
         return new RecipeProcessOutput.Node(null, null, action, null, ingredients, null, null, description, null,
-                null, null, null, null, null, null, null, null);
+                null, null, null, null, null, null, null, null, null);
     }
 
     static RecipeProcessOutput.Ingredient outIngredient(String id, Double quantity, String unit) {

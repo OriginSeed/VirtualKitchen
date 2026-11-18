@@ -166,7 +166,7 @@ public class RecipeProcessEditValidator {
             if (insertAt == null || alias == null) return;
 
             RecipeProcessOutput.Node node = new RecipeProcessOutput.Node("CONDITION", alias, null, null, null, null, null,
-                    operation.actionDescription(), null, null, null, null, null, null, operation.title(), operation.expectedResult(), null);
+                    operation.actionDescription(), null, null, null, null, null, null, operation.title(), operation.expectedResult(), null, null);
             GeneratedRecipeStepDTO condition = RecipeProcessEditContext.copy(normalizer.toStep(node, alias));
             steps.add(insertAt, condition);
             translated.add(ProcessEditOperationDTO.builder()

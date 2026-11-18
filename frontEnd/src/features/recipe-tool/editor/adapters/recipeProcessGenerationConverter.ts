@@ -278,6 +278,16 @@ export const convertGeneratedResultToProcesses = (
   existingPreparation: Process | null = null,
 ): ConvertedGeneration => {
   const preparations = result.subprocesses ?? []
+  // A refined step keeps the id of the cook's node it re-authors (once), so its image and narration stay with it.
+  const usedIds = new Set<string>()
+  const nodeIdFor = (step: GeneratedRecipeStep) => {
+    const source = step.sourceNodeId?.trim()
+    if (source && !usedIds.has(source)) {
+      usedIds.add(source)
+      return source
+    }
+    return crypto.randomUUID()
+  }
   const tempIds = allocateTempIds(2, existingSessionIds)
   const mainProcessId = existingMain ? existingMain.id : tempIds[0]
   const preparationId = existingPreparation ? existingPreparation.id : tempIds[1]
@@ -287,7 +297,7 @@ export const convertGeneratedResultToProcesses = (
   const preparedByRef = new Map<string, RecipeStepActionOnProcess>()
   const flows = preparations.map((preparation) => {
     const steps = withOutputName(preparation.steps ?? [], preparation.name ?? '')
-    const nodeIds = steps.map(() => crypto.randomUUID())
+    const nodeIds = steps.map(nodeIdFor)
     const output = lastStepIndex(steps)
     if (preparation.ref && output >= 0) preparedByRef.set(preparation.ref, { processId: preparationId, stepId: nodeIds[output] })
     return { steps, nodeIds, name: preparation.name || 'Preparation' }
@@ -295,7 +305,8 @@ export const convertGeneratedResultToProcesses = (
   // Preparation steps never use another preparation (flows are independent): there's nothing for them to resolve.
   const builtFlows = flows.map(({ steps, nodeIds, name }) => buildFlow(steps, new Map(), `Preparation "${name}"`, problems, nodeIds))
 
-  const main = buildFlow(result.mainProcess.steps ?? [], preparedByRef, 'Main process', problems)
+  const mainSteps = result.mainProcess.steps ?? []
+  const main = buildFlow(mainSteps, preparedByRef, 'Main process', problems, mainSteps.map(nodeIdFor))
   const mainLayout = arrangeRows(main.nodes.map(layoutEntry), planRows(DEFAULT_CANVAS_WIDTH - 2 * ROW_LAYOUT.padding), ORIGIN)
   const processes: Process[] = [{
     id: mainProcessId,

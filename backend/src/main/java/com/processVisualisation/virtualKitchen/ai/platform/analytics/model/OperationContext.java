@@ -21,7 +21,7 @@ public enum OperationContext {
             return UNKNOWN;
         }
         return switch (correlationType) {
-            case "process-generation" -> RECIPE_FLOW_GENERATION;
+            case "process-generation", "process-refine" -> RECIPE_FLOW_GENERATION;
             case "process-edit" -> RECIPE_FLOW_EDIT;
             case "process-visualization-prompt", "process-visualization-prompt-batch" -> IMAGE_PROMPT_GENERATION;
             case "process-visualization-image", "process-visualization-scene" -> STEP_IMAGE_GENERATION;

@@ -34,6 +34,8 @@ public class RecipeProcessGenerationResultDTO {
     private List<String> repairs;
     /** Accepted but worth the user's attention (e.g. a preparation whose output the main process never uses). */
     private List<String> warnings;
+    /** REFINE only: what was corrected in the cook's flow, one short line each. */
+    private List<String> changes;
 
     private String modelUsed;
     private String modelTier;

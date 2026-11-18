@@ -65,6 +65,8 @@ export interface GeneratedRecipeStep {
   expectedOutput: string
   /** STEP only: the spoken explanation of the step, continuing from the one before (used by narration). */
   summary?: string | null
+  /** REFINE only: the id of the cook's node this step re-authors; the converted node keeps it (and its image). */
+  sourceNodeId?: string | null
 }
 
 export interface GeneratedRecipeProcess {
@@ -74,7 +76,7 @@ export interface GeneratedRecipeProcess {
   steps: GeneratedRecipeStep[]
 }
 
-export type ProcessGenerationMode = 'CREATE' | 'EDIT'
+export type ProcessGenerationMode = 'CREATE' | 'EDIT' | 'REFINE'
 
 /**
  * One validated AI edit operation (recipe/dto/ProcessEditOperationDTO.java), applied in list order by
@@ -119,6 +121,8 @@ export interface RecipeProcessGenerationResult {
   repairs?: string[] | null
   /** CREATE only: accepted but worth attention (e.g. a preparation the main process never uses). */
   warnings?: string[] | null
+  /** REFINE only: what was corrected in the cook's flow, one short line each. */
+  changes?: string[] | null
   /** EDIT only. */
   edit?: RecipeProcessEditResult | null
   modelUsed?: string

@@ -32,6 +32,7 @@ public class RecipeProcessOutputSchema {
 
     private final Map<String, Object> jsonSchema;
     private final String promptBlock;
+    private final Map<String, Object> refineJsonSchema;
     private final Map<String, Object> stepSchema;
     private final Map<String, Object> ingredientSchema;
 
@@ -91,6 +92,21 @@ public class RecipeProcessOutputSchema {
                 new Field("preparations", arrayOf(object(preparationFields)), false),
                 new Field("main", object(mainFields), true)
         ));
+
+        // REFINE: the same shape, plus which of the cook's nodes each step came from and what was corrected.
+        List<Field> refineStepFields = new ArrayList<>(stepFields);
+        refineStepFields.add(new Field("sourceStepIds", arrayOf(string()), false));
+        Map<String, Object> refineNode = Map.of("anyOf", List.of(object(refineStepFields), object(conditionFields)));
+        this.refineJsonSchema = object(List.of(
+                new Field("preparations", arrayOf(object(List.of(
+                        new Field("ref", string(), true),
+                        new Field("output", string(), true),
+                        new Field("steps", arrayOf(refineNode), true)))), false),
+                new Field("main", object(List.of(
+                        new Field("name", string(), true),
+                        new Field("steps", arrayOf(refineNode), true))), true),
+                new Field("changes", arrayOf(string()), true)
+        ));
         this.promptBlock = """
                 OUTPUT
                 Return ONE minified JSON object on a single line (no indentation, no line breaks).
@@ -118,6 +134,11 @@ public class RecipeProcessOutputSchema {
     /** JSON Schema (draft 2020-12 subset understood by Ollama, OpenAI and Gemini) for the generation response. */
     public Map<String, Object> jsonSchema() {
         return jsonSchema;
+    }
+
+    /** The REFINE response schema: {@link #jsonSchema()} plus {@code sourceStepIds} on steps and a root {@code changes}. */
+    public Map<String, Object> refineJsonSchema() {
+        return refineJsonSchema;
     }
 
     /** The OUTPUT section of the system prompt, rendered from the same field lists as {@link #jsonSchema()}. */

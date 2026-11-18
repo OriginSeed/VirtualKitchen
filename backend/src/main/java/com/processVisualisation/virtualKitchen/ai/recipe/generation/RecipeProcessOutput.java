@@ -13,8 +13,16 @@ import java.util.List;
  */
 public record RecipeProcessOutput(
         List<Preparation> preparations,
-        @JsonAlias("mainProcess") Main main
+        @JsonAlias("mainProcess") Main main,
+        /* REFINE only: one short line per correction made to the cook's flow. */
+        List<String> changes
 ) {
+
+    /** An output without a list of changes (CREATE). */
+    public RecipeProcessOutput(List<Preparation> preparations, Main main) {
+        this(preparations, main, null);
+    }
+
 
     /** One preparation flow; {@code output} is the named result the main sequence uses (it becomes the process name). */
     public record Preparation(String ref, @JsonAlias("name") String output, List<Node> steps) {}
@@ -43,7 +51,9 @@ public record RecipeProcessOutput(
             String title,
             String expectedResult,
             /* STEP: the spoken explanation of the step, continuing from the step before it. */
-            String summary
+            String summary,
+            /* REFINE only: aliases of the cook's nodes this step was made from. */
+            List<String> sourceStepIds
     ) {}
 
     public record Ingredient(

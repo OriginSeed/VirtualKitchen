@@ -56,4 +56,11 @@ public class GeneratedRecipeStepDTO {
 
     /** STEP only: a plain spoken explanation of the step that continues from the one before it (used by TTS). */
     private String summary;
+
+    /** REFINE only: the id of the cook's node this step re-authors, so it keeps that node's id (and its image). */
+    private String sourceNodeId;
+
+    /** REFINE only, before mapping: the aliases the model named. Never sent to the client. */
+    @com.fasterxml.jackson.annotation.JsonIgnore
+    private java.util.List<String> sourceAliases;
 }

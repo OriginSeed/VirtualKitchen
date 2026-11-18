@@ -183,6 +183,7 @@ public class RecipeProcessOutputNormalizer {
         step.setRepeatInterval(node.repeatInterval());
         step.setTitle(node.title() == null || node.title().isBlank() ? null : node.title().trim());
         step.setSummary(plainSummary(node.summary(), label, repairs));
+        step.setSourceAliases(node.sourceStepIds());
         if (action != null) normalizeStepFields(step, action, label, repairs);
         // Step annotations are fitted once the flow's step references are resolved (see fitStepAnnotations).
         step.setActionDescription(normalizeAnnotations(step.getActionDescription(), step, node.ingredients(), false, label, repairs));

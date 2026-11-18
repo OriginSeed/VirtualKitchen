@@ -6,6 +6,7 @@ import com.processVisualisation.virtualKitchen.ai.platform.preference.PreferredM
 import com.processVisualisation.virtualKitchen.ai.recipe.generation.RecipeProcessGenerationJobRepository;
 import com.processVisualisation.virtualKitchen.ai.recipe.generation.RecipeProcessGenerationJobService;
 import com.processVisualisation.virtualKitchen.ai.recipe.generation.dto.RecipeProcessGenerationJobResponseDTO;
+import com.processVisualisation.virtualKitchen.ai.recipe.generation.dto.ProcessGenerationMode;
 import com.processVisualisation.virtualKitchen.ai.recipe.generation.dto.RecipeProcessGenerationRequestDTO;
 import com.processVisualisation.virtualKitchen.ai.recipe.generation.model.RecipeProcessGenerationJob;
 import com.processVisualisation.virtualKitchen.ai.recipe.narration.StepNarrationService;
@@ -283,8 +284,16 @@ public class RecipeAiWorkflowService {
         }
 
         boolean needsExistingSteps = !tasks.contains(RecipeAiTaskType.PROCESS);
-        RecipeAiTaskSelection.validate(tasks, request.getRecipeText(),
-                needsExistingSteps && savedSteps(recipeId).values().stream().anyMatch(steps -> !steps.isEmpty()));
+        boolean hasSteps = needsExistingSteps && savedSteps(recipeId).values().stream().anyMatch(steps -> !steps.isEmpty());
+        RecipeAiTaskSelection.validate(tasks, request.getRecipeText(), hasSteps);
+        // "Refine my flow first": the PROCESS task refines the saved flow, and runs (and is approved) before the rest.
+        boolean refine = Boolean.TRUE.equals(request.getRefine()) && needsExistingSteps && hasSteps;
+        if (refine) {
+            List<RecipeAiTaskType> withRefine = new ArrayList<>();
+            withRefine.add(RecipeAiTaskType.PROCESS);
+            withRefine.addAll(tasks);
+            tasks = withRefine;
+        }
 
         Instant now = now();
         RecipeAiWorkflow workflow = new RecipeAiWorkflow();
@@ -294,7 +303,10 @@ public class RecipeAiWorkflowService {
         workflow.setSelectedTasks(new ArrayList<>(tasks));
         workflow.setModelKeys(models);
         workflow.setOverwriteExisting(request.getSelection().isOverwriteExisting());
-        workflow.setRecipeText(tasks.contains(RecipeAiTaskType.PROCESS) ? request.getRecipeText().trim() : null);
+        workflow.setRefine(refine);
+        workflow.setRecipeText(refine
+                ? (StringUtils.hasText(request.getRecipeText()) ? request.getRecipeText().trim() : REFINE_NOTE)
+                : tasks.contains(RecipeAiTaskType.PROCESS) ? request.getRecipeText().trim() : null);
         workflow.setStatus(RecipeAiWorkflowStatus.CREATED);
         workflow.setActiveKey(activeKey(recipeId));
         workflow.setCreatedAt(now);
@@ -589,8 +601,9 @@ public class RecipeAiWorkflowService {
         // Tags the job's AI requests with this workflow (the MDC travels with the job onto its pool threads).
         try (MDC.MDCCloseable ignored = MDC.putCloseable(AiAnalyticsRecorder.WORKFLOW_ID_MDC, workflow.getId());
              AiRunModels.Scope models = AiRunModels.open(workflow.getModelKeys())) {
-            job = generationJobService.startJob(userId, workflow.getRecipeId(),
-                    new RecipeProcessGenerationRequestDTO(workflow.getRecipeText(), clientRequestId));
+            RecipeProcessGenerationRequestDTO request = new RecipeProcessGenerationRequestDTO(workflow.getRecipeText(), clientRequestId);
+            if (workflow.isRefine()) request.setMode(ProcessGenerationMode.REFINE);
+            job = generationJobService.startJob(userId, workflow.getRecipeId(), request);
         }
         if (job.isReused() && "EDIT".equals(job.getMode())) {
             throw RecipeAiWorkflowException.conflict("An AI edit is still running for this recipe. Try again once it finishes.");
@@ -867,6 +880,9 @@ public class RecipeAiWorkflowService {
                 .orElseThrow(() -> new NoSuchElementException("AI Recipe Creation not found: " + workflowId));
     }
 
+    /** What a refine is asked when the cook gave no note of their own. */
+    static final String REFINE_NOTE = "Refine my flow: fix tagging, summaries, titles and the Preparation/main split.";
+
     static String activeKey(Long recipeId) {
         return "wf:" + recipeId;
     }
@@ -904,6 +920,7 @@ public class RecipeAiWorkflowService {
                 .completedAt(workflow.getCompletedAt())
                 .modelKeys(workflow.getModelKeys() != null ? new LinkedHashMap<>(workflow.getModelKeys()) : new LinkedHashMap<>())
                 .overwriteExisting(workflow.isOverwriteExisting())
+                .refine(workflow.isRefine())
                 .reused(reused)
                 .build();
     }

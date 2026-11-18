@@ -116,7 +116,7 @@ class RecipeProcessEditValidatorTest {
         RecipeProcessOutput.Node step = new RecipeProcessOutput.Node(null, null, "toss", null,
                 List.of(outIngredient("salt", null, "to-taste")), null, List.of("s4"),
                 "Toss the @[drained pasta](step:s4) with @[salt](ingredient:salt)", null,
-                null, null, null, null, null, null, null, null);
+                null, null, null, null, null, null, null, null, null);
         RecipeProcessEditValidator.Result result = validator.validate(output(op("ADD_STEP").after("s4").step(step).build()), pastaContext());
 
         assertThat(result.errors()).isEmpty();
@@ -261,7 +261,7 @@ class RecipeProcessEditValidatorTest {
         RecipeProcessEditValidator.Result result = validator.validate(output(
                 op("ADD_STEP").after("s4").step(new RecipeProcessOutput.Node(null, "n1", "garnish", null,
                         List.of(outIngredient("cilantro", null, "as-needed")), null, null, "Garnish with coriander", null,
-                        null, null, null, null, null, null, null, null)).build(),
+                        null, null, null, null, null, null, null, null, null)).build(),
                 op("MOVE_NODE").target("s1").after("s2").build()
         ), pastaContext());
 

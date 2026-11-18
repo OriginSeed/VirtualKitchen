@@ -41,8 +41,10 @@ export type RunModelCapability = 'TEXT_TO_TEXT' | 'TEXT_TO_IMAGE' | 'TEXT_TO_SPE
 
 export interface RecipeAiWorkflowCreateRequest {
   selection: RecipeAiTaskSelection
-  /** Required when the selection includes PROCESS. */
+  /** Required when the selection includes PROCESS. With `refine`, an optional note for the refinement. */
   recipeText?: string
+  /** Visuals/narration on an existing flow: let AI refine the flow first (reviewed before it applies). */
+  refine?: boolean
 }
 
 export interface RecipeAiTaskEstimate {

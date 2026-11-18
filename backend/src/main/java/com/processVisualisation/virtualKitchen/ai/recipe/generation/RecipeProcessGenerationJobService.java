@@ -3,6 +3,7 @@ package com.processVisualisation.virtualKitchen.ai.recipe.generation;
 import com.processVisualisation.virtualKitchen.ai.platform.logging.OperationLog;
 import com.processVisualisation.virtualKitchen.ai.recipe.edit.RecipeProcessEditService;
 import com.processVisualisation.virtualKitchen.ai.recipe.edit.dto.RecipeProcessEditResultDTO;
+import com.processVisualisation.virtualKitchen.ai.recipe.RecipeProcessAiException;
 import com.processVisualisation.virtualKitchen.ai.recipe.generation.dto.ProcessGenerationMode;
 import com.processVisualisation.virtualKitchen.ai.recipe.generation.dto.RecipeProcessGenerationJobResponseDTO;
 import com.processVisualisation.virtualKitchen.ai.recipe.generation.dto.RecipeProcessGenerationRequestDTO;
@@ -64,6 +65,14 @@ public class RecipeProcessGenerationJobService {
         this.jobRepository = jobRepository;
         this.mongoTemplate = mongoTemplate;
         this.flowGenerationOrchestratorTaskPool = flowGenerationOrchestratorTaskPool;
+    }
+
+    /** Reads the saved recipe for a REFINE job; null when not injected (tests), and REFINE then fails. */
+    private com.processVisualisation.virtualKitchen.ai.recipe.storyboard.RecipeStoryboardJobService recipeSource;
+
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    void setRecipeSource(com.processVisualisation.virtualKitchen.ai.recipe.storyboard.RecipeStoryboardJobService recipeSource) {
+        this.recipeSource = recipeSource;
     }
 
     /** How long a finished-but-unapplied generation result is still offered back to its user. */
@@ -178,6 +187,21 @@ public class RecipeProcessGenerationJobService {
                 .orElseThrow(() -> new NoSuchElementException("Process generation job not found: " + jobId));
     }
 
+    /** REFINE: the saved recipe, re-authored as a corrected complete flow the cook reviews before it is applied. */
+    private RecipeProcessGenerationResultDTO refine(Long userId, Long recipeId, String note, String clientRequestId, String jobId) {
+        if (recipeSource == null) {
+            throw new RecipeProcessAiException("Refining a recipe is not available.");
+        }
+        var source = recipeSource.loadSource(recipeId);
+        if (source.stepAliases().isEmpty()) {
+            throw new RecipeProcessAiException("This recipe has no steps to refine yet.");
+        }
+        Map<String, String> nodeIdByAlias = new java.util.LinkedHashMap<>();
+        source.nodes().forEach((alias, node) -> nodeIdByAlias.put(alias, node.nodeId()));
+        return recipeProcessGenerationService.refine(userId, source.json(), note, nodeIdByAlias, clientRequestId,
+                stage -> updateStage(jobId, stage));
+    }
+
     private void runPipeline(Long userId, Long recipeId, String jobId, RecipeProcessGenerationRequestDTO request) {
         String recipeText = request.getRecipeText();
         ProcessGenerationMode mode = request.effectiveMode();
@@ -188,11 +212,13 @@ public class RecipeProcessGenerationJobService {
         markStatus(jobId, RecipeProcessGenerationJobStatus.IN_PROGRESS, RecipeProcessGenerationStage.QUEUED,
                 Map.of("startedAt", Instant.now()));
         try {
-            RecipeProcessGenerationResultDTO result = mode == ProcessGenerationMode.EDIT
-                    ? recipeProcessEditService.edit(userId, recipeText, request.getTargetProcess(), request.getSelectedNodeId(),
-                            request.getClientRequestId(), stage -> updateStage(jobId, stage))
-                    : recipeProcessGenerationService.generate(
-                            userId, recipeText, request.getClientRequestId(), stage -> updateStage(jobId, stage));
+            RecipeProcessGenerationResultDTO result = switch (mode) {
+                case EDIT -> recipeProcessEditService.edit(userId, recipeText, request.getTargetProcess(), request.getSelectedNodeId(),
+                        request.getClientRequestId(), stage -> updateStage(jobId, stage));
+                case REFINE -> refine(userId, recipeId, recipeText, request.getClientRequestId(), jobId);
+                case CREATE -> recipeProcessGenerationService.generate(
+                        userId, recipeText, request.getClientRequestId(), stage -> updateStage(jobId, stage));
+            };
 
             Update update = new Update()
                     .set("status", RecipeProcessGenerationJobStatus.COMPLETED)

@@ -144,7 +144,7 @@ function TaskSelectionStep({ recipeId, willReplaceMain, initialTasks, busy, erro
   initialTasks?: RecipeAiTaskType[]
   busy: boolean
   error: string | null
-  onCreate: (request: { selection: ReturnType<typeof toTaskSelectionRequest>; recipeText?: string }) => Promise<boolean>
+  onCreate: (request: { selection: ReturnType<typeof toTaskSelectionRequest>; recipeText?: string; refine?: boolean }) => Promise<boolean>
   onCancel: () => void
 }) {
   const session = useRecipeSession()
@@ -173,6 +173,8 @@ function TaskSelectionStep({ recipeId, willReplaceMain, initialTasks, busy, erro
   const [runModels, setRunModels] = useState<RunModels>({})
   // Steps that already have images/narration: keep them (default) or regenerate and replace them.
   const [overwriteExisting, setOverwriteExisting] = useState(false)
+  // Visuals/narration on the cook's own flow: let AI refine it first (on by default; reviewed before it applies).
+  const [refineFirst, setRefineFirst] = useState(true)
   const modelChoices = useRunModelChoices()
 
   const existingStepCount = useMemo(
@@ -217,9 +219,12 @@ function TaskSelectionStep({ recipeId, willReplaceMain, initialTasks, busy, erro
   const handleCreate = async () => {
     setTouched(true)
     if (problem) return
+    const refine = keepOrReplaceApplies && existingStepCount > 0 && refineFirst
     const started = await onCreate({
       selection: selectionRequest(),
       recipeText: selection.PROCESS ? recipeText.trim() : undefined,
+      // Sent either way: the backend's default is off, the UI's default is on.
+      refine,
     })
     // Without a process to generate there is no text to keep: the selection has done its job.
     if (started && !selection.PROCESS) draft.clear()
@@ -274,6 +279,18 @@ function TaskSelectionStep({ recipeId, willReplaceMain, initialTasks, busy, erro
       ) : null}
 
       <RunModelSelects choices={choices} capabilities={runCapabilities} value={runModels} onChange={setRunModels} disabled={busy} />
+
+      {keepOrReplaceApplies && existingStepCount > 0 && (
+        <label className={`recipe-ai-task-option${refineFirst ? ' is-checked' : ''}`}>
+          <input type="checkbox" checked={refineFirst} disabled={busy} onChange={(event) => setRefineFirst(event.target.checked)} />
+          <span>
+            <div className="recipe-ai-task-option-label">Refine my flow first</div>
+            <div className="recipe-ai-task-option-description">
+              AI fixes missing ingredient tags, writes step summaries and titles, and sorts prep work into the Preparation. You review it before anything changes.
+            </div>
+          </span>
+        </label>
+      )}
 
       {keepOrReplaceApplies && (
         <ExistingAssetsChoice

@@ -45,6 +45,9 @@ public class RecipeAiWorkflowResponseDTO {
     /** Latest visualization job per approved process, so the editor can show images as they arrive. */
     private List<VisualizationJobResponseDTO> visualizationJobs;
 
+    /** The PROCESS task refines the cook's own flow instead of generating one from text. */
+    private boolean refine;
+
     /** The storyboard the VISUALS task runs as (Visualize); null for per-process step visuals. */
     private RecipeStoryboardResponseDTO storyboardJob;
     private Long approvedRevision;

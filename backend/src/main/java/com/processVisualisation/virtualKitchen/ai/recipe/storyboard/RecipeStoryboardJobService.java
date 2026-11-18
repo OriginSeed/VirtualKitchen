@@ -330,6 +330,12 @@ public class RecipeStoryboardJobService {
         }
     }
 
+    /** The saved recipe as the planner reads it (also what AI refinement reads); empty nodes when it has no steps. */
+    public StoryboardSource loadSource(Long recipeId) {
+        return loadSource(recipeTemplateRepository.findById(recipeId)
+                .orElseThrow(() -> new NoSuchElementException("Recipe not found: " + recipeId)));
+    }
+
     /** The recipe as the planner reads it: its Preparation's flows, then its main process. */
     StoryboardSource loadSource(RecipeTemplate recipe) {
         List<Process> processes = new ArrayList<>(processRepository.findByRecipeId(recipe.getId()));

@@ -88,6 +88,9 @@ public class RecipeProcessGenerationService {
     ) {
         onStage.accept(RecipeProcessGenerationStage.BUILDING_PROMPT);
 
+        Prompts prompts = new Prompts(promptBuilder.buildSystemPrompt(), promptBuilder.buildInitialPrompt(recipeText),
+                (raw, errors) -> promptBuilder.buildRetryPrompt(recipeText, raw, errors), outputSchema.jsonSchema(),
+                "RECIPE_TO_FLOW", "process-generation", recipeText);
         AiRequestOutcome<RecipeProcessGenerationResultDTO> outcome = queueService.executeBounded(
                 userId,
                 AiCapability.TEXT_TO_TEXT,
@@ -95,11 +98,54 @@ public class RecipeProcessGenerationService {
                 clientRequestId,
                 "process-generation",
                 null,
-                selection -> runAttempts(recipeText, selection, onStage)
+                selection -> runAttempts(prompts, selection, onStage)
         );
+        return finish(outcome, ProcessGenerationMode.CREATE);
+    }
 
+    /**
+     * Re-authors the cook's saved recipe as a corrected complete flow (REFINE). {@code currentRecipeJson} is the recipe
+     * as the storyboard serializer writes it, with node aliases; {@code nodeIdByAlias} maps them back, so each refined
+     * step that comes from exactly one of the cook's nodes keeps that node's id.
+     */
+    public RecipeProcessGenerationResultDTO refine(Long userId, String currentRecipeJson, String note,
+                                                   java.util.Map<String, String> nodeIdByAlias, String clientRequestId,
+                                                   Consumer<RecipeProcessGenerationStage> onStage) {
+        onStage.accept(RecipeProcessGenerationStage.BUILDING_PROMPT);
+        Prompts prompts = new Prompts(promptBuilder.buildRefineSystemPrompt(),
+                promptBuilder.buildRefineInitialPrompt(currentRecipeJson, note),
+                (raw, errors) -> promptBuilder.buildRefineRetryPrompt(currentRecipeJson, note, raw, errors),
+                outputSchema.refineJsonSchema(), "RECIPE_REFINE", "process-refine", currentRecipeJson);
+        AiRequestOutcome<RecipeProcessGenerationResultDTO> outcome = queueService.executeBounded(
+                userId, AiCapability.TEXT_TO_TEXT, null, clientRequestId, "process-refine", null,
+                selection -> runAttempts(prompts, selection, onStage));
+        RecipeProcessGenerationResultDTO result = finish(outcome, ProcessGenerationMode.REFINE);
+        mapSourceNodes(result, nodeIdByAlias);
+        return result;
+    }
+
+    /** Each refined step's aliases become the id of the one cook's node it re-authors (first claim wins). */
+    static void mapSourceNodes(RecipeProcessGenerationResultDTO result, java.util.Map<String, String> nodeIdByAlias) {
+        java.util.Set<String> claimed = new java.util.HashSet<>();
+        java.util.List<GeneratedRecipeProcessDTO> processes = new java.util.ArrayList<>();
+        if (result.getSubprocesses() != null) processes.addAll(result.getSubprocesses());
+        if (result.getMainProcess() != null) processes.add(result.getMainProcess());
+        for (GeneratedRecipeProcessDTO process : processes) {
+            if (process.getSteps() == null) continue;
+            for (com.processVisualisation.virtualKitchen.ai.recipe.generation.dto.GeneratedRecipeStepDTO step : process.getSteps()) {
+                java.util.List<String> aliases = step.getSourceAliases();
+                step.setSourceAliases(null);
+                if (aliases == null || aliases.size() != 1) continue;
+                String nodeId = nodeIdByAlias.get(aliases.get(0));
+                if (nodeId != null && claimed.add(nodeId)) step.setSourceNodeId(nodeId);
+            }
+        }
+    }
+
+    private RecipeProcessGenerationResultDTO finish(AiRequestOutcome<RecipeProcessGenerationResultDTO> outcome,
+                                                    ProcessGenerationMode mode) {
         RecipeProcessGenerationResultDTO result = outcome.value();
-        result.setMode(ProcessGenerationMode.CREATE);
+        result.setMode(mode);
         ModelSelectionOutcome selection = outcome.selection();
         result.setModelUsed(selection.model().getKey());
         result.setModelTier(selection.model().getTier().name());
@@ -108,14 +154,19 @@ public class RecipeProcessGenerationService {
         return result;
     }
 
+    /** Everything that differs between CREATE and REFINE attempts. */
+    private record Prompts(String system, String initial, java.util.function.BiFunction<String, List<String>, String> retry,
+                           java.util.Map<String, Object> schema, String operation, String context, String input) {
+    }
+
     private RecipeProcessGenerationResultDTO runAttempts(
-            String recipeText, ModelSelectionOutcome selection, Consumer<RecipeProcessGenerationStage> onStage
+            Prompts prompts, ModelSelectionOutcome selection, Consumer<RecipeProcessGenerationStage> onStage
     ) {
         AiClient client = clientResolver.resolveTextClient(selection.model());
         String modelId = selection.model().getProviderModelId();
 
         onStage.accept(RecipeProcessGenerationStage.CALLING_MODEL);
-        AttemptResult firstAttempt = runAttempt(client, modelId, recipeText, null);
+        AttemptResult firstAttempt = runAttempt(client, modelId, prompts, null);
         onStage.accept(RecipeProcessGenerationStage.VALIDATING_RESPONSE);
         if (firstAttempt.valid()) {
             logValidationCompleted(1, firstAttempt.result());
@@ -124,7 +175,7 @@ public class RecipeProcessGenerationService {
 
         logValidationFailed(1, true, firstAttempt.errors());
         onStage.accept(RecipeProcessGenerationStage.RETRYING);
-        AttemptResult secondAttempt = runAttempt(client, modelId, recipeText, firstAttempt);
+        AttemptResult secondAttempt = runAttempt(client, modelId, prompts, firstAttempt);
         if (secondAttempt.valid()) {
             logValidationCompleted(2, secondAttempt.result());
             return secondAttempt.result();
@@ -135,22 +186,24 @@ public class RecipeProcessGenerationService {
         throw new RecipeProcessAiException("Unable to generate a valid recipe process: " + errorMessage);
     }
 
-    private AttemptResult runAttempt(AiClient client, String modelId, String userPrompt, AttemptResult prevAttempt) {
+    private AttemptResult runAttempt(AiClient client, String modelId, Prompts prompts, AttemptResult prevAttempt) {
+        String userPrompt = prompts.input();
+        String context = prompts.context();
         String refinedPrompt = prevAttempt != null
-                ? promptBuilder.buildRetryPrompt(userPrompt, prevAttempt.rawContent(), prevAttempt.errors())
-                : promptBuilder.buildInitialPrompt(userPrompt);
+                ? prompts.retry().apply(prevAttempt.rawContent(), prevAttempt.errors())
+                : prompts.initial();
 
         AiRequest request = AiRequest.builder()
                 .model(modelId)
-                .systemPrompt(promptBuilder.buildSystemPrompt())
+                .systemPrompt(prompts.system())
                 .cacheSystemPrompt(true)
                 .userPrompt(refinedPrompt)
                 .temperature(generationParams.getProcessGeneration().getTemperature())
                 .maxTokens(generationParams.getProcessGeneration().getMaxTokens())
                 .responseFormat("json_object")
-                .responseSchema(outputSchema.jsonSchema())
+                .responseSchema(prompts.schema())
                 .responseSchemaName(RecipeProcessOutputSchema.SCHEMA_NAME)
-                .operation(prevAttempt != null ? "RECIPE_TO_FLOW_RETRY" : "RECIPE_TO_FLOW")
+                .operation(prevAttempt != null ? prompts.operation() + "_RETRY" : prompts.operation())
                 .build();
 
         long startNs = System.nanoTime();
@@ -160,7 +213,7 @@ public class RecipeProcessGenerationService {
 
         if (!StringUtils.hasText(content)) {
             List<String> errors = List.of("AI response content is empty");
-            responseSupport.persistAIResponse("process-generation", userPrompt, response, false, durationMs, errors);
+            responseSupport.persistAIResponse(context, userPrompt, response, false, durationMs, errors);
             return AttemptResult.invalid(content, errors);
         }
 
@@ -175,7 +228,7 @@ public class RecipeProcessGenerationService {
 
             ProcessValidationResult validationResult = validator.validate(mainProcess, preparations);
             if (!validationResult.isValid()) {
-                responseSupport.persistAIResponse("process-generation", userPrompt, response, false, durationMs, validationResult.getErrors());
+                responseSupport.persistAIResponse(context, userPrompt, response, false, durationMs, validationResult.getErrors());
                 return AttemptResult.invalid(content, validationResult.getErrors());
             }
 
@@ -184,12 +237,13 @@ public class RecipeProcessGenerationService {
                     .subprocesses(preparations)
                     .repairs(normalized.repairs())
                     .warnings(validator.warnings(mainProcess, preparations))
+                    .changes(output.changes() == null ? null : List.copyOf(output.changes()))
                     .build();
-            responseSupport.persistAIResponse("process-generation", userPrompt, response, true, durationMs, List.of());
+            responseSupport.persistAIResponse(context, userPrompt, response, true, durationMs, List.of());
             return AttemptResult.valid(content, generated);
         } catch (Exception ex) {
             List<String> errors = List.of("Invalid JSON format: " + ex.getMessage());
-            responseSupport.persistAIResponse("process-generation", userPrompt, response, false, durationMs, errors);
+            responseSupport.persistAIResponse(context, userPrompt, response, false, durationMs, errors);
             return AttemptResult.invalid(content, errors);
         }
     }
