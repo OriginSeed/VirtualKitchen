@@ -296,6 +296,13 @@ public class StepNarrationService {
      * and only while this generation still owns the claim.
      */
     void generate(Long userId, String key, String token, NarrationScript script, boolean force) {
+        // The task may have waited in the pool queue past the claim's lease, and another request may have re-claimed
+        // the step meanwhile: generate (and pay) only while this claim is still ours, with a fresh lease from now.
+        Instant start = now();
+        if (!store.renewLease(key, token, start.plusMillis(properties.getLeaseMs()), start)) {
+            log.info("event=narration_generation_skipped narrationKey={} reason=claim_lost_while_queued", key);
+            return;
+        }
         OperationLog operation = OperationLog.start(log, "narration_generation", "narration:" + key,
                 "narrationKey=" + key + " chars=" + script.text().length() + " force=" + force);
         try {

@@ -56,6 +56,11 @@ class RecipeProcessGenerationJobServiceTest {
         editService = mock(RecipeProcessEditService.class);
         jobRepository = mock(RecipeProcessGenerationJobRepository.class);
         mongoTemplate = mock(MongoTemplate.class);
+        // Conditional job writes (claim, guarded status updates) read the matched count; a real database answers 1.
+        org.mockito.Mockito.when(mongoTemplate.updateFirst(org.mockito.ArgumentMatchers.any(org.springframework.data.mongodb.core.query.Query.class),
+                org.mockito.ArgumentMatchers.any(org.springframework.data.mongodb.core.query.UpdateDefinition.class),
+                org.mockito.ArgumentMatchers.<Class<?>>any()))
+                .thenReturn(com.mongodb.client.result.UpdateResult.acknowledged(1, 1L, null));
         service = new RecipeProcessGenerationJobService(
                 generationService, editService, jobRepository, mongoTemplate, new ThreadPoolTaskPool(1, "test-generation-orchestrator"));
     }

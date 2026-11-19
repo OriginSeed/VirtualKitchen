@@ -6,6 +6,7 @@ import com.processVisualisation.virtualKitchen.kitchen.dto.InventoryResponseDTO;
 import com.processVisualisation.virtualKitchen.kitchen.mapper.InventoryMapper;
 import com.processVisualisation.virtualKitchen.kitchen.model.Inventory;
 import com.processVisualisation.virtualKitchen.kitchen.repository.InventoryRepository;
+import com.processVisualisation.virtualKitchen.store.model.Equipment;
 import com.processVisualisation.virtualKitchen.store.model.Ingredient;
 import com.processVisualisation.virtualKitchen.store.model.ItemType;
 import com.processVisualisation.virtualKitchen.store.repository.EquipmentRepository;
@@ -15,6 +16,7 @@ import com.processVisualisation.virtualKitchen.store.units.UnitConversionService
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.dao.DuplicateKeyException;
 import org.springframework.data.mongodb.core.FindAndModifyOptions;
 import org.springframework.data.mongodb.core.MongoTemplate;
 import org.springframework.data.mongodb.core.query.Query;
@@ -22,7 +24,10 @@ import org.springframework.data.mongodb.core.query.Update;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDateTime;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
 import java.util.stream.Collectors;
 
 import static org.springframework.data.mongodb.core.query.Criteria.where;
@@ -85,13 +90,23 @@ public class InventoryService {
         Inventory inv = findExisting(dto);
 
         if (inv == null) {
-            inv = mapper.toEntity(dto);
-            inv.setId(seq.generateSequence(Inventory.SEQUENCE_NAME));
-            inv.setLastUpdated(LocalDateTime.now());
-            Inventory created = repo.save(inv);
-            log.info("event=inventory_updated inventoryId={} kitchenId={} userId={} itemType={} itemId={} created=true",
-                    inv.getId(), inv.getKitchenId(), inv.getUserId(), inv.getItemType(), inv.getItemId());
-            return mapper.toDTO(created);
+            Inventory fresh = mapper.toEntity(dto);
+            fresh.setId(seq.generateSequence(Inventory.SEQUENCE_NAME));
+            fresh.setLastUpdated(LocalDateTime.now());
+            try {
+                // insert, not save: with the unique kitchen+item index, a concurrent add of the same item fails here
+                // instead of creating a second row.
+                Inventory created = repo.insert(fresh);
+                log.info("event=inventory_updated inventoryId={} kitchenId={} userId={} itemType={} itemId={} created=true",
+                        fresh.getId(), fresh.getKitchenId(), fresh.getUserId(), fresh.getItemType(), fresh.getItemId());
+                return mapper.toDTO(created);
+            } catch (DuplicateKeyException concurrentAdd) {
+                // Lost the race to create the row: add to the one that won, below.
+                inv = findExisting(dto);
+                if (inv == null) {
+                    throw concurrentAdd;
+                }
+            }
         }
 
         double delta = quantityInRowUnit(dto, inv);
@@ -127,14 +142,14 @@ public class InventoryService {
 
         // Prefer kitchen-scoped inventory when kitchenId is provided
         if (dto.getKitchenId() != null) {
-            inv = repo.findByKitchenIdAndItemTypeAndItemId(
+            inv = repo.findFirstByKitchenIdAndItemTypeAndItemIdOrderByIdAsc(
                     dto.getKitchenId(), dto.getItemType(), dto.getItemId()
             ).orElse(null);
         }
 
         // Fallback to user-scoped inventory for backward compatibility
         if (inv == null) {
-            inv = repo.findByUserIdAndItemTypeAndItemId(
+            inv = repo.findFirstByUserIdAndItemTypeAndItemIdOrderByIdAsc(
                     dto.getUserId(), dto.getItemType(), dto.getItemId()
             ).orElse(null);
         }
@@ -174,26 +189,38 @@ public class InventoryService {
      * @return the kitchen's inventory items, with item names and image URLs populated
      */
     public List<InventoryResponseDTO> getByKitchen(Long kitchenId){
-        return repo.findByKitchenId(kitchenId)
-                .stream()
+        List<Inventory> rows = repo.findByKitchenId(kitchenId);
+
+        // One catalog query per item type for the whole pantry, not one per row.
+        Map<Long, Ingredient> ingredients = new HashMap<>();
+        ingredientRepository.findAllById(idsOf(rows, ItemType.INGREDIENT))
+                .forEach(ing -> ingredients.put(ing.getId(), ing));
+        Map<Long, Equipment> equipment = new HashMap<>();
+        equipmentRepository.findAllById(idsOf(rows, ItemType.EQUIPMENT))
+                .forEach(eq -> equipment.put(eq.getId(), eq));
+
+        return rows.stream()
                 .map(inv -> {
                     InventoryResponseDTO dto = mapper.toDTO(inv);
-
                     // Enrich with item name and catalog image similar to KitchenInventoryService
-                    if (inv.getItemType() == ItemType.INGREDIENT) {
-                        ingredientRepository.findById(inv.getItemId()).ifPresent(ing -> {
-                            dto.setItemName(ing.getName());
-                            dto.setImageUrl(ing.getImageUrl());
-                        });
-                    } else if (inv.getItemType() == ItemType.EQUIPMENT) {
-                        equipmentRepository.findById(inv.getItemId()).ifPresent(eq -> {
-                            dto.setItemName(eq.getName());
-                            dto.setImageUrl(eq.getImageUrl());
-                        });
+                    if (inv.getItemType() == ItemType.INGREDIENT && ingredients.containsKey(inv.getItemId())) {
+                        Ingredient ing = ingredients.get(inv.getItemId());
+                        dto.setItemName(ing.getName());
+                        dto.setImageUrl(ing.getImageUrl());
+                    } else if (inv.getItemType() == ItemType.EQUIPMENT && equipment.containsKey(inv.getItemId())) {
+                        Equipment eq = equipment.get(inv.getItemId());
+                        dto.setItemName(eq.getName());
+                        dto.setImageUrl(eq.getImageUrl());
                     }
-
                     return dto;
                 })
                 .collect(Collectors.toList());
+    }
+
+    private static Set<Long> idsOf(List<Inventory> rows, ItemType type) {
+        return rows.stream()
+                .filter(inv -> inv.getItemType() == type && inv.getItemId() != null)
+                .map(Inventory::getItemId)
+                .collect(Collectors.toSet());
     }
 }

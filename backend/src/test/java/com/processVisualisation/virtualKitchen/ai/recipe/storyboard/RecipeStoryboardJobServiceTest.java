@@ -107,6 +107,11 @@ class RecipeStoryboardJobServiceTest {
         imageClient = mock(ImageGenerationClient.class);
         imageStorageClient = mock(ImageStorageClient.class);
         mongoTemplate = mock(MongoTemplate.class);
+        // Conditional job writes (claim, guarded status updates) read the matched count; a real database answers 1.
+        org.mockito.Mockito.when(mongoTemplate.updateFirst(org.mockito.ArgumentMatchers.any(org.springframework.data.mongodb.core.query.Query.class),
+                org.mockito.ArgumentMatchers.any(org.springframework.data.mongodb.core.query.UpdateDefinition.class),
+                org.mockito.ArgumentMatchers.<Class<?>>any()))
+                .thenReturn(com.mongodb.client.result.UpdateResult.acknowledged(1, 1L, null));
         taskPool = mock(TaskPool.class);
         AiRequestQueueService queueService = mock(AiRequestQueueService.class);
         AiClientResolver clientResolver = mock(AiClientResolver.class);

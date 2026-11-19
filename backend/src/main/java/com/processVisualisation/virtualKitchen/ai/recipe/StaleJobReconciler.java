@@ -56,16 +56,19 @@ public class StaleJobReconciler {
     private final MongoTemplate mongoTemplate;
     private final CreditService creditService;
     private final Duration jobStaleAfter;
+    private final Duration queuedStaleAfter;
     private final Duration aiRequestStaleAfter;
 
     public StaleJobReconciler(
             MongoTemplate mongoTemplate,
             CreditService creditService,
             @Value("${app.jobs.stale-after-ms:900000}") long jobStaleAfterMs,
+            @Value("${app.jobs.queued-stale-after-ms:3600000}") long queuedStaleAfterMs,
             @Value("${app.jobs.ai-request-stale-after-ms:3600000}") long aiRequestStaleAfterMs) {
         this.mongoTemplate = mongoTemplate;
         this.creditService = creditService;
         this.jobStaleAfter = Duration.ofMillis(jobStaleAfterMs);
+        this.queuedStaleAfter = Duration.ofMillis(Math.max(queuedStaleAfterMs, jobStaleAfterMs));
         this.aiRequestStaleAfter = Duration.ofMillis(aiRequestStaleAfterMs);
     }
 
@@ -94,8 +97,7 @@ public class StaleJobReconciler {
     }
 
     long failStaleGenerationJobs(Instant now) {
-        Query stale = Query.query(where("status").in(RecipeProcessGenerationJobStatus.QUEUED, RecipeProcessGenerationJobStatus.IN_PROGRESS)
-                .and("updatedAt").lt(now.minus(jobStaleAfter)));
+        Query stale = staleJobs(RecipeProcessGenerationJobStatus.QUEUED, RecipeProcessGenerationJobStatus.IN_PROGRESS, now);
         long failed = mongoTemplate.updateMulti(stale, interruptedUpdate(RecipeProcessGenerationJobStatus.FAILED, now),
                 RecipeProcessGenerationJob.class).getModifiedCount();
         if (failed > 0) {
@@ -105,8 +107,7 @@ public class StaleJobReconciler {
     }
 
     long failStaleVisualizationJobs(Instant now) {
-        Query stale = Query.query(where("status").in(VisualizationJobStatus.QUEUED, VisualizationJobStatus.IN_PROGRESS)
-                .and("updatedAt").lt(now.minus(jobStaleAfter)));
+        Query stale = staleJobs(VisualizationJobStatus.QUEUED, VisualizationJobStatus.IN_PROGRESS, now);
         long failed = mongoTemplate.updateMulti(stale, interruptedUpdate(VisualizationJobStatus.FAILED, now),
                 VisualizationJob.class).getModifiedCount();
         if (failed > 0) {
@@ -116,8 +117,7 @@ public class StaleJobReconciler {
     }
 
     long failStaleStoryboards(Instant now) {
-        Query stale = Query.query(where("status").in(StoryboardStatus.QUEUED, StoryboardStatus.IN_PROGRESS)
-                .and("updatedAt").lt(now.minus(jobStaleAfter)));
+        Query stale = staleJobs(StoryboardStatus.QUEUED, StoryboardStatus.IN_PROGRESS, now);
         long failed = mongoTemplate.updateMulti(stale, interruptedUpdate(StoryboardStatus.FAILED, now),
                 RecipeStoryboard.class).getModifiedCount();
         if (failed > 0) {
@@ -127,8 +127,7 @@ public class StaleJobReconciler {
     }
 
     long failStaleStepFixes(Instant now) {
-        Query stale = Query.query(where("status").in(StoryboardStatus.QUEUED, StoryboardStatus.IN_PROGRESS)
-                .and("updatedAt").lt(now.minus(jobStaleAfter)));
+        Query stale = staleJobs(StoryboardStatus.QUEUED, StoryboardStatus.IN_PROGRESS, now);
         long failed = mongoTemplate.updateMulti(stale, interruptedUpdate(StoryboardStatus.FAILED, now),
                 com.processVisualisation.virtualKitchen.ai.recipe.storyboard.model.StoryboardStepFix.class).getModifiedCount();
         if (failed > 0) {
@@ -167,6 +166,18 @@ public class StaleJobReconciler {
                     claimed.getStatus() == AiRequestStatus.PROCESSING ? claimed.getCreditCost() : 0);
         }
         return failed;
+    }
+
+    /**
+     * Jobs no live worker is driving: running ones not written for {@code app.jobs.stale-after-ms}, and queued ones
+     * not picked up for the longer {@code app.jobs.queued-stale-after-ms}. A queued job only waits for a free thread
+     * (it touches nothing until then), so it gets more time; when it is finally picked up, the worker's claim sees it
+     * is no longer QUEUED and stops without spending anything.
+     */
+    private Query staleJobs(Enum<?> queued, Enum<?> inProgress, Instant now) {
+        return Query.query(new Criteria().orOperator(
+                where("status").is(inProgress).and("updatedAt").lt(now.minus(jobStaleAfter)),
+                where("status").is(queued).and("updatedAt").lt(now.minus(queuedStaleAfter))));
     }
 
     private static Update interruptedUpdate(Enum<?> failedStatus, Instant now) {

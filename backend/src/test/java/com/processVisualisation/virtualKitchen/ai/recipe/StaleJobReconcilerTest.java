@@ -39,7 +39,7 @@ class StaleJobReconcilerTest {
         creditService = mock(CreditService.class);
         when(mongoTemplate.updateMulti(any(Query.class), any(Update.class), any(Class.class)))
                 .thenReturn(UpdateResult.acknowledged(1, 1L, null));
-        reconciler = new StaleJobReconciler(mongoTemplate, creditService, 900_000, 3_600_000);
+        reconciler = new StaleJobReconciler(mongoTemplate, creditService, 900_000, 3_600_000, 3_600_000);
     }
 
     @Test
@@ -89,6 +89,24 @@ class StaleJobReconcilerTest {
         assertEquals(5, reservation.getValue().cost());
         assertEquals("tx-1", reservation.getValue().transactionId());
         verify(creditService, never()).release(any(), any(), eq("req-2"), any());
+    }
+
+    @Test
+    void queuedJobsWaitLongerThanRunningOnesBeforeBeingFailed() {
+        java.time.Instant now = java.time.Instant.parse("2026-01-01T12:00:00Z");
+
+        reconciler.failStaleGenerationJobs(now);
+
+        ArgumentCaptor<Query> query = ArgumentCaptor.forClass(Query.class);
+        verify(mongoTemplate).updateMulti(query.capture(), any(Update.class), eq(RecipeProcessGenerationJob.class));
+        @SuppressWarnings("unchecked")
+        java.util.List<Document> branches = (java.util.List<Document>) query.getValue().getQueryObject().get("$or");
+        java.util.Map<String, Object> cutoffByStatus = new java.util.HashMap<>();
+        for (Document branch : branches) {
+            cutoffByStatus.put(String.valueOf(branch.get("status")), ((Document) branch.get("updatedAt")).get("$lt"));
+        }
+        assertEquals(now.minusSeconds(15 * 60), cutoffByStatus.get("IN_PROGRESS"));
+        assertEquals(now.minusSeconds(60 * 60), cutoffByStatus.get("QUEUED"));
     }
 
     private void assertFailedAndUnlocked(Update update) {

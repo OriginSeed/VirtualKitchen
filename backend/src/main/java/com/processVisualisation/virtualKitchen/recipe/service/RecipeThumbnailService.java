@@ -81,7 +81,7 @@ public class RecipeThumbnailService {
             return thumbnails;
         }
 
-        List<Process> processes = processRepository.findByRecipeIdIn(recipeIds).stream()
+        List<Process> processes = processRepository.findThumbnailFieldsByRecipeIdIn(recipeIds).stream()
                 .filter(process -> process.getRecipeId() != null)
                 .toList();
         Map<Long, StepImage> assetsById = loadAssets(processes);

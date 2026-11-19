@@ -142,6 +142,11 @@ class StoryboardStepFixServiceTest {
         when(storage.upload(any(), anyString(), anyString())).thenAnswer(invocation -> "https://images.test/" + invocation.getArgument(2));
 
         MongoTemplate mongoTemplate = mock(MongoTemplate.class);
+        // Conditional job writes (claim, guarded status updates) read the matched count; a real database answers 1.
+        org.mockito.Mockito.when(mongoTemplate.updateFirst(org.mockito.ArgumentMatchers.any(org.springframework.data.mongodb.core.query.Query.class),
+                org.mockito.ArgumentMatchers.any(org.springframework.data.mongodb.core.query.UpdateDefinition.class),
+                org.mockito.ArgumentMatchers.<Class<?>>any()))
+                .thenReturn(com.mongodb.client.result.UpdateResult.acknowledged(1, 1L, null));
         TaskPool taskPool = mock(TaskPool.class);
         when(taskPool.submit(any(NamedTask.class))).thenAnswer(invocation -> {
             ((NamedTask<Object>) invocation.getArgument(0)).task().execute();

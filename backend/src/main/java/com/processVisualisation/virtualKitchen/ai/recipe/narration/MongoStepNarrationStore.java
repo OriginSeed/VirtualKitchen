@@ -148,6 +148,15 @@ public class MongoStepNarrationStore implements StepNarrationStore {
     }
 
     @Override
+    public boolean renewLease(String narrationKey, String token, Instant leaseUntil, Instant now) {
+        return mongoTemplate.updateFirst(
+                query(where("narrationKey").is(narrationKey).and("generationToken").is(token)
+                        .and("status").is(StepNarrationStatus.GENERATING)),
+                new Update().set("leaseUntil", leaseUntil).set("updatedAt", now),
+                StepNarration.class).getMatchedCount() > 0;
+    }
+
+    @Override
     public List<StepNarration> findReadyByRecipeId(Long recipeId) {
         return mongoTemplate.find(
                 query(where("recipeId").is(recipeId).and("status").is(StepNarrationStatus.READY)), StepNarration.class);

@@ -1,5 +1,6 @@
 package com.processVisualisation.virtualKitchen.ai.recipe.generation.model;
 
+import org.springframework.data.mongodb.core.index.CompoundIndex;
 import com.processVisualisation.virtualKitchen.ai.platform.usage.AiCostLedger;
 import com.processVisualisation.virtualKitchen.ai.recipe.generation.dto.ProcessGenerationMode;
 import com.processVisualisation.virtualKitchen.ai.recipe.generation.dto.RecipeProcessGenerationResultDTO;
@@ -17,6 +18,8 @@ import java.time.Instant;
  */
 @Data
 @Document(collection = "process_generation_job")
+// The stale-job reconciler looks up active jobs by status and last write every few minutes.
+@CompoundIndex(name = "status_updated_idx", def = "{'status': 1, 'updatedAt': 1}")
 public class RecipeProcessGenerationJob {
 
     @Id

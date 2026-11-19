@@ -1,5 +1,6 @@
 package com.processVisualisation.virtualKitchen.ai.recipe.storyboard.model;
 
+import org.springframework.data.mongodb.core.index.CompoundIndex;
 import lombok.Data;
 import org.springframework.data.annotation.Id;
 import org.springframework.data.mongodb.core.index.Indexed;
@@ -14,6 +15,8 @@ import java.time.Instant;
  */
 @Data
 @Document(collection = "storyboard_step_fix")
+// The stale-job reconciler looks up active jobs by status and last write every few minutes.
+@CompoundIndex(name = "status_updated_idx", def = "{'status': 1, 'updatedAt': 1}")
 public class StoryboardStepFix {
 
     @Id

@@ -209,6 +209,10 @@ public class RecipeStoryboardJobService {
         } else if (!regenerate) {
             continueFrom(storyboard, storyboardRepository.findFirstByRecipeIdOrderByCreatedAtDesc(recipeId).orElse(null));
         }
+        // Refuse a new job (429 AI_BUSY) when this user or the whole system already has too much queued.
+        if (jobAdmission != null) {
+            jobAdmission.checkCanStart(userId);
+        }
         try {
             storyboardRepository.insert(storyboard);
         } catch (DuplicateKeyException e) {
@@ -358,12 +362,16 @@ public class RecipeStoryboardJobService {
 
     private void runPipeline(RecipeStoryboard storyboard, StoryboardSource source) {
         String id = storyboard.getId();
+        // Claim the job: one the stale-job reconciler failed while it waited in the queue must not run (and pay).
+        if (!claim(id)) {
+            log.warn("event=storyboard_job_skipped storyboardId={} reason=no_longer_queued", id);
+            return;
+        }
         // Runs on the orchestrator pool; binds the job id so every AI request of this storyboard carries it.
         OperationLog operation = OperationLog.start(log, "storyboard_job", id, "jobId=" + id
                 + " recipeId=" + storyboard.getRecipeId() + " steps=" + source.stepAliases().size());
         StoryboardStage stage = StoryboardStage.PLAN;
         try {
-            update(id, new Update().set("status", StoryboardStatus.IN_PROGRESS).set("startedAt", Instant.now()));
 
             if (storyboard.getPanels().isEmpty()) {
                 enter(id, stage);
@@ -527,10 +535,22 @@ public class RecipeStoryboardJobService {
         update(storyboardId, new Update().set("stage", stage));
     }
 
-    /** Every write touches {@code updatedAt}: that is what tells a live job from an abandoned one. */
+    /**
+     * Every write touches {@code updatedAt}: that is what tells a live job from an abandoned one. Writes apply only
+     * while the job is still QUEUED or IN_PROGRESS, so a job the stale-job reconciler already failed is never revived.
+     */
     private void update(String storyboardId, Update update) {
-        mongoTemplate.updateFirst(query(where("_id").is(storyboardId)), update.set("updatedAt", Instant.now()),
-                RecipeStoryboard.class);
+        mongoTemplate.updateFirst(query(where("_id").is(storyboardId)
+                        .and("status").in(StoryboardStatus.QUEUED, StoryboardStatus.IN_PROGRESS)),
+                update.set("updatedAt", Instant.now()), RecipeStoryboard.class);
+    }
+
+    /** Moves the job from QUEUED to IN_PROGRESS; false when it is no longer queued (e.g. failed as stale). */
+    boolean claim(String storyboardId) {
+        Instant now = Instant.now();
+        return mongoTemplate.updateFirst(query(where("_id").is(storyboardId).and("status").is(StoryboardStatus.QUEUED)),
+                new Update().set("status", StoryboardStatus.IN_PROGRESS).set("startedAt", now).set("updatedAt", now),
+                RecipeStoryboard.class).getMatchedCount() > 0;
     }
 
     private static String safeMessage(Throwable error) {
@@ -601,5 +621,13 @@ public class RecipeStoryboardJobService {
                 .createdAt(storyboard.getCreatedAt())
                 .completedAt(storyboard.getCompletedAt())
                 .build();
+    }
+
+    private com.processVisualisation.virtualKitchen.ai.recipe.AiJobAdmission jobAdmission;
+
+    /** Per-user and system-wide limits on queued AI jobs, checked before a new job is created (optional in tests). */
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    void setJobAdmission(com.processVisualisation.virtualKitchen.ai.recipe.AiJobAdmission jobAdmission) {
+        this.jobAdmission = jobAdmission;
     }
 }

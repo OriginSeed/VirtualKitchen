@@ -53,12 +53,38 @@ Token buckets per client, in memory (`app.ratelimit.*` in `application.propertie
 
 | Tier | Default | Applies to |
 |---|---|---|
-| Auth | 10/min per address | `POST /api/v1/auth/**` (sign-in, sign-up, OTP, password reset) |
+| Auth | 20/min per address (`RATE_LIMIT_AUTH_PER_MINUTE`) | `POST /api/v1/auth/**` (sign-in, sign-up, OTP, password reset). Users behind one office network or proxy share an address; behind a reverse proxy set `RATE_LIMIT_TRUST_FORWARDED=true`. |
 | AI start | 10/min per user | POSTs that start paid AI work (generation, visualization, storyboard, step fix, narration batch, AI workflows, chat) |
 | General | 300/min per user | Everything else, including job polling |
 
 Over the limit, the API answers 429 with `Retry-After` and error code `RATE_LIMITED`. The counters live in one JVM,
 so with several backend instances each limits on its own.
+
+## AI job capacity
+
+Background AI work runs on in-memory thread pools. The sizes below suit about 10–50 concurrent users. Tune them to
+your AI providers' rate limits: more threads means more simultaneous provider calls.
+
+| Variable | Default | Meaning |
+|---|---|---|
+| `VISUALIZATION_THREADS` | 8 | Images drawn at once |
+| `VISUALIZATION_ORCHESTRATOR_THREADS` | 6 | Whole visualization / storyboard jobs running at once |
+| `GENERATION_ORCHESTRATOR_THREADS` | 4 | Recipe generation jobs running at once |
+| `AI_TEXT_THREADS` | 4 | Text AI calls at once |
+| `STEP_FIX_THREADS` | 2 | Step-image fixes at once (their own pool, so they never wait behind whole-recipe jobs) |
+| `NARRATION_THREADS` | 4 | Narration audio generated at once |
+| `AI_JOBS_MAX_ACTIVE_PER_USER` | 10 | AI jobs one user may have queued or running |
+| `AI_JOBS_MAX_QUEUED` | 60 | AI jobs waiting system-wide; beyond it new jobs get 429 `AI_BUSY` |
+
+A job still queued after `app.jobs.queued-stale-after-ms` (60 min), or a running job not updated for
+`app.jobs.stale-after-ms` (15 min), is marked failed. A failed job never starts or writes again, so no AI work is
+paid for twice.
+
+## Database connections
+
+MongoDB client settings (`app.mongo.*`, see `MongoClientTuningConfig`): a 60 s socket timeout so a stuck connection
+can't hold a request forever, a 10 s wait for a free connection, 5 warm connections, and at most 100. These override
+the same options in `MONGODB_URI`.
 
 ## Request limits
 

@@ -136,6 +136,10 @@ public class RecipeProcessVisualizationJobService {
         job.setCompletedSteps(0);
         job.setCreatedAt(Instant.now());
         job.setUpdatedAt(Instant.now());
+        // Refuse a new job (429 AI_BUSY) when this user or the whole system already has too much queued.
+        if (jobAdmission != null) {
+            jobAdmission.checkCanStart(userId);
+        }
         try {
             visualizationJobRepository.insert(job);
         } catch (DuplicateKeyException e) {
@@ -182,6 +186,26 @@ public class RecipeProcessVisualizationJobService {
     }
 
     /**
+     * The status of several of the caller's visualization jobs for one recipe, loaded in one query (the AI workflow
+     * status poll reports all its jobs every few seconds). Jobs that don't exist, or belong to another user or
+     * recipe, are left out, exactly like {@link #getJobStatus} reports them as missing.
+     *
+     * @return the jobs' statuses, by job id
+     */
+    public Map<String, VisualizationJobResponseDTO> getJobStatuses(Long userId, Long recipeId, java.util.Collection<String> jobIds) {
+        Map<String, VisualizationJobResponseDTO> byId = new java.util.HashMap<>();
+        if (jobIds == null || jobIds.isEmpty()) {
+            return byId;
+        }
+        visualizationJobRepository.findAllById(jobIds).forEach(job -> {
+            if (Objects.equals(job.getUserId(), userId) && Objects.equals(job.getRecipeId(), String.valueOf(recipeId))) {
+                byId.put(job.getId(), toDto(job, false));
+            }
+        });
+        return byId;
+    }
+
+    /**
      * Every visualization the caller has QUEUED/IN_PROGRESS for one of this recipe's processes,
      * so the UI can resume showing progress after a reload.
      */
@@ -200,10 +224,15 @@ public class RecipeProcessVisualizationJobService {
 
     private void runPipeline(Long userId, Long recipeId, String jobId, RecipeProcessVisualizationService.VisualPreparation preparation,
                              List<Long> promptScope) {
+        // Claim the job: only a job still QUEUED starts. One the stale-job reconciler already failed while it waited
+        // in the queue (its activeKey released, so the user may have started another) must not run and pay again.
+        if (!claim(jobId)) {
+            log.warn("event=visualization_job_skipped jobId={} reason=no_longer_queued", jobId);
+            return;
+        }
         // Runs on the orchestrator pool; binds the job ID before submitAll so every step task inherits it.
         OperationLog operation = OperationLog.start(log, "visualization_job", jobId, "jobId=" + jobId
                 + " recipeId=" + recipeId + " processId=" + preparation.process().getId() + " steps=" + preparation.targets().size());
-        markStatus(jobId, VisualizationJobStatus.IN_PROGRESS, Map.of("startedAt", Instant.now()));
         try {
             // One text call for every prompt in scope; whatever it doesn't write, each step writes for itself below.
             promptBatchService.ensurePrompts(userId, recipeId, promptScope);
@@ -258,7 +287,7 @@ public class RecipeProcessVisualizationJobService {
                     .set("updatedAt", Instant.now())
                     .set("aiUsage", operation.aiTotals())
                     .unset("activeKey");
-            mongoTemplate.updateFirst(query(where("_id").is(jobId)), update, VisualizationJob.class);
+            mongoTemplate.updateFirst(activeJob(jobId), update, VisualizationJob.class);
         } finally {
             operation.close();
         }
@@ -326,7 +355,14 @@ public class RecipeProcessVisualizationJobService {
 
         List<NamedTask<List<TaskResult<VisualizationAsset>>>> tasks = groups.stream()
                 .map(group -> new NamedTask<List<TaskResult<VisualizationAsset>>>(
-                        group.targets().get(0).nodeId(), group.run()))
+                        group.targets().get(0).nodeId(), () -> {
+                            // Groups may wait in the shared image pool: each start is a heartbeat, and a group of a
+                            // job that was failed meanwhile draws nothing.
+                            if (!heartbeat(jobId)) {
+                                throw new java.util.concurrent.CancellationException("Visualization job is no longer active");
+                            }
+                            return group.run().execute();
+                        }))
                 .toList();
         BatchResult<List<TaskResult<VisualizationAsset>>> batch = visualizationTaskPool.submitAll(tasks, null);
 
@@ -532,7 +568,27 @@ public class RecipeProcessVisualizationJobService {
                 .push("stepResults", stepResult)
                 .inc("completedSteps", 1)
                 .set("updatedAt", Instant.now());
-        mongoTemplate.updateFirst(query(where("_id").is(jobId)), update, VisualizationJob.class);
+        mongoTemplate.updateFirst(activeJob(jobId), update, VisualizationJob.class);
+    }
+
+    /** The job, only while it is still QUEUED or IN_PROGRESS: writes through this never revive a finished job. */
+    private static org.springframework.data.mongodb.core.query.Query activeJob(String jobId) {
+        return query(where("_id").is(jobId).and("status").in(ACTIVE_STATUSES));
+    }
+
+    /** Moves the job from QUEUED to IN_PROGRESS; false when it is no longer queued (e.g. failed as stale). */
+    boolean claim(String jobId) {
+        Instant now = Instant.now();
+        Update update = new Update().set("status", VisualizationJobStatus.IN_PROGRESS)
+                .set("startedAt", now).set("updatedAt", now);
+        return mongoTemplate.updateFirst(query(where("_id").is(jobId).and("status").is(VisualizationJobStatus.QUEUED)),
+                update, VisualizationJob.class).getMatchedCount() > 0;
+    }
+
+    /** Marks the job as alive; false when it is no longer IN_PROGRESS. */
+    private boolean heartbeat(String jobId) {
+        return mongoTemplate.updateFirst(query(where("_id").is(jobId).and("status").is(VisualizationJobStatus.IN_PROGRESS)),
+                new Update().set("updatedAt", Instant.now()), VisualizationJob.class).getMatchedCount() > 0;
     }
 
     private boolean isEffectivelySuccessful(TaskResult<VisualizationAsset> result) {
@@ -545,7 +601,7 @@ public class RecipeProcessVisualizationJobService {
         if (!ACTIVE_STATUSES.contains(status)) {
             update.unset("activeKey");
         }
-        mongoTemplate.updateFirst(query(where("_id").is(jobId)), update, VisualizationJob.class);
+        mongoTemplate.updateFirst(activeJob(jobId), update, VisualizationJob.class);
     }
 
     private String safeMessage(Throwable t) {
@@ -578,5 +634,13 @@ public class RecipeProcessVisualizationJobService {
                 .errorMessage(UserFacingErrors.forJob(job.getErrorMessage()))
                 .reused(reused)
                 .build();
+    }
+
+    private com.processVisualisation.virtualKitchen.ai.recipe.AiJobAdmission jobAdmission;
+
+    /** Per-user and system-wide limits on queued AI jobs, checked before a new job is created (optional in tests). */
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    void setJobAdmission(com.processVisualisation.virtualKitchen.ai.recipe.AiJobAdmission jobAdmission) {
+        this.jobAdmission = jobAdmission;
     }
 }

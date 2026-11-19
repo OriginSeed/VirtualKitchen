@@ -26,17 +26,18 @@ public interface InventoryRepository extends MongoRepository<Inventory, Long> {
 
     /**
      * Fetches the inventory record for a specific item type/id combination owned
-     * by the given user, if one exists.
+     * by the given user, if one exists. "First" (oldest): rows created before the unique kitchen index existed may
+     * be duplicated, and a lookup must still answer instead of failing.
      */
-    Optional<Inventory> findByUserIdAndItemTypeAndItemId(
+    Optional<Inventory> findFirstByUserIdAndItemTypeAndItemIdOrderByIdAsc(
             Long userId, ItemType itemType, Long itemId
     );
 
     /**
      * Fetches the inventory record for a specific item type/id combination
-     * allocated to the given kitchen, if one exists.
+     * allocated to the given kitchen, if one exists (the oldest, should duplicates exist).
      */
-    Optional<Inventory> findByKitchenIdAndItemTypeAndItemId(
+    Optional<Inventory> findFirstByKitchenIdAndItemTypeAndItemIdOrderByIdAsc(
             Long kitchenId, ItemType itemType, Long itemId
     );
 }

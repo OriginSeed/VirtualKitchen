@@ -58,7 +58,8 @@ const friendlyText = (error: unknown, fallback: string): string => {
   switch (code) {
     case 'NETWORK': return ERROR_TEXT.network
     case 'TIMEOUT': return ERROR_TEXT.timeout
-    case 'AI_BUSY': return ERROR_TEXT.aiBusy
+    // The backend writes "busy" messages for users (e.g. "You already have several AI tasks running...").
+    case 'AI_BUSY': return error instanceof Error && error.message ? error.message : ERROR_TEXT.aiBusy
     case 'AI_UNAVAILABLE': return ERROR_TEXT.aiUnavailable
     case 'RATE_LIMITED': return rateLimitedText(numberProp(error, 'retryAfterSeconds'))
     case 'PAYLOAD_TOO_LARGE': return ERROR_TEXT.tooLarge

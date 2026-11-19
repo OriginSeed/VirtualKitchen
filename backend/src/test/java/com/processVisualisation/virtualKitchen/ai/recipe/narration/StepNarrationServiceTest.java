@@ -297,6 +297,20 @@ class StepNarrationServiceTest {
     }
 
     @Test
+    void queuedGenerationWhoseLeaseWasTakenOverNeverCallsTheProvider() throws Exception {
+        service.ensure(OWNER, RECIPE_ID, PROCESS_ID, STEP_1, false);   // generation A waits in the queue...
+        clock.advance(Duration.ofMinutes(10));                          // ...past its lease
+        service.ensure(OWNER, RECIPE_ID, PROCESS_ID, STEP_1, false);   // generation B takes the claim over
+        assertEquals(2, pool.queuedCount());
+
+        pool.runAll();
+
+        // Only B speaks: A finds its claim gone when it finally starts, so the audio is paid for once.
+        assertEquals(1, spoken("geminiTtsProvider").size());
+        assertEquals("READY", service.get(OWNER, RECIPE_ID, PROCESS_ID, STEP_1).getStatus());
+    }
+
+    @Test
     void supersededGenerationCannotOverwriteNewerNarration() throws Exception {
         service.ensure(OWNER, RECIPE_ID, PROCESS_ID, STEP_1, false);           // generation A, old text
         stepInputs.put(STEP_1, input("Add three tablespoons of oil to the pan"));

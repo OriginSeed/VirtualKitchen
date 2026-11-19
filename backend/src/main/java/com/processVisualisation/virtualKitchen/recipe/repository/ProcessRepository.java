@@ -33,6 +33,19 @@ public interface ProcessRepository extends MongoRepository<Process, Long> {
     List<Process> findByRecipeIdIn(Collection<Long> recipeIds);
 
     /**
+     * Like {@link #findByRecipeIdIn}, but each process carries only what picking a recipe's thumbnail needs: its
+     * type, each node's id, kind and image fields, and the edges' ends. Recipe lists call this for every recipe they
+     * show, so it must not load every step's full text.
+     *
+     * @param recipeIds the ids of the owning recipes
+     * @return the matching processes, partially loaded
+     */
+    @Query(value = "{ 'recipeId': { '$in': ?0 } }", fields = "{ 'recipeId': 1, 'type': 1, 'nodes.id': 1, 'nodes.kind': 1, "
+            + "'nodes.data.visualizationAssetId': 1, 'nodes.data.imageUrl': 1, 'nodes.data.visualization': 1, "
+            + "'edges.source': 1, 'edges.target': 1 }")
+    List<Process> findThumbnailFieldsByRecipeIdIn(Collection<Long> recipeIds);
+
+    /**
      * Fetches every process of a given type belonging to a recipe, used to check for
      * (at most one) existing MAIN process before creating another.
      *

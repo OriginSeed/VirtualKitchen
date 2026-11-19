@@ -83,7 +83,7 @@ public class RateLimitFilter extends OncePerRequestFilter {
     @Autowired
     public RateLimitFilter(@Value("${app.ratelimit.enabled:true}") boolean enabled,
                            @Value("${app.ratelimit.trust-forwarded:false}") boolean trustForwarded,
-                           @Value("${app.ratelimit.auth-per-minute:10}") int authPerMinute,
+                           @Value("${app.ratelimit.auth-per-minute:20}") int authPerMinute,
                            @Value("${app.ratelimit.ai-start-per-minute:10}") int aiStartPerMinute,
                            @Value("${app.ratelimit.general-per-minute:300}") int generalPerMinute) {
         this(enabled, trustForwarded, authPerMinute, aiStartPerMinute, generalPerMinute, System::currentTimeMillis);

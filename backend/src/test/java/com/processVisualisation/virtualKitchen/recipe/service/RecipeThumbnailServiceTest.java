@@ -193,7 +193,7 @@ class RecipeThumbnailServiceTest {
         when(recipeService.getRecipeDetails(99L, 5L)).thenThrow(new NoSuchElementException("Recipe not found: 99"));
 
         assertThatThrownBy(() -> service.resolve(99L, 5L)).isInstanceOf(NoSuchElementException.class);
-        verify(processRepository, never()).findByRecipeIdIn(anyCollection());
+        verify(processRepository, never()).findThumbnailFieldsByRecipeIdIn(anyCollection());
     }
 
     @Test
@@ -217,7 +217,7 @@ class RecipeThumbnailServiceTest {
     }
 
     private void processes(Process... processes) {
-        when(processRepository.findByRecipeIdIn(anyCollection())).thenReturn(List.of(processes));
+        when(processRepository.findThumbnailFieldsByRecipeIdIn(anyCollection())).thenReturn(List.of(processes));
     }
 
     private static Process main(Long recipeId, Process.ProcessNode... nodes) {

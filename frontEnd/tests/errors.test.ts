@@ -56,7 +56,9 @@ describe('errorMessage', () => {
   })
 
   it('uses the backend code before the status', () => {
-    assert.equal(errorMessage(failedRequest('raw', undefined, 429, { code: 'AI_BUSY' }), 'x'), ERROR_TEXT.aiBusy)
+    assert.equal(errorMessage(failedRequest('', undefined, 429, { code: 'AI_BUSY' }), 'x'), ERROR_TEXT.aiBusy)
+    assert.equal(errorMessage(failedRequest('You already have several AI tasks running.', undefined, 429, { code: 'AI_BUSY' }), 'x'),
+      'You already have several AI tasks running.')
     assert.equal(errorMessage(failedRequest('Gemini said 500', undefined, 500, { code: 'AI_UNAVAILABLE' }), 'x'), ERROR_TEXT.aiUnavailable)
     assert.equal(errorMessage(failedRequest('raw', undefined, 413, { code: 'PAYLOAD_TOO_LARGE' }), 'x'), ERROR_TEXT.tooLarge)
   })
