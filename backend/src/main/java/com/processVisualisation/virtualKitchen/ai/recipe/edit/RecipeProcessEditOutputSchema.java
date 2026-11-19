@@ -50,6 +50,8 @@ public class RecipeProcessEditOutputSchema {
                 new Field("duration", string(), false),
                 new Field("repeatInterval", string(), false),
                 new Field("fromSteps", arrayOf(string()), false),
+                new Field("title", string(), false),
+                new Field("summary", string(), false),
                 new Field("uses", arrayOf(string()), false)
         );
         Map<String, Object> expectedResult = enumOf(List.of("success", "failure"));

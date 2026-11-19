@@ -5,6 +5,8 @@ import com.processVisualisation.virtualKitchen.ai.recipe.generation.model.Recipe
 import com.processVisualisation.virtualKitchen.ai.recipe.generation.model.RecipeProcessGenerationStage;
 import com.processVisualisation.virtualKitchen.ai.recipe.narration.dto.StepNarrationResponseDTO;
 import com.processVisualisation.virtualKitchen.ai.recipe.narration.model.StepNarrationStatus;
+import com.processVisualisation.virtualKitchen.ai.recipe.storyboard.model.RecipeStoryboard;
+import com.processVisualisation.virtualKitchen.ai.recipe.storyboard.model.StoryboardStage;
 import com.processVisualisation.virtualKitchen.ai.recipe.visualization.model.VisualizationJob;
 import com.processVisualisation.virtualKitchen.ai.recipe.visualization.model.VisualizationJobStatus;
 import com.processVisualisation.virtualKitchen.ai.recipe.workflow.dto.RecipeAiWorkflowResponseDTO.TaskDTO;
@@ -59,7 +61,15 @@ public class RecipeAiWorkflowStatusResolver {
             RecipeProcessGenerationJob generationJob,
             Map<String, VisualizationJob> visualizationJobs,
             Map<String, StepNarrationResponseDTO> narrations,
-            Instant now) {
+            Instant now,
+            RecipeStoryboard storyboard) {
+
+        /** Inputs of a workflow whose visuals are per-process step visuals (no storyboard). */
+        public Inputs(RecipeAiWorkflow workflow, RecipeProcessGenerationJob generationJob,
+                      Map<String, VisualizationJob> visualizationJobs, Map<String, StepNarrationResponseDTO> narrations,
+                      Instant now) {
+            this(workflow, generationJob, visualizationJobs, narrations, now, null);
+        }
     }
 
     public record Resolution(RecipeAiWorkflowStatus status, List<TaskDTO> tasks, int progressPercent, boolean cancellable) {
@@ -80,8 +90,9 @@ public class RecipeAiWorkflowStatusResolver {
         TaskDTO visuals;
         TaskDTO narration;
         if (approved && !cancelled) {
-            visuals = workflow.isSelected(RecipeAiTaskType.VISUALS)
-                    ? resolveVisuals(workflow, in.visualizationJobs()) : skipped(RecipeAiTaskType.VISUALS);
+            visuals = !workflow.isSelected(RecipeAiTaskType.VISUALS) ? skipped(RecipeAiTaskType.VISUALS)
+                    : workflow.isStoryboardVisuals() ? resolveStoryboardVisuals(in.storyboard())
+                    : resolveVisuals(workflow, in.visualizationJobs());
             narration = workflow.isSelected(RecipeAiTaskType.NARRATION)
                     ? resolveNarration(workflow, in.narrations(), in.now()) : skipped(RecipeAiTaskType.NARRATION);
         } else {
@@ -209,6 +220,32 @@ public class RecipeAiWorkflowStatusResolver {
             }
         }
         return countedTask(RecipeAiTaskType.VISUALS, total, succeeded, failed, running, anyStarted, failed > 0 ? error : null, null);
+    }
+
+    /** Stages of a storyboard, counted as the task's progress: plan, image prompt, image, cut and attach. */
+    private static final int STORYBOARD_STAGES = StoryboardStage.values().length;
+
+    /**
+     * VISUALS as one storyboard: progress is the stage reached. It either completes (with its panels on the steps)
+     * or fails as a whole, so a failure counts no step as made.
+     */
+    private TaskDTO resolveStoryboardVisuals(RecipeStoryboard storyboard) {
+        if (storyboard == null || storyboard.getStatus() == null) {
+            TaskDTO notStarted = countedTask(RecipeAiTaskType.VISUALS, STORYBOARD_STAGES, 0, STORYBOARD_STAGES, false, false,
+                    "Visualize could not be started", null);
+            notStarted.setStage(StoryboardStage.PLAN.name());
+            return notStarted;
+        }
+        int reached = storyboard.getStage() == null ? 0 : storyboard.getStage().ordinal();
+        TaskDTO task = switch (storyboard.getStatus()) {
+            case QUEUED -> countedTask(RecipeAiTaskType.VISUALS, STORYBOARD_STAGES, 0, 0, true, false, null, null);
+            case IN_PROGRESS -> countedTask(RecipeAiTaskType.VISUALS, STORYBOARD_STAGES, reached, 0, true, true, null, null);
+            case COMPLETED -> countedTask(RecipeAiTaskType.VISUALS, STORYBOARD_STAGES, STORYBOARD_STAGES, 0, false, true, null, null);
+            case FAILED -> countedTask(RecipeAiTaskType.VISUALS, STORYBOARD_STAGES, 0, STORYBOARD_STAGES, false, true,
+                    storyboard.getErrorMessage() != null ? storyboard.getErrorMessage() : "Visualize failed", null);
+        };
+        task.setStage(storyboard.getStage() == null ? null : storyboard.getStage().name());
+        return task;
     }
 
     // --- NARRATION -----------------------------------------------------------------------------

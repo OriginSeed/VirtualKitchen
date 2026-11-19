@@ -17,9 +17,12 @@ import { normalizeConditionNodeData } from '../../model/recipeConditionData'
 import { normalizeRecipeStepNodeData } from '../../model/recipeStepData'
 import { mergePreparations, PREPARATION_NAME } from '../../model/mergePreparations'
 import { getPreparationFlows, getPreparationProcess } from '../../model/preparationFlows'
-import { generationJobKey, isTrackedJobActive, isWorkflowOpen, workflowJobKey } from '../../jobs/jobTracker'
+import { generationJobKey, isTrackedJobActive, isWorkflowOpen, storyboardJobKey, workflowJobKey } from '../../jobs/jobTracker'
 import { useJobTracker, useTrackedJob } from '../../jobs/useJobTracker'
 import RecipeAiCreationModal from '../../workflow/components/RecipeAiCreationModal'
+import RecipeStoryboardDialog from './RecipeStoryboardDialog'
+import RefineReviewDialog from './RefineReviewDialog'
+import { storyboardProgressBadge } from '../../model/storyboardView'
 import type { RunModels } from '../../workflow/model/workflowSelection'
 import { clearDraft, draftKeys } from '../../../../shared/drafts/draftStore'
 import { workflowBadge, workflowChipLabel, workflowHeadline } from '../../workflow/model/workflowView'
@@ -94,6 +97,8 @@ export default function RecipeEditorView({
   // AI Recipe Creation (process → review/approval → visuals + narration), followed by the same tracker.
   const workflow = useTrackedJob(workflowJobKey(recipeId))?.job ?? null
   const [showAiCreation, setShowAiCreation] = useState(openAiCreationOnStart && isOwner)
+  const storyboardJob = useTrackedJob(storyboardJobKey(recipeId))
+  const [showStoryboard, setShowStoryboard] = useState(false)
   // What the AI menu item that opened AI Recipe Creation pre-ticks (undefined: the user's last selection).
   const [aiCreationTasks, setAiCreationTasks] = useState<RecipeAiTaskType[] | undefined>(undefined)
   const openAiCreation = useCallback((tasks?: RecipeAiTaskType[]) => {
@@ -334,6 +339,9 @@ export default function RecipeEditorView({
    * the user was away (rediscovered on load).
    */
   const appliedGenerationJobIdsRef = useRef(new Set<string>())
+  // A refined flow replaces the cook's own only once they have reviewed it and chosen to apply it.
+  const [approvedRefineJobId, setApprovedRefineJobId] = useState<string | null>(null)
+  const [keptRefineJobId, setKeptRefineJobId] = useState<string | null>(null)
   useEffect(() => {
     if (!session || session.loading || !generationJob) return
     const { job } = generationJob
@@ -341,6 +349,8 @@ export default function RecipeEditorView({
     if (job.status !== 'COMPLETED' || !job.result || job.result.mode === 'EDIT' || job.mode === 'EDIT') return
     // An edit request answered with a whole new flow is refused by the effect below, never applied.
     if (generationJob.requestedMode === 'EDIT' || appliedGenerationJobIdsRef.current.has(job.jobId)) return
+    const refining = job.result.mode === 'REFINE' || job.mode === 'REFINE'
+    if (refining && approvedRefineJobId !== job.jobId) return
     appliedGenerationJobIdsRef.current.add(job.jobId)
 
     const { processes: generated, mainProcessId, problems } = convertGeneratedResultToProcesses(
@@ -357,6 +367,11 @@ export default function RecipeEditorView({
 
     session.recordHistory({ focusProcessId: mainProcessId })
     generated.forEach((process) => session.addProcess(process))
+    // A refined flow is the whole recipe: a Preparation it no longer needs is removed with the rest of the old flow.
+    const oldPreparation = getPreparationProcess(session.getProcesses())
+    if (refining && oldPreparation && !generated.some((process) => process.id === oldPreparation.id)) {
+      session.removeProcess(oldPreparation.id)
+    }
     setAncestorTrail([])
     setSelectedProcessId(mainProcessId)
     if (!existingMain) onMainProcessChanged(mainProcessId)
@@ -373,7 +388,9 @@ export default function RecipeEditorView({
     const generatedPreparation = generated.find((process) => process.type === 'SUBPROCESS')
     const flowCount = generatedPreparation ? getPreparationFlows(generatedPreparation).length : 0
     const summary = flowCount > 0 ? ` Preparation with ${flowCount} flow${flowCount === 1 ? '' : 's'} + main process.` : ''
-    if (forWorkflow) {
+    if (refining) {
+      notifySuccess(`Refined flow applied.${summary} Use Undo to go back to your version.${forWorkflow ? ' Approve it to continue.' : ''}`)
+    } else if (forWorkflow) {
       // The recipe text did its job: the process exists now (in the editor, autosaved, undoable).
       clearDraft(draftKeys.aiRecipeCreation(recipeId))
       notifySuccess(`Recipe process ready.${summary} Review and edit it, then approve to continue. Use Undo to go back to your previous version.`)
@@ -384,7 +401,28 @@ export default function RecipeEditorView({
     // the backend's own corrections and are already reflected in the result.)
     const warnings = job.result.warnings ?? []
     if (warnings.length > 0) notifyError(warnings.join(' · '))
-  }, [session, generationJob, recipeId, existingMain, onMainProcessChanged, jobTracker, notifySuccess, notifyError, workflow?.generationJobId])
+  }, [session, generationJob, recipeId, existingMain, onMainProcessChanged, jobTracker, notifySuccess, notifyError, workflow?.generationJobId, approvedRefineJobId])
+
+  /** A finished refinement waiting for the cook's review (see RefineReviewDialog). */
+  const pendingRefine = useMemo(() => {
+    const job = generationJob?.job
+    if (!job || job.status !== 'COMPLETED' || !job.result) return null
+    if (job.result.mode !== 'REFINE' && job.mode !== 'REFINE') return null
+    if (approvedRefineJobId === job.jobId || keptRefineJobId === job.jobId) return null
+    return { jobId: job.jobId, result: job.result }
+  }, [generationJob, approvedRefineJobId, keptRefineJobId])
+
+  /** Keeps the cook's flow as it is; the workflow can still go on with it once approved. */
+  const keepOwnFlow = useCallback((jobId: string) => {
+    appliedGenerationJobIdsRef.current.add(jobId)
+    setKeptRefineJobId(jobId)
+    jobTracker.dismiss(generationJobKey(recipeId))
+    const forWorkflow = workflow?.generationJobId === jobId
+    RecipeProcessGenerationApi.markApplied(recipeId, jobId)
+      .then(() => { if (forWorkflow) jobTracker.refresh(workflowJobKey(recipeId)) })
+      .catch((error) => console.error('Unable to mark the refinement as handled:', error))
+    notifySuccess(forWorkflow ? 'Kept your flow. Approve it to continue.' : 'Kept your flow.')
+  }, [jobTracker, recipeId, workflow?.generationJobId, notifySuccess])
 
   // A backend without edit support ignores the mode and returns a whole new flow for an edit request:
   // that must never replace the user's process.
@@ -558,8 +596,25 @@ export default function RecipeEditorView({
       onOpenAiEdit: editableTarget ? () => setShowGenerationModal(true) : undefined,
       status: aiStatus && { badge: aiStatus.badge, title: aiStatus.title },
       generationProgress,
+      storyboard: {
+        onOpen: () => setShowStoryboard(true),
+        progress: isTrackedJobActive(storyboardJob) && storyboardJob ? storyboardProgressBadge(storyboardJob.job) : null,
+      },
     }
     : undefined
+
+  const refineReview = pendingRefine && isOwner && (
+    <RefineReviewDialog
+      result={pendingRefine.result}
+      currentStepCount={processes.reduce((count, process) => count + process.nodes.filter((node) => node.kind === 'STEP').length, 0)}
+      onApply={() => setApprovedRefineJobId(pendingRefine.jobId)}
+      onKeep={() => keepOwnFlow(pendingRefine.jobId)}
+    />
+  )
+
+  const storyboardDialog = showStoryboard && isOwner && (
+    <RecipeStoryboardDialog recipeId={recipeId} onClose={() => setShowStoryboard(false)} />
+  )
 
   const aiCreationModal = showAiCreation && (
     <RecipeAiCreationModal
@@ -618,6 +673,7 @@ export default function RecipeEditorView({
         </div>
         {generationModal}
         {aiCreationModal}
+        {refineReview}
       </div>
     )
   }
@@ -642,6 +698,8 @@ export default function RecipeEditorView({
       />
       {generationModal}
       {aiCreationModal}
+      {storyboardDialog}
+      {refineReview}
     </>
   )
 }

@@ -30,6 +30,7 @@ import { CONDITION_HANDLES } from '../../model/recipeNodeTypes'
 import { toPlainText, type AnnotationLabelResolver } from '../../model/stepAnnotations'
 import { actionVerbOf, deriveStepTitle } from '../../model/stepTitle'
 import { explainPreparationFlows, nodesContinuingPrevious, type ExplainedFlow } from './processExplanation'
+import { groupItemsByStoryboard, type StoryboardImageGroup, type StoryboardPanelRef } from './storyboardGroups'
 
 // ---------------------------------------------------------------------------------------------
 // Presentation types
@@ -156,6 +157,8 @@ export type RecipeTimelineFlow = {
   outputName: string
   stepCount: number
   items: RecipeTimelineItem[]
+  /** Points shown together under one storyboard panel image (see storyboardGroups.ts). */
+  groups?: StoryboardImageGroup[]
 }
 
 /** One stage of the recipe: a process (the Preparation, then the main process last). */
@@ -172,6 +175,8 @@ export type RecipeTimelineSection = {
   items: RecipeTimelineItem[]
   /** A Preparation's flows, each shown as one card. */
   flows?: RecipeTimelineFlow[]
+  /** Main process: steps shown together as one card under one storyboard panel image (see storyboardGroups.ts). */
+  groups?: StoryboardImageGroup[]
 }
 
 export type RecipePresentation = {
@@ -421,8 +426,11 @@ const sectionTitleOf = (process: Process) => {
  * Builds the complete Recipe Process presentation from the recipe's processes. Step numbers run
  * continuously through the whole recipe, so "from step 3" means the same anywhere on the page;
  * checks aren't numbered (they're decisions, not things to do), so the numbers match the step count.
+ *
+ * `storyboardPanels`: the panels of the recipe's storyboard, when it has one. A panel's image sits on the last step
+ * it covers; the steps before it are then grouped with it under that one image.
  */
-export const buildRecipePresentation = (processes: Process[]): RecipePresentation => {
+export const buildRecipePresentation = (processes: Process[], storyboardPanels: StoryboardPanelRef[] = []): RecipePresentation => {
   const orderedById = new Map(processes.map((process) => [process.id, orderProcessNodes(process)]))
   // A Preparation reads flow by flow, each flow in cooking order (see processExplanation.ts).
   const flowsById = new Map<number, ExplainedFlow[]>()
@@ -504,7 +512,7 @@ export const buildRecipePresentation = (processes: Process[]): RecipePresentatio
         ...step.actionOn.steps.map((entry) => rootIngredientName(stepById.get(entry.stepId), stepById)),
         ...step.actionOn.processes.map(productOf),
       ].filter(Boolean)
-      titles.set(node.id, buildStepHeading(step, earlierBases, resolveLabel))
+      titles.set(node.id, step.title.trim() || buildStepHeading(step, earlierBases, resolveLabel))
     }
 
     const relativeDirection = (fromId: string, toId: string): CheckOutcome['direction'] => {
@@ -630,7 +638,11 @@ export const buildRecipePresentation = (processes: Process[]): RecipePresentatio
       }
       const instruction = composed.length > 0 ? composed : [{ text: description || name }]
       const sentence = instructionText(instruction)
-      const explanation = composed.length > 0 && remaining && !restatesText(remaining, [sentence]) ? remaining : ''
+      // The step's summary is written to explain it in context, so it takes the place of the description's remainder.
+      const summary = step.summary.trim()
+      const explanation = summary
+        ? (restatesText(summary, [sentence]) ? '' : summary)
+        : composed.length > 0 && remaining && !restatesText(remaining, [sentence]) ? remaining : ''
       const expected = step.expectedOutput.trim()
       const readyWhen = expected && !restatesText(expected, [sentence, explanation]) ? expected : ''
 
@@ -674,6 +686,7 @@ export const buildRecipePresentation = (processes: Process[]): RecipePresentatio
       const flowItems = flow.nodeIds.map((id) => itemByNode.get(id) as RecipeTimelineItem)
       const firstStep = flowItems.find((item) => item.kind === 'step')
       const outputItem = flow.outputNodeId ? itemByNode.get(flow.outputNodeId) : undefined
+      const groups = storyboardPanels.length > 0 ? groupItemsByStoryboard(flowItems, storyboardPanels, { includeChecks: true }) : []
       return {
         key: `${process.id}:flow-${flow.index}`,
         anchorId: `recipe-flow-${process.id}-${flow.index}`,
@@ -687,8 +700,12 @@ export const buildRecipePresentation = (processes: Process[]): RecipePresentatio
         outputName: flow.outputName,
         stepCount: flowItems.filter((item) => item.kind === 'step').length,
         items: flowItems,
+        groups: groups.length > 0 ? groups : undefined,
       }
     })
+
+    // A check keeps its own card in the main process (it shows where each answer leads), so it ends a group there.
+    const mainGroups = !flows && storyboardPanels.length > 0 ? groupItemsByStoryboard(items, storyboardPanels) : []
 
     return {
       key: String(process.id),
@@ -699,6 +716,7 @@ export const buildRecipePresentation = (processes: Process[]): RecipePresentatio
       stepCount: flows ? flows.filter((flow) => flow.stepCount > 0).length : items.filter((item) => item.kind === 'step').length,
       items,
       flows,
+      groups: mainGroups.length > 0 ? mainGroups : undefined,
     }
   })
 

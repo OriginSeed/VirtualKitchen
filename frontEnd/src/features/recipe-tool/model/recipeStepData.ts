@@ -112,6 +112,10 @@ export type RecipeStepFields = {
   actionDescription: string
   /** The expected result/state after this step completes — a core, always-shown Step property. */
   expectedOutput: string
+  /** Optional short title; empty means the title is derived from the action and its targets (see getRecipeStepTitle). */
+  title: string
+  /** The step explained as a guide would say it, continuing from the step before — shown to readers and spoken by narration. */
+  summary: string
   /** Advanced Options (optional, action-specific — see actionSchemaCatalog). */
   flameLevelId: FlameLevelId | ''
   customFlameLevel: string
@@ -152,6 +156,8 @@ const createDefaultRecipeStepFields = (): RecipeStepFields => ({
   actionOn: { ingredients: [], processes: [], steps: [] },
   actionDescription: '',
   expectedOutput: '',
+  title: '',
+  summary: '',
   flameLevelId: '',
   customFlameLevel: '',
   temperatureValue: '',
@@ -253,6 +259,8 @@ export const normalizeRecipeStepFields = (value: unknown): RecipeStepFields => {
     actionOn: normalizeActionOn(raw.actionOn),
     actionDescription: asString(raw.actionDescription),
     expectedOutput: asString(raw.expectedOutput),
+    title: asString(raw.title),
+    summary: asString(raw.summary),
     flameLevelId: resolveFlameLevelId(raw.flameLevelId),
     customFlameLevel: asString(raw.customFlameLevel),
     ...normalizeTemperature(raw),
@@ -354,6 +362,7 @@ export const stepAnnotationLabelResolver = (resolve?: Partial<RecipeStepNameReso
  * prepared outputs and earlier results are named only by their annotations' snapshot labels.
  */
 export function getRecipeStepTitle(step: RecipeStepFields, resolve?: Partial<RecipeStepNameResolver>): string {
+  if (step.title.trim()) return step.title.trim()
   const subjects = [
     ...(resolve?.stepOutputLabel ? step.actionOn.steps.map((entry) => resolve.stepOutputLabel!(entry.stepId)) : []),
     ...step.actionOn.ingredients.map(ingredientSubject),

@@ -56,13 +56,17 @@ export interface GeneratedRecipeStep {
   duration?: string | null
   repeatInterval?: string | null
 
-  // CONDITION-only
+  // CONDITION: the question. STEP: an optional short title (absent = derived from the action).
   title?: string | null
   expectedResult?: string | null
 
   // shared
   actionDescription: string
   expectedOutput: string
+  /** STEP only: the spoken explanation of the step, continuing from the one before (used by narration). */
+  summary?: string | null
+  /** REFINE only: the id of the cook's node this step re-authors; the converted node keeps it (and its image). */
+  sourceNodeId?: string | null
 }
 
 export interface GeneratedRecipeProcess {
@@ -72,7 +76,7 @@ export interface GeneratedRecipeProcess {
   steps: GeneratedRecipeStep[]
 }
 
-export type ProcessGenerationMode = 'CREATE' | 'EDIT'
+export type ProcessGenerationMode = 'CREATE' | 'EDIT' | 'REFINE'
 
 /**
  * One validated AI edit operation (recipe/dto/ProcessEditOperationDTO.java), applied in list order by
@@ -117,6 +121,8 @@ export interface RecipeProcessGenerationResult {
   repairs?: string[] | null
   /** CREATE only: accepted but worth attention (e.g. a preparation the main process never uses). */
   warnings?: string[] | null
+  /** REFINE only: what was corrected in the cook's flow, one short line each. */
+  changes?: string[] | null
   /** EDIT only. */
   edit?: RecipeProcessEditResult | null
   modelUsed?: string
@@ -216,6 +222,110 @@ export interface RecipeActiveJobsResponse {
   visualizations: RecipeProcessVisualizationJobResponse[]
   /** The open AI Recipe Creation workflow, else a recently finished one not yet dismissed (older backends: absent). */
   workflow?: RecipeAiWorkflowResponse | null
+  /** The storyboard generation still running for this recipe (older backends: absent). */
+  storyboard?: RecipeStoryboardResponse | null
+}
+
+/**
+ * A recipe storyboard: the whole recipe told as panels in ONE generated image, which is also cut into one image per
+ * panel and put on the steps each panel covers. The same shape is the running job (status, stage) and its result.
+ * Mirrors the backend's `RecipeStoryboardResponseDTO`.
+ */
+export type RecipeStoryboardStatus = 'QUEUED' | 'IN_PROGRESS' | 'COMPLETED' | 'FAILED'
+
+/** What a storyboard generation is working on: planning panels, writing the image prompt, drawing, cutting. */
+export type RecipeStoryboardStage = 'PLAN' | 'PROMPT' | 'IMAGE' | 'CROP'
+
+export interface RecipeStoryboardPanel {
+  panelId: string
+  sequence: number
+  group: 'PREPARATION' | 'MAIN'
+  component?: string | null
+  /** Short title of the action the panel shows. */
+  description: string
+  /** Ids of the recipe nodes this panel stands for. */
+  sourceStepIds: string[]
+  /** Owner only. */
+  imagePrompt?: string | null
+  dependsOn: string[]
+  referencePanels: string[]
+  ingredients: string[]
+  equipment: string[]
+  expectedState?: string | null
+  /** The panel cut out of the combined image; null when it could not be cut. */
+  imageUrl?: string | null
+}
+
+/**
+ * What happened to one step when the panel images were put on the steps: the last step of a panel (given the
+ * panel's image, or keeping its own), or a step that lost the image an earlier storyboard had put on it.
+ */
+export interface RecipeStoryboardStep {
+  processId: number
+  stepId: string
+  panelId: string
+  visualizationAssetId?: number | null
+  imageUrl?: string | null
+  imagePrompt?: string | null
+  /** True when the panel's image was put on the step; false when it kept the image it already had. */
+  attached: boolean
+  /** True when the image an earlier storyboard put on the step was removed (the step now has none). */
+  cleared?: boolean
+}
+
+/** A "fix this step's image" request (StoryboardStepFixResponseDTO.java). */
+export interface StoryboardStepFixResponse {
+  fixId: string
+  recipeId: number
+  processId: number
+  stepId: string
+  status: 'QUEUED' | 'IN_PROGRESS' | 'COMPLETED' | 'FAILED'
+  feedback: string
+  reused: boolean
+  imagePrompt?: string | null
+  imageUrl?: string | null
+  visualizationAssetId?: number | null
+  previousImageUrl?: string | null
+  previousPrompt?: string | null
+  /** The step's current image was sent along for the model to redraw. */
+  usedReference: boolean
+  /** The text model gave no usable prompt, so the feedback was appended to the old one. */
+  promptFromTemplate: boolean
+  errorMessage?: string | null
+  reverted: boolean
+  createdAt?: string
+  completedAt?: string | null
+}
+
+/** How a Visualize run treats what the recipe already has (see StoryboardMode.java). */
+export type StoryboardMode = 'FILL' | 'REPLACE'
+
+export interface RecipeStoryboardResponse {
+  jobId: string
+  recipeId: number
+  status: RecipeStoryboardStatus
+  stage?: RecipeStoryboardStage | null
+  failedStage?: RecipeStoryboardStage | null
+  errorMessage?: string | null
+  warnings: string[]
+  /** True when the start request joined a storyboard already being generated for this recipe. */
+  reused?: boolean
+  /** True when the recipe changed after this storyboard was made. */
+  outdated?: boolean
+  title?: string | null
+  /** The combined storyboard image. */
+  imageUrl?: string | null
+  rows?: number | null
+  columns?: number | null
+  panels: RecipeStoryboardPanel[]
+  omittedSteps: { stepId: string; reason?: string | null }[]
+  /** The prompt the image was requested with (owner only). */
+  masterPrompt?: string | null
+  steps: RecipeStoryboardStep[]
+  textModelKey?: string | null
+  imageModelKey?: string | null
+  createdAt?: string | null
+  completedAt?: string | null
 }
 
 export interface RecipeIngredient {

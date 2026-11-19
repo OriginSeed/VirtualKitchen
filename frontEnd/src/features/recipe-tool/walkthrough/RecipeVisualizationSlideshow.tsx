@@ -106,6 +106,25 @@ function StepStage({ step, narrationText, revealMode, paused, progress, narratio
   )
 }
 
+/** How long the walkthrough waits for its images before it starts anyway (they then load as each step shows). */
+const IMAGE_PRELOAD_TIMEOUT_MS = 20000
+
+/**
+ * Loads every step image up front, so a step's text and narration never start before its picture: resolves once each
+ * image has loaded or failed (a missing image just means a text-only step), or after the timeout.
+ */
+const preloadImages = (urls: string[]): Promise<void> => {
+  if (urls.length === 0) return Promise.resolve()
+  const all = Promise.all(urls.map((url) => new Promise<void>((resolve) => {
+    const image = new Image()
+    image.onload = () => resolve()
+    image.onerror = () => resolve()
+    image.src = url
+  }))).then(() => undefined)
+  const timeout = new Promise<void>((resolve) => window.setTimeout(resolve, IMAGE_PRELOAD_TIMEOUT_MS))
+  return Promise.race([all, timeout])
+}
+
 type RecipeVisualizationSlideshowProps = {
   steps: SlideshowStep[]
   recipeId: number
@@ -142,12 +161,27 @@ export default function RecipeVisualizationSlideshow({
     [steps],
   )
   const silentStepIds = useMemo(() => steps.filter((step) => step.silent).map((step) => step.id), [steps])
+  // Images first: the walkthrough (and its narration) starts once every step image is in, so no step's text runs
+  // ahead of its picture. Fixed for this opening, like the narration player itself.
+  const [imagesLoading] = useState(() =>
+    preloadImages([...new Set(steps.map((step) => step.imageUrl).filter((url): url is string => Boolean(url)))]))
+  const [imagesReady, setImagesReady] = useState(() => !steps.some((step) => step.imageUrl))
+  useEffect(() => {
+    let active = true
+    void imagesLoading.then(() => {
+      if (active) setImagesReady(true)
+    })
+    return () => {
+      active = false
+    }
+  }, [imagesLoading])
+  const [ready] = useState(() => Promise.all([narrationReady ?? Promise.resolve(true), imagesLoading]).then(([saved]) => saved))
   const { player, state, unavailable, syncWarning } = useNarrationPlayer({
     recipeId,
     processId,
     steps: playerSteps,
     silentStepIds,
-    ready: narrationReady,
+    ready,
   })
 
   const hasSteps = steps.length > 0
@@ -226,6 +260,10 @@ export default function RecipeVisualizationSlideshow({
         {!hasSteps ? (
           <div className="recipe-slideshow-empty">
             No recipe steps yet. Add steps to the flow to preview them here.
+          </div>
+        ) : !imagesReady ? (
+          <div className="recipe-slideshow-empty" role="status" aria-live="polite">
+            Loading the step images…
           </div>
         ) : (
           <>

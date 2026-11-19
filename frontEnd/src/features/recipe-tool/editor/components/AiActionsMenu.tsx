@@ -16,47 +16,35 @@ export type RecipeAiActions = {
   status?: { badge: string; title: string } | null
   /** An AI generation/edit job running for this recipe. */
   generationProgress?: { percent: number; stageLabel: string } | null
+  /** The recipe storyboard: opens its dialog; `progress` (e.g. "2/4") while one is being generated. */
+  storyboard?: { onOpen: () => void; progress: string | null }
 }
 
 type AiActionsMenuProps = {
   recipeActions?: RecipeAiActions
-  /** Starts the AI visualization job for the open process's own steps. */
-  onGenerateVisuals?: () => void
-  isGeneratingVisuals?: boolean
-  /** e.g. "Generating… 2/5". */
-  visualsProgressLabel?: string
-  generateVisualsStatus?: { type: 'success' | 'error' | 'info'; text: string } | null
 }
-
-const STATUS_COLORS = { success: 'var(--flow-success)', info: 'var(--flow-magic)', error: 'var(--flow-danger)' } as const
 
 /**
  * "✨ AI": every AI operation of the Recipe Editor in one menu, with the user's AI credit balance —
  * credits sit here because only these actions spend them. The button itself reflects what AI is
  * doing right now (AI Recipe Creation's badge, or a running generation/visuals job).
  */
-export default function AiActionsMenu({
-  recipeActions,
-  onGenerateVisuals,
-  isGeneratingVisuals = false,
-  visualsProgressLabel,
-  generateVisualsStatus,
-}: AiActionsMenuProps) {
+export default function AiActionsMenu({ recipeActions }: AiActionsMenuProps) {
   // Refetch the credit balance whenever a background AI job finishes (it charged or refunded credits).
   const jobsFinishedSignal = useJobsFinishedSignal()
   const credits = useAiCredit(jobsFinishedSignal)
-  if (!recipeActions && !onGenerateVisuals) return null
+  if (!recipeActions) return null
 
-  const { status, generationProgress } = recipeActions ?? {}
+  const { status, generationProgress, storyboard } = recipeActions ?? {}
   const busyLabel = status?.badge
     ?? (generationProgress ? `✨ ${generationProgress.percent}%` : null)
-    ?? (isGeneratingVisuals ? '✨ Visuals…' : null)
+    ?? (storyboard?.progress ? '✨ Visualizing…' : null)
   const busy = busyLabel != null && busyLabel !== '✨ AI'
   const buttonTitle = status?.title
     ? `AI Recipe Creation — ${status.title}`
     : generationProgress
       ? `Generating with AI — ${generationProgress.stageLabel}`
-      : (isGeneratingVisuals ? (generateVisualsStatus?.text ?? 'Generating step visuals') : 'AI actions')
+      : (storyboard?.progress ? 'Visualizing the recipe' : 'AI actions')
 
   return (
     <ToolbarMenu
@@ -89,55 +77,56 @@ export default function AiActionsMenu({
             <MenuDivider />
           </>
         )}
-        <MenuHeading>Create with AI</MenuHeading>
-        {recipeActions && (
-          <MenuItem
-            icon="🧭"
-            label="Generate Recipe Process"
-            description="Turn your recipe text into steps"
-            onSelect={() => recipeActions.onOpenAiCreation(['PROCESS'])}
-          />
-        )}
-        {recipeActions?.onOpenAiEdit && (
-          <MenuItem
-            icon="✏️"
-            label="Edit Process with AI"
-            description="Describe a change to this process"
-            trailing={generationProgress ? `${generationProgress.percent}%` : undefined}
-            onSelect={recipeActions.onOpenAiEdit}
-          />
-        )}
-        {onGenerateVisuals && (
-          <MenuItem
-            icon="🖼️"
-            label="Generate Step Visuals"
-            description="An AI image for every step of this process"
-            trailing={isGeneratingVisuals ? (visualsProgressLabel ?? 'Generating…') : undefined}
-            disabled={isGeneratingVisuals}
-            title={isGeneratingVisuals ? 'Visuals are being generated for this process' : undefined}
-            onSelect={onGenerateVisuals}
-          />
-        )}
         {recipeActions && (
           <>
+            <MenuHeading>Run AI</MenuHeading>
+            <MenuItem
+              icon="🧭"
+              label="Create Flow from Text"
+              description="Turn your recipe text into steps, with a spoken summary per step"
+              onSelect={() => recipeActions.onOpenAiCreation(['PROCESS'])}
+            />
+            {recipeActions.onOpenAiEdit && (
+              <MenuItem
+                icon="✏️"
+                label="Edit Process with AI"
+                description="Describe a change to this process"
+                trailing={generationProgress ? `${generationProgress.percent}%` : undefined}
+                onSelect={recipeActions.onOpenAiEdit}
+              />
+            )}
+            <MenuItem
+              icon="🎞️"
+              label="Visualize"
+              description="Draw the recipe as one image of panels and put them on its steps"
+              trailing={storyboard?.progress ?? undefined}
+              onSelect={() => recipeActions.onOpenAiCreation(['VISUALS'])}
+            />
             <MenuItem
               icon="🔊"
-              label="Generate Narration"
-              description="Voice narration for the steps"
+              label="Narration"
+              description="Read each step's summary aloud"
               onSelect={() => recipeActions.onOpenAiCreation(['NARRATION'])}
             />
             <MenuItem
               icon="✨"
-              label="Complete Recipe Experience"
-              description="Process, visuals and narration"
+              label="Do Everything"
+              description="Flow from text, then visuals and narration"
               onSelect={() => recipeActions.onOpenAiCreation(['PROCESS', 'VISUALS', 'NARRATION'])}
             />
           </>
         )}
-        {generateVisualsStatus && (
-          <div className="recipe-toolbar-menu-status" role="status" style={{ color: STATUS_COLORS[generateVisualsStatus.type] }}>
-            {generateVisualsStatus.text}
-          </div>
+        {storyboard && (
+          <>
+            <MenuDivider />
+            <MenuItem
+              icon="🖼️"
+              label="View Visuals"
+              description="See the recipe's visuals, update them or redo them"
+              trailing={storyboard.progress ?? undefined}
+              onSelect={storyboard.onOpen}
+            />
+          </>
         )}
         {credits && (
           <>

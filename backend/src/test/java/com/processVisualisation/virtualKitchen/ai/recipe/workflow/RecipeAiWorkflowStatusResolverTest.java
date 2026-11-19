@@ -4,7 +4,11 @@ import com.processVisualisation.virtualKitchen.ai.recipe.generation.model.Recipe
 import com.processVisualisation.virtualKitchen.ai.recipe.generation.model.RecipeProcessGenerationJobStatus;
 import com.processVisualisation.virtualKitchen.ai.recipe.generation.model.RecipeProcessGenerationStage;
 import com.processVisualisation.virtualKitchen.ai.recipe.narration.dto.StepNarrationResponseDTO;
+import com.processVisualisation.virtualKitchen.ai.recipe.storyboard.model.RecipeStoryboard;
+import com.processVisualisation.virtualKitchen.ai.recipe.storyboard.model.StoryboardStage;
+import com.processVisualisation.virtualKitchen.ai.recipe.storyboard.model.StoryboardStatus;
 import com.processVisualisation.virtualKitchen.ai.recipe.visualization.model.VisualizationJob;
+import com.processVisualisation.virtualKitchen.ai.recipe.workflow.dto.RecipeAiWorkflowResponseDTO;
 import com.processVisualisation.virtualKitchen.ai.recipe.visualization.model.VisualizationJobStatus;
 import com.processVisualisation.virtualKitchen.ai.recipe.workflow.RecipeAiWorkflowStatusResolver.Inputs;
 import com.processVisualisation.virtualKitchen.ai.recipe.workflow.RecipeAiWorkflowStatusResolver.Resolution;
@@ -224,6 +228,41 @@ class RecipeAiWorkflowStatusResolverTest {
                 narrations("GENERATING", "GENERATING", "GENERATING", "GENERATING"), NOW));
 
         assertEquals(50, resolution.progressPercent());
+    }
+
+    @Test
+    void visualsAsAStoryboard_followItsStage_thenCompleteOrFailAsAWhole() {
+        RecipeAiWorkflow workflow = approved(VISUALS);
+        workflow.setStoryboardVisuals(true);
+        workflow.setStoryboardJobId("sb1");
+
+        RecipeAiWorkflowResponseDTO.TaskDTO running = storyboardTask(workflow, StoryboardStatus.IN_PROGRESS, StoryboardStage.IMAGE);
+        assertEquals(RecipeAiTaskStatus.RUNNING, running.getStatus());
+        assertEquals(50, running.getProgressPercent());
+        assertEquals("IMAGE", running.getStage());
+
+        RecipeAiWorkflowResponseDTO.TaskDTO done = storyboardTask(workflow, StoryboardStatus.COMPLETED, StoryboardStage.CROP);
+        assertEquals(RecipeAiTaskStatus.COMPLETED, done.getStatus());
+        assertEquals(100, done.getProgressPercent());
+
+        RecipeAiWorkflowResponseDTO.TaskDTO failed = storyboardTask(workflow, StoryboardStatus.FAILED, StoryboardStage.IMAGE);
+        assertEquals(RecipeAiTaskStatus.FAILED, failed.getStatus());
+        assertEquals(0, failed.getCompleted(), "a failed storyboard made no step image");
+        assertTrue(failed.isRetryable());
+        assertEquals("provider down", failed.getErrorMessage());
+
+        RecipeAiWorkflowResponseDTO.TaskDTO notStarted = resolver.resolve(new Inputs(workflow, null, Map.of(), Map.of(), NOW, null)).task(VISUALS);
+        assertEquals(RecipeAiTaskStatus.FAILED, notStarted.getStatus());
+        assertTrue(notStarted.isRetryable());
+    }
+
+    private RecipeAiWorkflowResponseDTO.TaskDTO storyboardTask(RecipeAiWorkflow workflow, StoryboardStatus status, StoryboardStage stage) {
+        RecipeStoryboard storyboard = new RecipeStoryboard();
+        storyboard.setId("sb1");
+        storyboard.setStatus(status);
+        storyboard.setStage(stage);
+        if (status == StoryboardStatus.FAILED) storyboard.setErrorMessage("provider down");
+        return resolver.resolve(new Inputs(workflow, null, Map.of(), Map.of(), NOW, storyboard)).task(VISUALS);
     }
 
     // --- helpers -------------------------------------------------------------------------------

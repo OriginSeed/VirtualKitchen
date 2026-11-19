@@ -1,0 +1,662 @@
+[
+  {
+    "createdAt": null,
+    "description": null,
+    "edges": [
+      {
+        "id": "b6500b29-b042-4aa3-ad3c-754778bc01ce",
+        "source": "172a7572-101d-4eb3-9f2a-4e538dbb1ce4",
+        "target": "d56ad22e-8c06-4e2e-81d8-a3e160fc2c5c",
+        "label": null,
+        "sourceHandle": null,
+        "targetHandle": null,
+        "type": null,
+        "animated": null,
+        "style": null,
+        "data": {}
+      },
+      {
+        "id": "4e74c08e-3719-4e99-a2fb-e2e6dd8ee256",
+        "source": "d56ad22e-8c06-4e2e-81d8-a3e160fc2c5c",
+        "target": "22d6be97-b0d7-4a05-a250-aad9ca8a3f13",
+        "label": null,
+        "sourceHandle": null,
+        "targetHandle": null,
+        "type": null,
+        "animated": null,
+        "style": null,
+        "data": {}
+      },
+      {
+        "id": "439bb316-2a3d-4f3b-bcad-cba777c9a38f",
+        "source": "22d6be97-b0d7-4a05-a250-aad9ca8a3f13",
+        "target": "1c128e50-a480-4204-88e2-091606109725",
+        "label": null,
+        "sourceHandle": null,
+        "targetHandle": null,
+        "type": null,
+        "animated": null,
+        "style": null,
+        "data": {}
+      },
+      {
+        "id": "ad2e27f8-7476-43e0-986a-08d2ded4ccd4",
+        "source": "1c128e50-a480-4204-88e2-091606109725",
+        "target": "e4b04b48-ffb9-4736-972b-07084c8ac2f4",
+        "label": null,
+        "sourceHandle": null,
+        "targetHandle": null,
+        "type": null,
+        "animated": null,
+        "style": null,
+        "data": {}
+      },
+      {
+        "id": "67f1554d-e95c-4e5d-bc5b-59cfe66edd4e",
+        "source": "e4b04b48-ffb9-4736-972b-07084c8ac2f4",
+        "target": "3040ae87-e44f-4f71-aab8-8ee6950ac982",
+        "label": null,
+        "sourceHandle": null,
+        "targetHandle": null,
+        "type": null,
+        "animated": null,
+        "style": null,
+        "data": {}
+      },
+      {
+        "id": "1a475934-766a-42c1-b1be-2544fc9a477b",
+        "source": "3040ae87-e44f-4f71-aab8-8ee6950ac982",
+        "target": "f451df53-d436-496a-bab2-9faf930ef4b9",
+        "label": null,
+        "sourceHandle": null,
+        "targetHandle": null,
+        "type": null,
+        "animated": null,
+        "style": null,
+        "data": {}
+      },
+      {
+        "id": "ce40ccd2-23f3-4b54-bd17-55bc7f0a72b4",
+        "source": "f451df53-d436-496a-bab2-9faf930ef4b9",
+        "target": "37393dee-8af5-4dd9-97f3-1d4ff3218b3f",
+        "label": null,
+        "sourceHandle": null,
+        "targetHandle": null,
+        "type": null,
+        "animated": null,
+        "style": null,
+        "data": {}
+      },
+      {
+        "id": "e459dbab-9dc1-4e06-9256-1d3593028fb1",
+        "source": "37393dee-8af5-4dd9-97f3-1d4ff3218b3f",
+        "target": "2c35b038-7518-42fc-804c-c7871bf1bd36",
+        "label": "Yes",
+        "sourceHandle": "condition-yes",
+        "targetHandle": null,
+        "type": null,
+        "animated": null,
+        "style": null,
+        "data": {}
+      },
+      {
+        "id": "ef400705-60e6-48db-9817-abd1d9262b7e",
+        "source": "37393dee-8af5-4dd9-97f3-1d4ff3218b3f",
+        "target": "f451df53-d436-496a-bab2-9faf930ef4b9",
+        "label": "No",
+        "sourceHandle": "condition-no",
+        "targetHandle": null,
+        "type": null,
+        "animated": null,
+        "style": null,
+        "data": {}
+      }
+    ],
+    "id": 86,
+    "name": "Simple Chicken Curry",
+    "nodes": [
+      {
+        "id": "172a7572-101d-4eb3-9f2a-4e538dbb1ce4",
+        "kind": "STEP",
+        "data": {
+          "title": "Heat oil",
+          "step": {
+            "action": "heat",
+            "customActionName": "",
+            "actionOn": {
+              "ingredients": [
+                {
+                  "ingredientId": "19",
+                  "quantity": 3,
+                  "unit": "tbsp",
+                  "preparationStyleId": "",
+                  "customPreparationStyle": ""
+                }
+              ],
+              "processes": [],
+              "steps": []
+            },
+            "actionDescription": "Heat the @[oil](ingredient:19) in a heavy pan",
+            "expectedOutput": "",
+            "flameLevelId": "medium",
+            "customFlameLevel": "",
+            "temperatureValue": "",
+            "temperatureUnit": "",
+            "durationValue": "",
+            "durationUnit": "",
+            "repeatIntervalValue": "",
+            "repeatIntervalUnit": ""
+          },
+          "sectionId": null
+        },
+        "type": "processStepNode",
+        "position": {
+          "x": 120,
+          "y": 80
+        },
+        "measured": {
+          "width": 330,
+          "height": 178
+        },
+        "width": 330,
+        "height": 178,
+        "parentId": null,
+        "extent": null,
+        "draggable": true,
+        "selectable": true,
+        "deletable": true
+      },
+      {
+        "id": "d56ad22e-8c06-4e2e-81d8-a3e160fc2c5c",
+        "kind": "STEP",
+        "data": {
+          "title": "Fry onions",
+          "step": {
+            "action": "fry",
+            "customActionName": "",
+            "actionOn": {
+              "ingredients": [
+                {
+                  "ingredientId": "107",
+                  "quantity": 2,
+                  "unit": "piece",
+                  "preparationStyleId": "sliced",
+                  "customPreparationStyle": ""
+                }
+              ],
+              "processes": [],
+              "steps": []
+            },
+            "actionDescription": "Fry the @[onions](ingredient:107) until deep golden",
+            "expectedOutput": "",
+            "flameLevelId": "medium",
+            "customFlameLevel": "",
+            "temperatureValue": "",
+            "temperatureUnit": "",
+            "durationValue": "10",
+            "durationUnit": "minutes",
+            "repeatIntervalValue": "1",
+            "repeatIntervalUnit": "minutes"
+          },
+          "sectionId": null
+        },
+        "type": "processStepNode",
+        "position": {
+          "x": 546,
+          "y": 80
+        },
+        "measured": {
+          "width": 330,
+          "height": 178
+        },
+        "width": 330,
+        "height": 178,
+        "parentId": null,
+        "extent": null,
+        "draggable": true,
+        "selectable": true,
+        "deletable": true
+      },
+      {
+        "id": "22d6be97-b0d7-4a05-a250-aad9ca8a3f13",
+        "kind": "STEP",
+        "data": {
+          "title": "Add ginger-garlic paste",
+          "step": {
+            "action": "add",
+            "customActionName": "",
+            "actionOn": {
+              "ingredients": [
+                {
+                  "ingredientId": "401",
+                  "quantity": 1,
+                  "unit": "tbsp",
+                  "preparationStyleId": "",
+                  "customPreparationStyle": ""
+                }
+              ],
+              "processes": [],
+              "steps": []
+            },
+            "actionDescription": "Add the @[ginger-garlic paste](ingredient:401) and cook until fragrant",
+            "expectedOutput": "",
+            "flameLevelId": "",
+            "customFlameLevel": "",
+            "temperatureValue": "",
+            "temperatureUnit": "",
+            "durationValue": "",
+            "durationUnit": "",
+            "repeatIntervalValue": "",
+            "repeatIntervalUnit": ""
+          },
+          "sectionId": null
+        },
+        "type": "processStepNode",
+        "position": {
+          "x": 972,
+          "y": 80
+        },
+        "measured": {
+          "width": 330,
+          "height": 178
+        },
+        "width": 330,
+        "height": 178,
+        "parentId": null,
+        "extent": null,
+        "draggable": true,
+        "selectable": true,
+        "deletable": true
+      },
+      {
+        "id": "1c128e50-a480-4204-88e2-091606109725",
+        "kind": "STEP",
+        "data": {
+          "title": "Add tomatoes, garam masala +1",
+          "step": {
+            "action": "add",
+            "customActionName": "",
+            "actionOn": {
+              "ingredients": [
+                {
+                  "ingredientId": "119",
+                  "quantity": 2,
+                  "unit": "piece",
+                  "preparationStyleId": "chopped",
+                  "customPreparationStyle": ""
+                },
+                {
+                  "ingredientId": "80",
+                  "quantity": 2,
+                  "unit": "tsp",
+                  "preparationStyleId": "",
+                  "customPreparationStyle": ""
+                },
+                {
+                  "ingredientId": "41",
+                  "quantity": 1,
+                  "unit": "tsp",
+                  "preparationStyleId": "",
+                  "customPreparationStyle": ""
+                }
+              ],
+              "processes": [],
+              "steps": []
+            },
+            "actionDescription": "Add the @[tomatoes](ingredient:119), @[garam masala](ingredient:80) and @[cumin](ingredient:41) and cook until the tomatoes break down",
+            "expectedOutput": "",
+            "flameLevelId": "",
+            "customFlameLevel": "",
+            "temperatureValue": "",
+            "temperatureUnit": "",
+            "durationValue": "",
+            "durationUnit": "",
+            "repeatIntervalValue": "",
+            "repeatIntervalUnit": ""
+          },
+          "sectionId": null
+        },
+        "type": "processStepNode",
+        "position": {
+          "x": 120,
+          "y": 354
+        },
+        "measured": {
+          "width": 330,
+          "height": 184
+        },
+        "width": 330,
+        "height": 184,
+        "parentId": null,
+        "extent": null,
+        "draggable": true,
+        "selectable": true,
+        "deletable": true
+      },
+      {
+        "id": "e4b04b48-ffb9-4736-972b-07084c8ac2f4",
+        "kind": "STEP",
+        "data": {
+          "title": "Add marinated chicken",
+          "step": {
+            "action": "add",
+            "customActionName": "",
+            "actionOn": {
+              "ingredients": [],
+              "processes": [
+                {
+                  "processId": 87,
+                  "stepId": "82f413ef-e283-4202-b068-a2f6cf2cef59"
+                }
+              ],
+              "steps": []
+            },
+            "actionDescription": "Add the @[marinated chicken](prepared:87:82f413ef-e283-4202-b068-a2f6cf2cef59) and cook",
+            "expectedOutput": "",
+            "flameLevelId": "",
+            "customFlameLevel": "",
+            "temperatureValue": "",
+            "temperatureUnit": "",
+            "durationValue": "",
+            "durationUnit": "",
+            "repeatIntervalValue": "",
+            "repeatIntervalUnit": ""
+          },
+          "sectionId": null
+        },
+        "type": "processStepNode",
+        "position": {
+          "x": 546,
+          "y": 354
+        },
+        "measured": {
+          "width": 330,
+          "height": 184
+        },
+        "width": 330,
+        "height": 184,
+        "parentId": null,
+        "extent": null,
+        "draggable": true,
+        "selectable": true,
+        "deletable": true
+      },
+      {
+        "id": "3040ae87-e44f-4f71-aab8-8ee6950ac982",
+        "kind": "STEP",
+        "data": {
+          "title": "Pour water",
+          "step": {
+            "action": "pour",
+            "customActionName": "",
+            "actionOn": {
+              "ingredients": [
+                {
+                  "ingredientId": "4",
+                  "quantity": 200,
+                  "unit": "ml",
+                  "preparationStyleId": "",
+                  "customPreparationStyle": ""
+                }
+              ],
+              "processes": [],
+              "steps": []
+            },
+            "actionDescription": "Pour in the @[water](ingredient:4)",
+            "expectedOutput": "",
+            "flameLevelId": "",
+            "customFlameLevel": "",
+            "temperatureValue": "",
+            "temperatureUnit": "",
+            "durationValue": "",
+            "durationUnit": "",
+            "repeatIntervalValue": "",
+            "repeatIntervalUnit": ""
+          },
+          "sectionId": null
+        },
+        "type": "processStepNode",
+        "position": {
+          "x": 972,
+          "y": 354
+        },
+        "measured": {
+          "width": 330,
+          "height": 184
+        },
+        "width": 330,
+        "height": 184,
+        "parentId": null,
+        "extent": null,
+        "draggable": true,
+        "selectable": true,
+        "deletable": true
+      },
+      {
+        "id": "f451df53-d436-496a-bab2-9faf930ef4b9",
+        "kind": "STEP",
+        "data": {
+          "title": "Simmer",
+          "step": {
+            "action": "simmer",
+            "customActionName": "",
+            "actionOn": {
+              "ingredients": [],
+              "processes": [],
+              "steps": []
+            },
+            "actionDescription": "Cover and simmer until the chicken is cooked through",
+            "expectedOutput": "",
+            "flameLevelId": "low",
+            "customFlameLevel": "",
+            "temperatureValue": "",
+            "temperatureUnit": "",
+            "durationValue": "20",
+            "durationUnit": "minutes",
+            "repeatIntervalValue": "",
+            "repeatIntervalUnit": ""
+          },
+          "sectionId": null
+        },
+        "type": "processStepNode",
+        "position": {
+          "x": 120,
+          "y": 634
+        },
+        "measured": {
+          "width": 330,
+          "height": 162
+        },
+        "width": 330,
+        "height": 162,
+        "parentId": null,
+        "extent": null,
+        "draggable": true,
+        "selectable": true,
+        "deletable": true
+      },
+      {
+        "id": "37393dee-8af5-4dd9-97f3-1d4ff3218b3f",
+        "kind": "CONDITION",
+        "data": {
+          "title": "Is the chicken cooked through?",
+          "condition": {
+            "question": "Is the chicken cooked through?",
+            "expectedResult": "success",
+            "successLabel": "Yes",
+            "failureLabel": "No",
+            "notes": "Check that the chicken is no longer pink inside"
+          },
+          "description": "Check that the chicken is no longer pink inside",
+          "yesLabel": "Yes",
+          "noLabel": "No",
+          "sectionId": null
+        },
+        "type": "conditionNode",
+        "position": {
+          "x": 155,
+          "y": 892
+        },
+        "measured": {
+          "width": 260,
+          "height": 260
+        },
+        "width": 260,
+        "height": 260,
+        "parentId": null,
+        "extent": null,
+        "draggable": true,
+        "selectable": true,
+        "deletable": true
+      },
+      {
+        "id": "2c35b038-7518-42fc-804c-c7871bf1bd36",
+        "kind": "STEP",
+        "data": {
+          "title": "Garnish coriander",
+          "step": {
+            "action": "garnish",
+            "customActionName": "",
+            "actionOn": {
+              "ingredients": [
+                {
+                  "ingredientId": "92",
+                  "quantity": null,
+                  "unit": "",
+                  "preparationStyleId": "chopped",
+                  "customPreparationStyle": ""
+                }
+              ],
+              "processes": [],
+              "steps": []
+            },
+            "actionDescription": "Garnish with @[coriander](ingredient:92)",
+            "expectedOutput": "",
+            "flameLevelId": "",
+            "customFlameLevel": "",
+            "temperatureValue": "",
+            "temperatureUnit": "",
+            "durationValue": "",
+            "durationUnit": "",
+            "repeatIntervalValue": "",
+            "repeatIntervalUnit": ""
+          },
+          "sectionId": null
+        },
+        "type": "processStepNode",
+        "position": {
+          "x": 120,
+          "y": 1248
+        },
+        "measured": {
+          "width": 330,
+          "height": 160
+        },
+        "width": 330,
+        "height": 160,
+        "parentId": null,
+        "extent": null,
+        "draggable": true,
+        "selectable": true,
+        "deletable": true
+      }
+    ],
+    "recipeId": 62,
+    "type": "MAIN",
+    "updatedAt": null,
+    "viewport": null
+  },
+  {
+    "createdAt": null,
+    "description": null,
+    "edges": [],
+    "id": 87,
+    "name": "Preparation",
+    "nodes": [
+      {
+        "id": "82f413ef-e283-4202-b068-a2f6cf2cef59",
+        "kind": "STEP",
+        "data": {
+          "title": "Mix chicken, yogurt +3",
+          "step": {
+            "action": "mix",
+            "customActionName": "",
+            "actionOn": {
+              "ingredients": [
+                {
+                  "ingredientId": "309",
+                  "quantity": 600,
+                  "unit": "g",
+                  "notes": "cut",
+                  "preparationStyleId": "",
+                  "customPreparationStyle": ""
+                },
+                {
+                  "ingredientId": "286",
+                  "quantity": 150,
+                  "unit": "g",
+                  "preparationStyleId": "",
+                  "customPreparationStyle": ""
+                },
+                {
+                  "ingredientId": "45",
+                  "quantity": 1,
+                  "unit": "tsp",
+                  "preparationStyleId": "",
+                  "customPreparationStyle": ""
+                },
+                {
+                  "ingredientId": "46",
+                  "quantity": 1,
+                  "unit": "tsp",
+                  "preparationStyleId": "",
+                  "customPreparationStyle": ""
+                },
+                {
+                  "ingredientId": "33",
+                  "quantity": 1,
+                  "unit": "tsp",
+                  "preparationStyleId": "",
+                  "customPreparationStyle": ""
+                }
+              ],
+              "processes": [],
+              "steps": []
+            },
+            "actionDescription": "Mix the @[chicken](ingredient:309) with @[yogurt](ingredient:286), @[turmeric](ingredient:45), @[chilli powder](ingredient:46) and @[salt](ingredient:33)",
+            "expectedOutput": "Marinated Chicken",
+            "flameLevelId": "",
+            "customFlameLevel": "",
+            "temperatureValue": "",
+            "temperatureUnit": "",
+            "durationValue": "30",
+            "durationUnit": "minutes",
+            "repeatIntervalValue": "",
+            "repeatIntervalUnit": ""
+          },
+          "sectionId": null
+        },
+        "type": "processStepNode",
+        "position": {
+          "x": 120,
+          "y": 80
+        },
+        "measured": {
+          "width": 314,
+          "height": 284
+        },
+        "width": 314,
+        "height": 284,
+        "parentId": null,
+        "extent": null,
+        "draggable": true,
+        "selectable": true,
+        "deletable": true
+      }
+    ],
+    "recipeId": 62,
+    "type": "SUBPROCESS",
+    "updatedAt": null,
+    "viewport": null
+  }
+]

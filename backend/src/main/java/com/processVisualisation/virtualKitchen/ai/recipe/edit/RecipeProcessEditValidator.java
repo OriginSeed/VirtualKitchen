@@ -166,7 +166,7 @@ public class RecipeProcessEditValidator {
             if (insertAt == null || alias == null) return;
 
             RecipeProcessOutput.Node node = new RecipeProcessOutput.Node("CONDITION", alias, null, null, null, null, null,
-                    operation.actionDescription(), null, null, null, null, null, null, operation.title(), operation.expectedResult());
+                    operation.actionDescription(), null, null, null, null, null, null, operation.title(), operation.expectedResult(), null, null);
             GeneratedRecipeStepDTO condition = RecipeProcessEditContext.copy(normalizer.toStep(node, alias));
             steps.add(insertAt, condition);
             translated.add(ProcessEditOperationDTO.builder()
@@ -191,6 +191,12 @@ public class RecipeProcessEditValidator {
                 if (set.action() != null) { step.setAction(set.action()); patch.setAction(set.action()); }
                 if (set.customActionName() != null) { step.setCustomActionName(set.customActionName()); patch.setCustomActionName(set.customActionName()); }
                 if (set.expectedOutput() != null) { step.setExpectedOutput(set.expectedOutput()); patch.setExpectedOutput(set.expectedOutput()); }
+                if (set.title() != null) { step.setTitle(set.title()); patch.setTitle(set.title()); }
+                if (set.summary() != null) {
+                    String summary = StepAnnotations.toPlainText(set.summary()).trim();
+                    step.setSummary(summary);
+                    patch.setSummary(summary);
+                }
                 if (set.temperatureValue() != null) { step.setTemperatureValue(set.temperatureValue()); patch.setTemperatureValue(set.temperatureValue()); }
                 if (set.temperatureUnit() != null) { step.setTemperatureUnit(set.temperatureUnit()); patch.setTemperatureUnit(set.temperatureUnit()); }
                 if (set.flameLevel() != null) { step.setFlameLevel(set.flameLevel()); patch.setFlameLevel(set.flameLevel()); }

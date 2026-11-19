@@ -8,5 +8,10 @@ public enum ProcessGenerationMode {
     /** Convert recipe text into a complete new MAIN process (+ subprocesses), replacing the current MAIN. */
     CREATE,
     /** Apply a natural-language change to one existing process as a minimal list of edit operations. */
-    EDIT
+    EDIT,
+    /**
+     * Re-author the whole saved recipe (every process) as a corrected complete flow: fixed ingredient tagging, step
+     * summaries and titles, and the Preparation/main split. The cook reviews it before it replaces their flow.
+     */
+    REFINE
 }

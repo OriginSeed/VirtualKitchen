@@ -129,6 +129,23 @@ class CostCalculatorTest {
     }
 
     @Test
+    void anImageModelPricedPerImage_isPricedPerImageEvenWhenItReportsTokens() {
+        PricingRateCard card = paidText();
+        card.setInputPerMTok(null);
+        card.setOutputPerMTok(null);
+        card.setPerImage(0.04);
+        Usage usage = new Usage();
+        usage.setInputTokens(803L);
+        usage.setOutputTokens(196L);
+        usage.setImageCount(1);
+
+        Cost cost = CostCalculator.calculate(usage, card, 1000L, true, NOW);
+
+        assertThat(cost.getCostBasis()).isEqualTo(CostBasis.CALCULATED);
+        assertThat(cost.getTotalCost()).isCloseTo(0.04, within(1e-12));
+    }
+
+    @Test
     void audio_isPricedByTokensOrBySecondsWhenThatIsTheBillingUnit() {
         PricingRateCard tts = paidText();
         tts.setInputPerMTok(0.5);

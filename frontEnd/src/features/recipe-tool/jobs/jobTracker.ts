@@ -1,11 +1,14 @@
 import { createContext } from 'react'
-import { RecipeJobsApi, RecipeProcessGenerationApi, RecipeProcessVisualizationApi } from '../../../api'
+import { RecipeJobsApi, RecipeProcessGenerationApi, RecipeProcessVisualizationApi, RecipeStoryboardApi } from '../../../api'
 import { RecipeAiWorkflowApi } from '../../../api/recipeAiWorkflowApi'
 import type {
   ProcessGenerationMode,
   RecipeProcessGenerationJobResponse,
   RecipeProcessGenerationRequest,
   RecipeProcessVisualizationJobResponse,
+  RecipeStoryboardResponse,
+  StoryboardMode,
+  StoryboardStepFixResponse,
 } from '../../../types/recipe'
 import type { RecipeAiWorkflowCreateRequest, RecipeAiWorkflowResponse, RecipeAiWorkflowStatus } from '../../../types/recipeAiWorkflow'
 import { errorMessage } from '../../../shared/errors'
@@ -13,7 +16,7 @@ import type { RunModels } from '../workflow/model/workflowSelection'
 
 /**
  * App-wide tracker for the recipe tool's long-running backend jobs (AI process generation, Generate
- * Visuals, and the AI Recipe Creation workflow that orchestrates them). Owned by JobTrackerProvider above the routes, so a job keeps being polled while the
+ * Visuals, the recipe storyboard, and the AI Recipe Creation workflow that orchestrates the first two). Owned by JobTrackerProvider above the routes, so a job keeps being polled while the
  * user moves between processes, tabs or pages; and re-attached from the backend (`discover`) when
  * the recipe tool opens, so a reload resumes showing progress instead of offering to start the same
  * work again.
@@ -36,11 +39,15 @@ const GIVE_UP_AFTER = 25
 export type GenerationJobKey = `gen:${number}`
 export type VisualsJobKey = `viz:${number}`
 export type WorkflowJobKey = `wf:${number}`
-export type JobKey = GenerationJobKey | VisualsJobKey | WorkflowJobKey
+export type StoryboardJobKey = `sb:${number}`
+export type StepFixJobKey = `sf:${number}:${string}`
+export type JobKey = GenerationJobKey | VisualsJobKey | WorkflowJobKey | StoryboardJobKey | StepFixJobKey
 
 export const generationJobKey = (recipeId: number): GenerationJobKey => `gen:${recipeId}`
 export const visualsJobKey = (processId: number): VisualsJobKey => `viz:${processId}`
 export const workflowJobKey = (recipeId: number): WorkflowJobKey => `wf:${recipeId}`
+export const storyboardJobKey = (recipeId: number): StoryboardJobKey => `sb:${recipeId}`
+export const stepFixJobKey = (recipeId: number, stepId: string): StepFixJobKey => `sf:${recipeId}:${stepId}`
 
 type TrackedBase = {
   recipeId: number
@@ -59,10 +66,16 @@ export type TrackedGenerationJob = TrackedBase & {
 export type TrackedVisualsJob = TrackedBase & { kind: 'visuals'; processId: number; job: RecipeProcessVisualizationJobResponse }
 /** An AI Recipe Creation workflow; `job` is the workflow itself (its id is `workflowId`). */
 export type TrackedWorkflow = TrackedBase & { kind: 'workflow'; job: RecipeAiWorkflowResponse }
-export type TrackedJob = TrackedGenerationJob | TrackedVisualsJob | TrackedWorkflow
+/** A recipe storyboard being generated; `job` is the storyboard itself (its id is `jobId`). */
+export type TrackedStoryboard = TrackedBase & { kind: 'storyboard'; job: RecipeStoryboardResponse }
+/** One step's image being fixed from feedback; `job` is the fix itself (its id is `fixId`). */
+export type TrackedStepFix = TrackedBase & { kind: 'stepfix'; job: StoryboardStepFixResponse }
+export type TrackedJob = TrackedGenerationJob | TrackedVisualsJob | TrackedWorkflow | TrackedStoryboard | TrackedStepFix
 export type TrackedJobFor<K extends JobKey> = K extends GenerationJobKey
   ? TrackedGenerationJob
-  : K extends WorkflowJobKey ? TrackedWorkflow : TrackedVisualsJob
+  : K extends WorkflowJobKey ? TrackedWorkflow
+    : K extends StoryboardJobKey ? TrackedStoryboard
+      : K extends StepFixJobKey ? TrackedStepFix : TrackedVisualsJob
 
 const isRunningStatus = (status: string | undefined) => status === 'QUEUED' || status === 'IN_PROGRESS'
 
@@ -81,7 +94,8 @@ export const isTrackedJobActive = (tracked: TrackedJob | undefined) => {
 }
 
 /** The backend id of whatever is tracked: a job id, or a workflow id. */
-const trackedId = (tracked: TrackedJob) => (tracked.kind === 'workflow' ? tracked.job.workflowId : tracked.job.jobId)
+const trackedId = (tracked: TrackedJob) => (tracked.kind === 'workflow' ? tracked.job.workflowId
+  : tracked.kind === 'stepfix' ? tracked.job.fixId : tracked.job.jobId)
 
 const pollInterval = (tracked: TrackedJob) =>
   tracked.kind === 'workflow' && tracked.job.status === 'WAITING_FOR_APPROVAL' ? WAITING_POLL_INTERVAL_MS : POLL_INTERVAL_MS
@@ -94,6 +108,7 @@ export type JobNotifier = {
 
 const ALREADY_GENERATING = 'The AI is already working on this recipe — showing its progress.'
 const ALREADY_VISUALIZING = 'Visuals are already being generated for this process — showing their progress.'
+const ALREADY_STORYBOARDING = 'Visualize is already running for this recipe — showing its progress.'
 
 export class JobTracker {
   private jobs = new Map<JobKey, TrackedJob>()
@@ -193,6 +208,69 @@ export class JobTracker {
   }
 
   /**
+   * Starts (or joins the already-running) storyboard generation for a recipe. Resolves once the backend accepted it.
+   * `regenerate`: plan the panels again instead of continuing a failed attempt on the same recipe.
+   */
+  async startStoryboard(
+    recipeId: number,
+    options: { modelKeys?: RunModels; overwriteExisting?: boolean; regenerate?: boolean; mode?: StoryboardMode } = {},
+  ): Promise<TrackedStoryboard | undefined> {
+    const key = storyboardJobKey(recipeId)
+    if (this.starting.has(key)) return undefined
+    const current = this.jobs.get(key)
+    if (current?.kind === 'storyboard' && isTrackedJobActive(current)) {
+      this.notifier.info(ALREADY_STORYBOARDING)
+      return current
+    }
+
+    this.starting.add(key)
+    try {
+      const job = await RecipeStoryboardApi.startJob(recipeId, options)
+      const tracked: TrackedStoryboard = { kind: 'storyboard', recipeId, job, connectionLost: false, pollError: null }
+      this.track(key, tracked)
+      this.notifier.info(job.reused
+        ? ALREADY_STORYBOARDING
+        : 'Visualizing the recipe in the background. You can keep working or come back later.')
+      return tracked
+    } finally {
+      this.starting.delete(key)
+    }
+  }
+
+  /** Starts (or joins the running) fix of one step's image from the cook's feedback. Resolves once accepted. */
+  async startStepFix(
+    recipeId: number, processId: number, stepId: string, feedback: string, modelKeys?: RunModels,
+  ): Promise<TrackedStepFix | undefined> {
+    const key = stepFixJobKey(recipeId, stepId)
+    if (this.starting.has(key)) return undefined
+    const current = this.jobs.get(key)
+    if (current?.kind === 'stepfix' && isTrackedJobActive(current)) return current
+
+    this.starting.add(key)
+    try {
+      const job = await RecipeStoryboardApi.fixStep(recipeId, stepId, { processId, feedback, modelKeys })
+      const tracked: TrackedStepFix = { kind: 'stepfix', recipeId, job, connectionLost: false, pollError: null }
+      this.track(key, tracked)
+      this.notifier.info(job.reused
+        ? 'This step image is already being fixed — showing its progress.'
+        : 'Fixing this step image in the background.')
+      return tracked
+    } finally {
+      this.starting.delete(key)
+    }
+  }
+
+  /** Undoes a finished step image fix; the session then shows the step's previous image again. */
+  async revertStepFix(recipeId: number, stepId: string): Promise<void> {
+    const key = stepFixJobKey(recipeId, stepId)
+    const current = this.jobs.get(key)
+    if (current?.kind !== 'stepfix' || current.job.status !== 'COMPLETED' || current.job.reverted) return
+    const job = await RecipeStoryboardApi.revertFix(recipeId, current.job.fixId)
+    this.set(key, { ...current, job })
+    this.notifier.info('The step image is back to how it was.')
+  }
+
+  /**
    * Starts AI Recipe Creation (or joins the recipe's open workflow). With the recipe process selected,
    * the backend also starts the generation job, which is tracked under its usual key so the editor
    * loads the result exactly as it does for a plain generation. Resolves once the backend accepted it.
@@ -234,6 +312,14 @@ export class JobTracker {
         this.track(key, { kind: 'generation', recipeId, job: workflow.generation, connectionLost: false, pollError: null, requestedMode: 'CREATE' })
       }
     }
+    if (workflow.storyboardJob) {
+      const key = storyboardJobKey(recipeId)
+      const current = this.jobs.get(key)
+      const job = workflow.storyboardJob
+      if (isRunningStatus(job.status) && (current?.kind !== 'storyboard' || current.job.jobId !== job.jobId)) {
+        this.track(key, { kind: 'storyboard', recipeId, job, connectionLost: false, pollError: null })
+      }
+    }
     for (const job of workflow.visualizationJobs ?? []) {
       const key = visualsJobKey(job.processId)
       const current = this.jobs.get(key)
@@ -254,6 +340,9 @@ export class JobTracker {
         this.track(visualsJobKey(job.processId), { kind: 'visuals', recipeId, processId: job.processId, job, connectionLost: false, pollError: null })
       }
       if (active.workflow) this.applyWorkflow(recipeId, active.workflow)
+      if (active.storyboard) {
+        this.track(storyboardJobKey(recipeId), { kind: 'storyboard', recipeId, job: active.storyboard, connectionLost: false, pollError: null })
+      }
     } catch (error) {
       // Not fatal: the tool still works; it just can't show jobs started before this page load.
       console.error('Unable to load this recipe\'s running jobs:', error)
@@ -320,6 +409,10 @@ export class JobTracker {
         next = { ...tracked, connectionLost: false, job: await RecipeProcessGenerationApi.getJobStatus(tracked.recipeId, tracked.job.jobId, controller.signal) }
       } else if (tracked.kind === 'visuals') {
         next = { ...tracked, connectionLost: false, job: await RecipeProcessVisualizationApi.getJobStatus(tracked.recipeId, tracked.processId, tracked.job.jobId, controller.signal) }
+      } else if (tracked.kind === 'storyboard') {
+        next = { ...tracked, connectionLost: false, job: await RecipeStoryboardApi.getJobStatus(tracked.recipeId, tracked.job.jobId, controller.signal) }
+      } else if (tracked.kind === 'stepfix') {
+        next = { ...tracked, connectionLost: false, job: await RecipeStoryboardApi.getFix(tracked.recipeId, tracked.job.fixId, controller.signal) }
       } else {
         next = { ...tracked, connectionLost: false, job: await RecipeAiWorkflowApi.get(tracked.recipeId, tracked.job.workflowId, controller.signal) }
       }
@@ -367,6 +460,19 @@ export class JobTracker {
       if (job.status === 'COMPLETED') this.notifier.success(`Visuals ready for all ${job.totalSteps} steps`)
       else if (job.status === 'COMPLETED_WITH_ERRORS') this.notifier.error(`Visuals generated for ${succeeded}/${job.totalSteps} steps — ${job.totalSteps - succeeded} failed`)
       else this.notifier.error(job.errorMessage || 'Unable to generate visuals right now.')
+    } else if (tracked.kind === 'storyboard') {
+      const { job } = tracked
+      if (job.status === 'COMPLETED') {
+        this.notifier.success(job.warnings.length > 0
+          ? 'The visuals are ready, with a note — open them from the AI menu.'
+          : 'The visuals are ready — open them from the AI menu.')
+      } else {
+        this.notifier.error(job.errorMessage || 'Unable to visualize this recipe right now.')
+      }
+    } else if (tracked.kind === 'stepfix') {
+      const { job } = tracked
+      if (job.status === 'COMPLETED') this.notifier.success('The step image was redrawn. You can undo it from the step.')
+      else this.notifier.error(job.errorMessage || 'Unable to fix this step image right now.')
     } else if (tracked.job.status === 'FAILED') {
       // A successful generation is announced by the editor once it has loaded the result.
       this.notifier.error(tracked.job.errorMessage

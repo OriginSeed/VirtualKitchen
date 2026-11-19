@@ -1200,7 +1200,8 @@ public class RecipeProcessVisualizationService {
                 flameLevel,
                 duration,
                 previousExpectedOutput,
-                actionId
+                actionId,
+                asString(step.get("summary"))
         );
     }
 

@@ -45,7 +45,7 @@ public class GeneratedRecipeStepDTO {
     /** How often to repeat the action during the step, same format as {@code duration} (e.g. "stir every 2 minutes"). */
     private String repeatInterval;
 
-    // --- CONDITION-only fields ---
+    // --- CONDITION: the question; STEP: an optional short title (empty = derived from the action) ---
     private String title;
     /** "success" or "failure". */
     private String expectedResult;
@@ -53,4 +53,14 @@ public class GeneratedRecipeStepDTO {
     // --- shared core fields (both STEP and CONDITION) ---
     private String actionDescription;
     private String expectedOutput;
+
+    /** STEP only: a plain spoken explanation of the step that continues from the one before it (used by TTS). */
+    private String summary;
+
+    /** REFINE only: the id of the cook's node this step re-authors, so it keeps that node's id (and its image). */
+    private String sourceNodeId;
+
+    /** REFINE only, before mapping: the aliases the model named. Never sent to the client. */
+    @com.fasterxml.jackson.annotation.JsonIgnore
+    private java.util.List<String> sourceAliases;
 }

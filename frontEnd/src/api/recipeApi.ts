@@ -9,7 +9,7 @@ import type { UiActionOptions } from './client'
 import { API } from './endpoints'
 import type { Process, ProcessBatchUpdateItem, ProcessBatchUpdateResult, ProcessCreateRequest, ProcessUpdateRequest } from '../types/process'
 import type { RecipeAssetImportRequest, RecipeAssetImportResponse } from '../types/recipe'
-import type { NutritionInfo, RecipeActiveJobsResponse, RecipeProcessGenerationJobResponse, RecipeProcessGenerationRequest, RecipeProcessVisualizationJobResponse, RecipeDetail, RecipeIngredient } from '../types/recipe'
+import type { NutritionInfo, RecipeActiveJobsResponse, RecipeProcessGenerationJobResponse, RecipeProcessGenerationRequest, RecipeProcessVisualizationJobResponse, RecipeDetail, RecipeIngredient, RecipeStoryboardResponse, StoryboardMode, StoryboardStepFixResponse } from '../types/recipe'
 import type { UnitType } from '../types/kitchen'
 
 export type RecipeVisibility = 'PUBLIC' | 'PRIVATE'
@@ -255,6 +255,67 @@ export const RecipeProcessGenerationApi = {
 export const RecipeJobsApi = {
   async getActive(recipeId: number): Promise<RecipeActiveJobsResponse> {
     return apiGet<RecipeActiveJobsResponse>(API.recipeJobs.active(recipeId))
+  },
+}
+
+/**
+ * The recipe storyboard: the whole recipe (Preparation and main process) told as panels in one generated image.
+ * Generation is an async job; starting it requires ownership.
+ */
+export const RecipeStoryboardApi = {
+  /** The recipe's latest finished storyboard, or null when it has none. */
+  async getLatest(recipeId: number): Promise<RecipeStoryboardResponse | null> {
+    return (await apiGet<RecipeStoryboardResponse | null>(API.recipeStoryboard.latest(recipeId))) ?? null
+  },
+
+  /**
+   * `modelKeys`: the models picked for this run (text for the panels and the image prompt, image for the picture).
+   * `overwriteExisting`: replace images the covered steps already have (default: keep them).
+   * `regenerate`: plan the panels again even when the last attempt failed on the same recipe.
+   * `mode`: FILL (spend only what is needed; reuse the storyboard when the recipe is unchanged) or REPLACE (redo it
+   * and replace the steps' images). When given it decides instead of `overwriteExisting` and `regenerate`.
+   */
+  async startJob(
+    recipeId: number,
+    options: {
+      modelKeys?: RecipeProcessGenerationRequest['modelKeys']
+      overwriteExisting?: boolean
+      regenerate?: boolean
+      mode?: StoryboardMode
+    } = {},
+  ): Promise<RecipeStoryboardResponse> {
+    const { modelKeys, overwriteExisting, regenerate, mode } = options
+    return apiPost<RecipeStoryboardResponse>(API.recipeStoryboard.startJob(recipeId), {
+      ...(modelKeys && Object.keys(modelKeys).length > 0 ? { modelKeys } : {}),
+      ...(mode ? { mode } : {}),
+      ...(overwriteExisting ? { overwriteExisting: true } : {}),
+      ...(regenerate ? { regenerate: true } : {}),
+    })
+  },
+
+  async getJobStatus(recipeId: number, jobId: string, signal?: AbortSignal): Promise<RecipeStoryboardResponse> {
+    return apiGet<RecipeStoryboardResponse>(API.recipeStoryboard.jobStatus(recipeId, jobId), { signal })
+  },
+
+  /** Redraws one step's image from the cook's feedback; poll with `getFix`. */
+  async fixStep(
+    recipeId: number, stepId: string,
+    request: { processId: number; feedback: string; modelKeys?: RecipeProcessGenerationRequest['modelKeys'] },
+  ): Promise<StoryboardStepFixResponse> {
+    const { modelKeys, ...rest } = request
+    return apiPost<StoryboardStepFixResponse>(API.recipeStoryboard.fixStep(recipeId, stepId), {
+      ...rest,
+      ...(modelKeys && Object.keys(modelKeys).length > 0 ? { modelKeys } : {}),
+    })
+  },
+
+  async getFix(recipeId: number, fixId: string, signal?: AbortSignal): Promise<StoryboardStepFixResponse> {
+    return apiGet<StoryboardStepFixResponse>(API.recipeStoryboard.fix(recipeId, fixId), { signal })
+  },
+
+  /** Puts the step back to the image and prompt it had before the fix. */
+  async revertFix(recipeId: number, fixId: string): Promise<StoryboardStepFixResponse> {
+    return apiPost<StoryboardStepFixResponse>(API.recipeStoryboard.revertFix(recipeId, fixId), {})
   },
 }
 

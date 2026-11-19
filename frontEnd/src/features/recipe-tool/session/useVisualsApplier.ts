@@ -1,10 +1,12 @@
 import { useEffect, useRef } from 'react'
 import type { JobTracker } from '../jobs/jobTracker'
 import { withRecipeStepVisualization } from '../model/recipeStepData'
+import { storyboardStepChanges } from '../model/storyboardView'
 import type { SessionStore } from './persistence/sessionStore'
 
 /**
- * Applies Generate Visuals step results to the session as they arrive, whether or not that process's
+ * Applies step images made in the background (Generate Visuals results, and the panel images a storyboard put on
+ * the steps) to the session as they arrive, whether or not that process's
  * canvas is open — so leaving a process mid-job (or coming back after a reload) still shows every image
  * generated so far, and a later save can't send nodes missing them. Not an edit: no history entry and no
  * autosave of its own (the job already stored these images on the backend); the next save simply carries
@@ -48,6 +50,57 @@ export function useVisualsApplier({ enabled, recipeId, jobTracker, store, onAppl
           }
         }))
         fresh.forEach((step) => appliedStepsRef.current.add(`${tracked.job.jobId}:${step.stepId}`))
+        changed = true
+      }
+      // A storyboard puts each panel's image on one step, in either process: same rule, one step list for the recipe.
+      for (const tracked of jobTracker.all()) {
+        if (tracked.kind !== 'storyboard' || tracked.recipeId !== recipeId) continue
+        const fresh = storyboardStepChanges(tracked.job).filter((step) =>
+          !appliedStepsRef.current.has(`${tracked.job.jobId}:${step.stepId}`))
+        if (fresh.length === 0) continue
+
+        const freshByStepId = new Map(fresh.map((step) => [step.stepId, step]))
+        store.setProcesses(store.processes.map((process) => ({
+          ...process,
+          nodes: process.nodes.map((node) => {
+            const step = freshByStepId.get(node.id)
+            if (!step || node.kind !== 'STEP' || step.processId !== process.id) return node
+            return {
+              ...node,
+              // A step an earlier storyboard had illustrated, and this one did not, has its image removed.
+              data: withRecipeStepVisualization(node.data, step.cleared ? { status: 'not_generated' } : {
+                assetId: step.visualizationAssetId ?? undefined,
+                imagePrompt: step.imagePrompt ?? undefined,
+                imageUrl: step.imageUrl ?? undefined,
+                status: 'generated',
+              }) as unknown as Record<string, unknown>,
+            }
+          }),
+        })))
+        fresh.forEach((step) => appliedStepsRef.current.add(`${tracked.job.jobId}:${step.stepId}`))
+        changed = true
+      }
+      // A step image fixed from feedback: the new image and prompt, on that one step, once it finished.
+      for (const tracked of jobTracker.all()) {
+        if (tracked.kind !== 'stepfix' || tracked.recipeId !== recipeId) continue
+        const { job } = tracked
+        const appliedKey = `${job.fixId}:${job.reverted ? 'reverted' : 'fixed'}`
+        if (job.status !== 'COMPLETED' || !job.imageUrl || appliedStepsRef.current.has(appliedKey)) continue
+        store.setProcesses(store.processes.map((process) => (process.id !== job.processId ? process : {
+          ...process,
+          nodes: process.nodes.map((node) => (node.id !== job.stepId || node.kind !== 'STEP' ? node : {
+            ...node,
+            data: withRecipeStepVisualization(node.data, job.reverted
+              ? (job.previousImageUrl ? { imageUrl: job.previousImageUrl, imagePrompt: job.previousPrompt ?? undefined, status: 'generated' } : { status: 'not_generated' })
+              : {
+                assetId: job.visualizationAssetId ?? undefined,
+                imagePrompt: job.imagePrompt ?? undefined,
+                imageUrl: job.imageUrl ?? undefined,
+                status: 'generated',
+              }) as unknown as Record<string, unknown>,
+          })),
+        })))
+        appliedStepsRef.current.add(appliedKey)
         changed = true
       }
       if (changed) onApplied()

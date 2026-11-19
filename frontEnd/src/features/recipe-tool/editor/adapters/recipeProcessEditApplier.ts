@@ -73,6 +73,8 @@ const patchStepFields = (
       (annotation.kind === 'step' ? resolveNode(annotation.id) : undefined))
   }
   if (patch.expectedOutput != null) raw.expectedOutput = patch.expectedOutput
+  if (patch.title != null) raw.title = patch.title
+  if (patch.summary != null) raw.summary = patch.summary
   if (patch.flameLevel != null) Object.assign(raw, { flameLevelId: patch.flameLevel, customFlameLevel: '' })
   if (patch.temperatureValue != null) raw.temperatureValue = String(patch.temperatureValue)
   if (patch.temperatureUnit != null) raw.temperatureUnit = patch.temperatureUnit
@@ -296,6 +298,7 @@ const describePatch = (patch: Partial<GeneratedRecipeStep>, clear: string[]): st
   if (patch.expectedResult) parts.push(`expected result → ${patch.expectedResult}`)
   if (patch.expectedOutput) parts.push(`expected output → “${patch.expectedOutput}”`)
   if (patch.actionDescription) parts.push('description updated')
+  if (patch.summary) parts.push('summary updated')
   if (patch.actionOn?.steps) parts.push('uses different earlier steps')
   if (patch.actionOn?.processes) parts.push('uses different subprocesses')
   if (clear.length > 0) parts.push(`cleared ${clear.join(', ')}`)

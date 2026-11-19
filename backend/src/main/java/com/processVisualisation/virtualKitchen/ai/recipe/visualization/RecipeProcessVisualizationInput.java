@@ -21,6 +21,7 @@ import java.util.List;
  *                               visual continuity — null for the first step of the process
  * @param actionId the step's catalog action id (e.g. "cut"), used only to choose the image's generation profile
  *                 ({@link VisualizationImageProfiles}); never part of the prompt. Null when unknown.
+ * @param summary the step's spoken explanation (written by AI or the cook), or blank; the narration speaks it
  */
 public record RecipeProcessVisualizationInput(
         String action,
@@ -32,14 +33,24 @@ public record RecipeProcessVisualizationInput(
         String flameLevel,
         String duration,
         String previousExpectedOutput,
-        String actionId
+        String actionId,
+        String summary
 ) {
+    /** An input without a summary. */
+    public RecipeProcessVisualizationInput(String action, List<IngredientTarget> ingredients, List<String> subprocessNames,
+                                           String actionDescription, String expectedOutput, String temperature,
+                                           String flameLevel, String duration, String previousExpectedOutput,
+                                           String actionId) {
+        this(action, ingredients, subprocessNames, actionDescription, expectedOutput, temperature, flameLevel,
+                duration, previousExpectedOutput, actionId, null);
+    }
+
     /** An input without an action id; its image uses the default generation profile. */
     public RecipeProcessVisualizationInput(String action, List<IngredientTarget> ingredients, List<String> subprocessNames,
                                            String actionDescription, String expectedOutput, String temperature,
                                            String flameLevel, String duration, String previousExpectedOutput) {
         this(action, ingredients, subprocessNames, actionDescription, expectedOutput, temperature, flameLevel,
-                duration, previousExpectedOutput, null);
+                duration, previousExpectedOutput, null, null);
     }
 
     /**

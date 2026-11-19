@@ -46,6 +46,8 @@ public record RecipeProcessEditOutput(String summary, List<Operation> operations
             String duration,
             String repeatInterval,
             List<String> fromSteps,
+            String title,
+            String summary,
             /* The process aliases (p1, ...) whose output the step uses. */
             @JsonAlias("processes") List<String> uses
     ) {}

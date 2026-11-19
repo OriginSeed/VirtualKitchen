@@ -4,7 +4,7 @@ import '../../../../styles/flow-ui.css'
 import SearchableSelect, { type SearchableSelectOption } from '../../../../shared/components/SearchableSelect'
 import { useConfirm } from '../../../../shared/components/confirm/confirmContext'
 import IngredientSelector from './IngredientSelector'
-import ZoomableImage from '../../../../shared/components/image-viewer/ZoomableImage'
+import StepVisualFix from './StepVisualFix'
 import { draftKeys } from '../../../../shared/drafts/draftStore'
 import type { Process } from '../../../../types/process'
 import { PreparationStyleSelect, UnitSelect } from './StepFieldInputs'
@@ -65,16 +65,9 @@ type RecipeStepPanelProps = {
   onDuplicateNode?: (nodeId: string) => void
   /** Opens the Preparation on the step that makes a used component (`stepId` absent for a legacy whole-process use). */
   onOpenSubprocess?: (processId: number, stepId?: string) => void
-  /**
-   * Triggers the whole-process visualization job (see RecipeProcessCanvas's generateVisuals) — V1 has no
-   * single-step generation endpoint, so "Regenerate" here re-runs the same process-wide job rather
-   * than a step-scoped call; steps that already have an image are still re-checked cheaply (the
-   * backend's asset lookup only regenerates what's actually missing).
-   */
-  onGenerateVisuals?: () => void
-  isGeneratingVisuals?: boolean
-  /** Button label while generating, e.g. "Generating… 2/5" — falls back to "Generating…". */
-  visualsProgressLabel?: string
+  /** The recipe and process this step belongs to: needed to fix its image from feedback (omitted: no Visual block). */
+  recipeId?: number
+  processId?: number
   /** Readiness issues about this step (shown under its description). */
   issues?: ReadinessIssue[]
   /** 'popup': the editor opened on the node itself — a close button, and Save & close at the bottom. */
@@ -124,9 +117,8 @@ export default function RecipeStepPanel({
   onDeleteNode,
   onDuplicateNode,
   onOpenSubprocess,
-  onGenerateVisuals,
-  isGeneratingVisuals,
-  visualsProgressLabel,
+  recipeId,
+  processId,
   issues = [],
   variant = 'panel',
   autoFocusDescription,
@@ -432,6 +424,30 @@ export default function RecipeStepPanel({
             updateActionOnIngredients={updateActionOnIngredients}
             onOpenSubprocess={onOpenSubprocess}
             autoFocus={autoFocusDescription}
+          />
+        </div>
+
+        <div className="flow-editor-section-heading">Step Summary</div>
+        <div className="flow-properties-field">
+          <textarea
+            className="flow-properties-textarea"
+            rows={3}
+            value={step.summary}
+            onChange={(e) => updateStepField(node.id, 'summary', e.target.value)}
+            placeholder="Explain this step as you would say it aloud, carrying on from the step before"
+            aria-label="Step summary"
+          />
+          <div style={{ marginTop: 4, fontSize: 10.5, color: 'var(--flow-text-subtle)' }}>
+            Shown on the recipe page and in Cook mode, and read aloud by narration.
+          </div>
+        </div>
+        <div className="flow-properties-field">
+          <label className="flow-properties-label">Title (optional)</label>
+          <input
+            className="flow-properties-input"
+            value={step.title}
+            onChange={(e) => updateStepField(node.id, 'title', e.target.value)}
+            placeholder="Leave empty to name it from the action"
           />
         </div>
 
@@ -773,39 +789,17 @@ export default function RecipeStepPanel({
           </>
         )}
 
-        {onGenerateVisuals && (
+        {recipeId != null && processId != null && (
           <>
             <div className="mt-2 h-px" style={{ background: 'var(--flow-border)' }} />
-            <div className="flow-editor-section-heading">Visualization</div>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-              {visualization?.imageUrl && (
-                <div style={{ width: '100%', aspectRatio: '16 / 10', borderRadius: 10, overflow: 'hidden', border: '1px solid var(--flow-border)', background: '#0f172a' }}>
-                  <ZoomableImage
-                    src={visualization.imageUrl}
-                    alt="Generated visualization"
-                    caption="Generated visualization"
-                    style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
-                  />
-                </div>
-              )}
-              <button
-                type="button"
-                onClick={onGenerateVisuals}
-                disabled={isGeneratingVisuals}
-                style={{
-                  alignSelf: 'flex-start', padding: '6px 12px', borderRadius: 7,
-                  border: '1px solid var(--flow-magic-border)', background: 'var(--flow-magic-soft)', color: 'var(--flow-magic)',
-                  fontSize: 11.5, fontWeight: 700, cursor: isGeneratingVisuals ? 'wait' : 'pointer', opacity: isGeneratingVisuals ? 0.7 : 1,
-                }}
-              >
-                {isGeneratingVisuals ? (visualsProgressLabel ?? 'Generating…') : visualization?.imageUrl ? '🔄 Regenerate visuals' : '🖼️ Generate visuals'}
-              </button>
-              <div style={{ fontSize: 10, color: 'var(--flow-text-subtle)' }}>
-                {isPreparation
-                  ? 'Generates one image per preparation flow (a storyboard of its steps), shown on the step that makes its output.'
-                  : 'Generates an image for every step of this process — not only this one.'}
-              </div>
-            </div>
+            <div className="flow-editor-section-heading">Visual</div>
+            <StepVisualFix
+              recipeId={recipeId}
+              processId={processId}
+              stepId={node.id}
+              imageUrl={visualization?.imageUrl}
+              imagePrompt={visualization?.imagePrompt}
+            />
           </>
         )}
 

@@ -119,7 +119,14 @@ ai.artifact.sweeper.max-recovery-attempts=${AI_ARTIFACT_SWEEPER_MAX_RECOVERY_ATT
 #ai.openai.base-url=https://api.openai.com
 #ai.openai.chat-endpoint=/v1/chat/completions
 #ai.openai.default-model=gpt-4o-mini
-#ai.openai.timeout-ms=30000
+#ai.openai.timeout-ms=180000
+# Image and speech reuse the key and base URL above. See application.properties for the model registry entries.
+#ai.openai.image.model=gpt-image-1
+#ai.openai.image.size=1024x1024
+#ai.openai.image.quality=medium
+#ai.openai.tts.model=gpt-4o-mini-tts
+#ai.openai.tts.voice=alloy
+#ai.openai.tts.response-format=mp3
 
 #ai.provider=gemini
 
@@ -190,6 +197,14 @@ ai.visualization.image.focused-view-enabled=true
 # that takes reference images: Gemini, or DeepInfra with ai.deepinfra.image.edit-endpoint set). Those steps run one
 # after another instead of in parallel.
 ai.visualization.image.reference-chain-enabled=true
+# Recipe storyboard: the whole recipe told as panels in ONE image (two text calls, then one image call), which the
+# backend cuts into one image per panel and puts on the steps each panel covers.
+# max-panels: most panels of a storyboard, 1-16 (16 = a 4x4 grid). max-source-steps: a recipe with more steps and
+# checks than this is refused. image-width/height: requested size of the combined image (Gemini picks its own).
+ai.storyboard.max-panels=16
+ai.storyboard.max-source-steps=80
+ai.storyboard.image-width=1024
+ai.storyboard.image-height=1024
 # Image cost (Admin > Config > Images > Image cost). With the focused view on, this many Preparation steps (1, 2 or 4)
 # are drawn as equal panels of ONE image (2x2 grid, or two stacked panels), which the backend cuts into one image per
 # step. 4 costs about a quarter of an image per step; 1 draws every step on its own.

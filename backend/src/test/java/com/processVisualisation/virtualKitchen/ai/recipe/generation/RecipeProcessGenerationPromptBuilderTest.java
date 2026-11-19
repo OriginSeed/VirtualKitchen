@@ -67,7 +67,7 @@ class RecipeProcessGenerationPromptBuilderTest {
         assertTrue(prompt.contains(new RecipeProcessOutputSchema(VOCABULARY).promptBlock()));
         assertTrue(prompt.contains("minified JSON"));
         assertTrue(prompt.contains("OMIT every optional field"));
-        assertTrue(prompt.contains("STEP {stepId, action!, customActionName, ingredients, uses, fromSteps, actionDescription!,"));
+        assertTrue(prompt.contains("STEP {stepId, action!, customActionName, title, ingredients, uses, fromSteps, actionDescription!, expectedOutput, summary!,"));
         assertTrue(prompt.contains("PREPARATION {ref!, output!, steps!}"));
         assertTrue(prompt.contains("INGREDIENT {ingredientId!, name!, quantity, unit, customUnit, preparationStyle, customPreparationStyle, customIngredientName}"));
         assertTrue(prompt.contains("CONDITION {nodeType!, title!, expectedResult, actionDescription!, expectedOutput}"));

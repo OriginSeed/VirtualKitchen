@@ -1,4 +1,8 @@
 import { useMemo } from 'react'
+import { RecipeStoryboardApi } from '../../../../api'
+import { useApiData } from '../../../../shared/hooks/useApiData'
+import { storyboardJobKey } from '../../jobs/jobTracker'
+import { useTrackedJob } from '../../jobs/useJobTracker'
 import { Link } from 'react-router-dom'
 import '../../../../styles/flow-ui.css'
 import '../styles/recipe-view.css'
@@ -11,6 +15,7 @@ import RecipeHero from './RecipeHero'
 import RecipeIngredientsList from './RecipeIngredientsList'
 import RecipeNutritionPanel from './RecipeNutritionPanel'
 import RecipeStepsTimeline from './RecipeStepsTimeline'
+import RecipeStoryboardSection from './RecipeStoryboardSection'
 import AddToMyRecipesButton from '../../page/AddToMyRecipesButton'
 import type { AddToMyRecipes } from '../../page/useAddToMyRecipes'
 
@@ -27,6 +32,7 @@ type RecipeViewPageProps = {
 const ANCHORS = {
   ingredients: 'recipe-ingredients',
   steps: 'recipe-steps',
+  storyboard: 'recipe-storyboard',
   nutrition: 'recipe-nutrition',
 }
 
@@ -42,9 +48,14 @@ export default function RecipeViewPage({ recipe, isOwner, addToMyRecipes, onNutr
 
   // `session` changes identity on every process edit (its `version` bumps), which is exactly
   // when this needs re-deriving.
+  // The recipe's storyboard, if it has one: read again when a generation this page is following finishes.
+  const storyboardJob = useTrackedJob(storyboardJobKey(recipe.id))
+  const finishedStoryboardId = storyboardJob?.job.status === 'COMPLETED' ? storyboardJob.job.jobId : ''
+  const storyboard = useApiData(`recipe-storyboard:${recipe.id}:${finishedStoryboardId}`, () => RecipeStoryboardApi.getLatest(recipe.id)).data
+
   const presentation = useMemo(
-    () => (session && !session.loading ? buildRecipePresentation(session.getProcesses()) : null),
-    [session],
+    () => (session && !session.loading ? buildRecipePresentation(session.getProcesses(), storyboard?.panels ?? []) : null),
+    [session, storyboard],
   )
 
   if (session?.loadError) {
@@ -137,6 +148,8 @@ export default function RecipeViewPage({ recipe, isOwner, addToMyRecipes, onNutr
             </div>
           )}
         </section>
+
+        {hasSteps && storyboard && <RecipeStoryboardSection storyboard={storyboard} anchorId={ANCHORS.storyboard} />}
 
         <section id={ANCHORS.nutrition} className="rp-section" aria-labelledby={`${ANCHORS.nutrition}-title`}>
           <div className="rp-section-header">

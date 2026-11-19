@@ -156,7 +156,7 @@ export default function KitchenNavbar({ user, onLogout, extras }: KitchenNavbarP
   return (
     <nav className="kitchen-navbar" aria-label="Main">
       <div className="navbar-brand">
-        <Link to="/kitchen" className="navbar-brand-link" aria-label="Virtual Kitchen — My Kitchen">
+        <Link to="/" className="navbar-brand-link" aria-label="Virtual Kitchen — Home">
           <span className="kitchen-logo">
             <img src={logoIcon} alt="" />
           </span>

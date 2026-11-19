@@ -68,6 +68,25 @@ class NarrationScriptBuilderTest {
         assertEquals("Stir the soup slowly", builder.build(input("Stir the soup slowly with a wooden spoon")).text());
     }
 
+    @Test
+    void aStepSummaryIsSpokenAsItIs() {
+        NarrationScript script = builder.build(new RecipeProcessVisualizationInput("Fry", List.of(), List.of(),
+                "Fry the onions", "golden onions", "", "Medium", "5 minutes", null, "fry",
+                "Once the oil shimmers, slide in the onions and stir until they turn golden"));
+
+        assertEquals("Once the oil shimmers, slide in the onions and stir until they turn golden.", script.text());
+    }
+
+    @Test
+    void aStepWithoutASummaryKeepsItsScriptAndItsHash() {
+        RecipeProcessVisualizationInput withoutSummary = input("Stir the soup");
+        RecipeProcessVisualizationInput blankSummary = new RecipeProcessVisualizationInput("Add", List.of(), List.of(),
+                "Stir the soup", "", "", "", "", null, null, "  ");
+
+        assertEquals(builder.build(withoutSummary).hash(), builder.build(blankSummary).hash(),
+                "existing narration stays valid for steps that have no summary");
+    }
+
     private static RecipeProcessVisualizationInput input(String description) {
         return new RecipeProcessVisualizationInput("Add", List.of(), List.of(), description, "", "", "", "", null);
     }

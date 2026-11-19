@@ -123,6 +123,16 @@ export const API = {
       `/api/v1/recipes/${recipeId}/processes/${processId}/visualization/jobs/${jobId}`,
   },
 
+  // Recipe storyboard (the whole recipe as panels in one image) — async job, plus the latest finished one.
+  recipeStoryboard: {
+    latest: (recipeId: number) => `/api/v1/recipes/${recipeId}/storyboard`,
+    startJob: (recipeId: number) => `/api/v1/recipes/${recipeId}/storyboard/jobs`,
+    jobStatus: (recipeId: number, jobId: string) => `/api/v1/recipes/${recipeId}/storyboard/jobs/${jobId}`,
+    fixStep: (recipeId: number, stepId: string) => `/api/v1/recipes/${recipeId}/storyboard/steps/${encodeURIComponent(stepId)}/fix`,
+    fix: (recipeId: number, fixId: string) => `/api/v1/recipes/${recipeId}/storyboard/fixes/${fixId}`,
+    revertFix: (recipeId: number, fixId: string) => `/api/v1/recipes/${recipeId}/storyboard/fixes/${fixId}/revert`,
+  },
+
   // Spoken step narration for the slideshow — generated lazily, cached server-side by step text.
   stepNarration: {
     list: (recipeId: number, processId: number) =>

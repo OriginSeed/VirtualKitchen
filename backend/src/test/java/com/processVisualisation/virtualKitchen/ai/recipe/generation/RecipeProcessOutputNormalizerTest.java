@@ -284,6 +284,21 @@ class RecipeProcessOutputNormalizerTest {
         assertValid(normalized);
     }
 
+    @Test
+    void aStepsTitleAndSummaryAreKept_andASummaryIsPlainSpokenText() throws Exception {
+        RecipeProcessOutputNormalizer.Normalized normalized = normalize("""
+                {"main":{"name":"R","steps":[
+                  {"action":"heat","title":" Heat the oil ","actionDescription":"Heat the oil","summary":"Warm a little @[oil](ingredient:oil) in the pan."},
+                  {"action":"fry","actionDescription":"Fry in the hot oil","summary":"  "}]}}""");
+
+        List<GeneratedRecipeStepDTO> steps = normalized.main().getSteps();
+        assertEquals("Heat the oil", steps.get(0).getTitle());
+        assertEquals("Warm a little oil in the pan.", steps.get(0).getSummary());
+        assertNull(steps.get(1).getTitle(), "no title means the editor derives one");
+        assertNull(steps.get(1).getSummary(), "a blank summary is none");
+        assertTrue(normalized.repairs().stream().anyMatch(repair -> repair.contains("summary")), normalized.repairs()::toString);
+    }
+
     private RecipeProcessOutputNormalizer.Normalized normalize(String json) throws Exception {
         return normalizer.normalize(objectMapper.readValue(json, RecipeProcessOutput.class));
     }

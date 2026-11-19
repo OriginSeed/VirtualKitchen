@@ -49,6 +49,8 @@ const stepContent = (node: ProcessNode): GeneratedRecipeStep => {
       ? `${step.actionDescription} (heat: ${step.customFlameLevel})`.trim()
       : step.actionDescription,
     expectedOutput: step.expectedOutput,
+    title: orNull(step.title),
+    summary: orNull(step.summary),
     temperatureValue: Number.isFinite(temperature) ? temperature : null,
     temperatureUnit: Number.isFinite(temperature) ? orNull(step.temperatureUnit) : null,
     flameLevel: customFlame ? null : orNull(step.flameLevelId),

@@ -93,14 +93,14 @@ describe('AI Recipe Creation headline and credits', () => {
       tasks: [task('PROCESS', { status: 'COMPLETED' }), task('VISUALS', { status: 'FAILED' }), task('NARRATION', { status: 'COMPLETED' })],
     }))
     assert.equal(partial.title, 'Recipe created')
-    assert.match(partial.subtitle ?? '', /Step Visuals did not finish\. You can retry just that;/)
+    assert.match(partial.subtitle ?? '', /Visualize did not finish\. You can retry just that;/)
     const bothFailed = workflowHeadline(workflow({
       status: 'PARTIALLY_COMPLETED',
       selectedTasks: ['VISUALS', 'NARRATION'],
       tasks: [task('PROCESS', { status: 'SKIPPED' }), task('VISUALS', { status: 'FAILED', completed: 5 }), task('NARRATION', { status: 'FAILED' })],
     }))
     assert.equal(bothFailed.title, 'Partly done', 'nothing was "created" when the process was not generated')
-    assert.match(bothFailed.subtitle ?? '', /Step Visuals and Voice Narration did not finish\. You can retry just those;/)
+    assert.match(bothFailed.subtitle ?? '', /Visualize and Voice Narration did not finish\. You can retry just those;/)
   })
 
   it('badges the sidebar button with what needs attention', () => {

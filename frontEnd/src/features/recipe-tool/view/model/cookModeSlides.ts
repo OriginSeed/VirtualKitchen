@@ -1,5 +1,6 @@
 import type { SlideshowStep } from '../../walkthrough/RecipeVisualizationSlideshow'
 import { describeOutcome, type RecipeTimelineSection } from './recipeView'
+import { groupImageByItemKey } from './storyboardGroups'
 
 /**
  * Cook mode: the whole recipe as one walkthrough, in exactly the order the Recipe Process page
@@ -15,7 +16,10 @@ export const buildCookModeSlides = (sections: RecipeTimelineSection[]): Slidesho
   const totalSteps = sections.reduce((count, section) => count + section.stepCount, 0)
   const staged = sections.length > 1
 
-  return sections.flatMap((section) => section.items.map<SlideshowStep>((item) => {
+  return sections.flatMap((section) => {
+    // A step grouped under a storyboard panel image shows that image on its own slide.
+    const groupImages = groupImageByItemKey([...(section.groups ?? []), ...(section.flows ?? []).flatMap((flow) => flow.groups ?? [])])
+    return section.items.map<SlideshowStep>((item) => {
     // A preparation step says which flow it belongs to ("Prepare Marinated Chicken · Step 2 of 9").
     const flow = section.flows?.find((candidate) => candidate.items.includes(item))
     const where = flow ? `${flow.title} · ` : staged ? `${section.title} · ` : ''
@@ -49,8 +53,9 @@ export const buildCookModeSlides = (sections: RecipeTimelineSection[]): Slidesho
       instruction: item.instructionText,
       description: description || undefined,
       // A preparation step shows its own image; an older preparation has one image for the whole flow, on every slide.
-      imageUrl: flow && !flow.stepImages ? flow.imageUrl : item.imageUrl ?? flow?.imageUrl,
+      imageUrl: flow && !flow.stepImages ? flow.imageUrl : item.imageUrl ?? groupImages.get(item.key) ?? flow?.imageUrl,
       stepNumber: item.number,
     }
-  }))
+    })
+  })
 }

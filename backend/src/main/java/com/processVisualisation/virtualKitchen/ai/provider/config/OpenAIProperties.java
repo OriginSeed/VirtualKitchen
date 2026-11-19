@@ -21,4 +21,36 @@ public class OpenAIProperties {
     private String chatEndpoint;
     private String defaultModel;
     private Long timeoutMs;
+
+    /** Image generation ({@code ai.openai.image.*}); shares the API key, base URL and REST client above. */
+    private Image image = new Image();
+
+    /** Text-to-speech ({@code ai.openai.tts.*}); shares the API key, base URL and REST client above. */
+    private Tts tts = new Tts();
+
+    @Data
+    public static class Image {
+
+        private volatile String endpoint = "/v1/images/generations";
+        /** Used when the registry model names none. */
+        private volatile String model = "gpt-image-1";
+        /** gpt-image-1: 1024x1024, 1536x1024, 1024x1536 or auto. dall-e-3: 1024x1024, 1792x1024, 1024x1792. */
+        private volatile String size = "1024x1024";
+        /** gpt-image-1: low, medium, high, auto. dall-e-3: standard, hd. Blank sends none. */
+        private volatile String quality;
+    }
+
+    @Data
+    public static class Tts {
+
+        private volatile String endpoint = "/v1/audio/speech";
+        /** Used when the registry model names none. */
+        private volatile String model = "gpt-4o-mini-tts";
+        /** Used when the narration voice is not one of OpenAI's built-in voices. */
+        private volatile String voice = "alloy";
+        /** mp3, opus or wav: the formats narration can store and play. */
+        private volatile String responseFormat = "mp3";
+        /** Optional speaking-style instruction; only gpt-4o-mini-tts honours it. */
+        private volatile String instructions;
+    }
 }

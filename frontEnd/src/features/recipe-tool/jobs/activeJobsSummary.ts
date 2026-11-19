@@ -4,7 +4,7 @@
  */
 
 export type ActiveJobInfo = {
-  kind: 'generation' | 'visuals' | 'workflow'
+  kind: 'generation' | 'visuals' | 'workflow' | 'storyboard' | 'stepfix'
   recipeId: number
   /** A workflow paused until the user approves the generated process. */
   waitingForApproval: boolean
@@ -36,7 +36,7 @@ export const summarizeActiveJobs = (jobs: ActiveJobInfo[]): ActiveJobsSummary =>
 export const activeJobsKey = (jobs: ActiveJobInfo[]): string =>
   jobs.map((job) => `${job.kind}:${job.recipeId}:${job.waitingForApproval ? 1 : 0}`).join('|')
 
-const KINDS = new Set<ActiveJobInfo['kind']>(['generation', 'visuals', 'workflow'])
+const KINDS = new Set<ActiveJobInfo['kind']>(['generation', 'visuals', 'workflow', 'storyboard', 'stepfix'])
 
 /** The jobs an `activeJobsKey` string was made from (malformed parts are skipped). */
 export const parseActiveJobsKey = (key: string): ActiveJobInfo[] => {

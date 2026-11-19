@@ -168,6 +168,7 @@ final class RecipeProcessEditContext {
         copy.setExpectedResult(source.getExpectedResult());
         copy.setActionDescription(source.getActionDescription());
         copy.setExpectedOutput(source.getExpectedOutput());
+        copy.setSummary(source.getSummary());
         return copy;
     }
 

@@ -46,16 +46,18 @@ public class AdminModelService {
     static final Set<String> FIXED_MODEL_PROVIDERS = Set.of("drawThingsImageClient");
 
     /** Readable provider names; unknown beans show their bean name. */
-    private static final Map<String, String> PROVIDER_LABELS = Map.of(
-            "geminiAiClient", "Gemini",
-            "openAiAiClient", "OpenAI",
-            "ollamaAiClient", "Ollama (local)",
-            "deepInfraAiClient", "DeepInfra",
-            "geminiImageClient", "Gemini",
-            "deepInfraImageClient", "DeepInfra",
-            "geminiTtsProvider", "Gemini",
-            "localTtsProvider", "Local TTS server",
-            "deepInfraTtsProvider", "DeepInfra");
+    private static final Map<String, String> PROVIDER_LABELS = Map.ofEntries(
+            Map.entry("geminiAiClient", "Gemini"),
+            Map.entry("openAiAiClient", "OpenAI"),
+            Map.entry("ollamaAiClient", "Ollama (local)"),
+            Map.entry("deepInfraAiClient", "DeepInfra"),
+            Map.entry("geminiImageClient", "Gemini"),
+            Map.entry("openAiImageClient", "OpenAI"),
+            Map.entry("deepInfraImageClient", "DeepInfra"),
+            Map.entry("geminiTtsProvider", "Gemini"),
+            Map.entry("openAiTtsProvider", "OpenAI"),
+            Map.entry("localTtsProvider", "Local TTS server"),
+            Map.entry("deepInfraTtsProvider", "DeepInfra"));
 
     private final AdminModelRepository repository;
     private final AiModelRegistry registry;

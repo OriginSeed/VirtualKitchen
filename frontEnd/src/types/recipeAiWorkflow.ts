@@ -2,7 +2,7 @@
  * AI Recipe Creation (backend `RecipeAiWorkflow`): one user-controlled workflow over process
  * generation, step visuals and narration. Mirrors the backend's ai/workflow DTOs.
  */
-import type { RecipeProcessGenerationJobResponse, RecipeProcessVisualizationJobResponse } from './recipe'
+import type { RecipeProcessGenerationJobResponse, RecipeProcessVisualizationJobResponse, RecipeStoryboardResponse } from './recipe'
 
 export type RecipeAiTaskType = 'PROCESS' | 'VISUALS' | 'NARRATION'
 
@@ -41,8 +41,10 @@ export type RunModelCapability = 'TEXT_TO_TEXT' | 'TEXT_TO_IMAGE' | 'TEXT_TO_SPE
 
 export interface RecipeAiWorkflowCreateRequest {
   selection: RecipeAiTaskSelection
-  /** Required when the selection includes PROCESS. */
+  /** Required when the selection includes PROCESS. With `refine`, an optional note for the refinement. */
   recipeText?: string
+  /** Visuals/narration on an existing flow: let AI refine the flow first (reviewed before it applies). */
+  refine?: boolean
 }
 
 export interface RecipeAiTaskEstimate {
@@ -74,7 +76,7 @@ export interface RecipeAiWorkflowTask {
   completed: number
   failed: number
   total: number
-  /** PROCESS only: the generation job's stage. */
+  /** PROCESS: the generation job's stage. VISUALS run as Visualize: the storyboard's stage. */
   stage?: string | null
   errorMessage?: string | null
   retryable: boolean
@@ -96,6 +98,8 @@ export interface RecipeAiWorkflowResponse {
   /** Only on create/retry: the generation job to start tracking. */
   generation?: RecipeProcessGenerationJobResponse | null
   visualizationJobs: RecipeProcessVisualizationJobResponse[]
+  /** The storyboard the visuals task runs as (Visualize); null for older per-process step visuals. */
+  storyboardJob?: RecipeStoryboardResponse | null
   approvedRevision?: number | null
   approvedAt?: string | null
   createdAt?: string | null

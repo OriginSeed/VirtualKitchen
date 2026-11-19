@@ -37,7 +37,7 @@ class RecipeProcessOutputTest {
         assertEquals(List.of("ref", "output", "steps"), required(preparation));
 
         JsonNode nodeVariants = root.at("/properties/main/properties/steps/items/anyOf");
-        assertEquals(List.of("action", "actionDescription"), required(nodeVariants.get(0)));
+        assertEquals(List.of("action", "actionDescription", "summary"), required(nodeVariants.get(0)));
         assertEquals(List.of("nodeType", "title", "actionDescription"), required(nodeVariants.get(1)));
         assertEquals(List.of("ingredientId", "name"), required(nodeVariants.get(0).at("/properties/ingredients/items")));
         assertTrue(nodeVariants.get(0).at("/properties/uses").isObject(), "a step names the preparations it uses");

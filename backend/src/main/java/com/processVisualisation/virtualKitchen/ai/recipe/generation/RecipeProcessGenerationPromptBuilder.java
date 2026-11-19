@@ -38,7 +38,7 @@ public class RecipeProcessGenerationPromptBuilder {
      * Logged with every generation so a change in output quality can be tied to a prompt change.
      * Bump it whenever the system/initial/retry prompt wording or structure changes.
      */
-    public static final String PROMPT_VERSION = "6";
+    public static final String PROMPT_VERSION = "7";
 
     /** Aliases shown per ingredient — enough to recognise regional names without bloating the prompt. */
     private static final int MAX_INGREDIENT_ALIASES = 3;
@@ -113,6 +113,20 @@ public class RecipeProcessGenerationPromptBuilder {
                 - expectedOutput: the expected result/state after this step. Include it whenever it can be
                   reasonably inferred from the recipe (e.g. "onions turn golden brown"); omit it only when the
                   recipe gives no basis for it. Do not invent specific, unstated outcomes.
+                - title (optional): a short imperative title of at most 6 words (e.g. "Temper the spices"). Omit it
+                  when the action and its ingredients already say it.
+
+                STEP SUMMARY (summary, REQUIRED ON EVERY STEP)
+                - summary is what a cooking guide would SAY aloud for this step: 1-3 plain sentences in the second
+                  person ("Now add ...", "Keep stirring until ..."). It is read by text-to-speech, so no annotations,
+                  no markdown, no lists, no abbreviations like "tbsp" or "min" (say "tablespoons", "minutes").
+                - It continues the story: open from where the previous step left the food ("Once the onions are
+                  golden, ..."), and say what to look for before moving on (the expectedOutput in natural words).
+                - The first step of a preparation starts that component fresh; its last step names what is ready.
+                - The first MAIN step that uses a prepared component names it and says it was made earlier
+                  ("Bring back the marinated chicken you set aside ...").
+                - Mention amounts only when they help the cook (e.g. "two cups of water"); never read out every
+                  ingredient quantity. Never invent facts the recipe does not support.
 
                 ANNOTATIONS (IN actionDescription)
                 - @[onions](ingredient:<that ingredient's ingredientId; its "name" when custom>),
@@ -189,6 +203,51 @@ public class RecipeProcessGenerationPromptBuilder {
     /** The STEP field rules followed by the VOCABULARY section — the part of the system prompt the edit flow reuses. */
     public String stepAuthoringRulesAndVocabulary() {
         return STEP_AUTHORING_RULES + prompts().vocabularyBlock();
+    }
+
+    /** The generation system prompt, plus how to refine an existing recipe instead of converting text. */
+    public String buildRefineSystemPrompt() {
+        return buildSystemPrompt() + REFINE_RULES;
+    }
+
+    static final String REFINE_RULES = """
+
+            REFINING A COOK'S OWN RECIPE (REFINE REQUESTS)
+            - The user message holds the cook's recipe as it is now: JSON with "preparation" flows and a "main"
+              process, each node with an "id" alias (p1, m1, c1). Return the WHOLE recipe again in the OUTPUT format
+              above, corrected, plus two extra fields:
+              - "sourceStepIds" on every STEP: the ids of the cook's nodes this step comes from (usually exactly
+                one; several when you merged steps; none only for a step you had to add).
+              - "changes" at the root: one short line per correction, in plain words for the cook
+                (e.g. "Tagged the onions in step 3", "Moved 'marinate the chicken' into a preparation").
+                An empty list when nothing needed fixing.
+            - Keep the cook's intent: the same dish, the same cooking actions in the same order, their amounts,
+              times and heat. Do not rewrite steps that are already right, and never invent ingredients.
+            - Fix what is wrong or missing:
+              - every ingredient a step works with is in its "ingredients" (with a catalog id) and annotated in its
+                actionDescription; every prepared component it uses is in "uses";
+              - the action is the most specific catalog action for what the step says;
+              - a missing expectedOutput is written when the step clearly implies one;
+              - every STEP gets a "summary" (and a "title" where it helps), continuous across the recipe;
+              - prep work that sits in MAIN moves into a preparation (and MAIN "uses" it); cooking that sits in a
+                preparation moves into MAIN; a preparation that is never used is joined to the step that needs it.
+            - Add a step only when the recipe cannot be followed without it (e.g. an ingredient used but never
+              prepared), and say so in "changes".
+            """;
+
+    public String buildRefineInitialPrompt(String currentRecipeJson, String note) {
+        return "CURRENT RECIPE:\n" + currentRecipeJson
+                + (note == null || note.isBlank() ? "" : "\n\nCOOK'S NOTE:\n" + note.trim())
+                + "\n\nReturn the complete refined JSON only.";
+    }
+
+    public String buildRefineRetryPrompt(String currentRecipeJson, String note, String previousOutput, List<String> validationErrors) {
+        return buildRefineInitialPrompt(currentRecipeJson, note).replace("\n\nReturn the complete refined JSON only.", "")
+                + "\n\nYOUR PREVIOUS OUTPUT:\n"
+                + (previousOutput == null || previousOutput.isBlank() ? "(empty)" : previousOutput)
+                + "\n\nVALIDATION ERRORS IN THAT OUTPUT:\n"
+                + String.join("; ", validationErrors)
+                + "\n\nFix only these errors and return the complete corrected JSON only.";
     }
 
     public String buildInitialPrompt(String recipeText) {

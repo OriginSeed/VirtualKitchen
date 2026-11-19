@@ -43,6 +43,18 @@ public class RecipeAiWorkflowEstimator {
         this(modelRegistry, properties, null);
     }
 
+    /** Switches VISUALS between Visualize (the storyboard) and legacy step visuals; null in tests (legacy pricing). */
+    private com.processVisualisation.virtualKitchen.ai.recipe.storyboard.StoryboardProperties storyboardProperties;
+
+    @Autowired(required = false)
+    void setStoryboardProperties(com.processVisualisation.virtualKitchen.ai.recipe.storyboard.StoryboardProperties storyboardProperties) {
+        this.storyboardProperties = storyboardProperties;
+    }
+
+    private boolean visualsAsStoryboard() {
+        return storyboardProperties != null && !storyboardProperties.isLegacyStepVisualsEnabled();
+    }
+
     @Autowired
     public RecipeAiWorkflowEstimator(AiModelRegistry modelRegistry, RecipeAiWorkflowProperties properties,
                                      PreferredModelResolver preferences) {
@@ -94,6 +106,18 @@ public class RecipeAiWorkflowEstimator {
                         .build();
                 case VISUALS -> {
                     int imageCost = creditCost(userId, AiCapability.TEXT_TO_IMAGE);
+                    if (visualsAsStoryboard()) {
+                        // Visualize: one text call plans the panels, one writes the image prompt, one image is drawn.
+                        // A FILL run on an unchanged recipe reuses its storyboard and costs nothing.
+                        int full = steps.maxVisualSteps() > 0 ? 2 * textCost + imageCost : 0;
+                        yield TaskEstimate.builder()
+                                .task(task)
+                                .minCredits(0)
+                                .maxCredits(full)
+                                .basis("2 × " + credits(textCost) + " (panels and image prompt) + 1 × " + credits(imageCost)
+                                        + " (the storyboard image); nothing when the latest storyboard still fits")
+                                .build();
+                    }
                     int maxPromptRequests = promptRequests(steps.maxVisualSteps());
                     // The recipe's one scene anchor image, generated before its first step image.
                     int minScene = steps.sceneImageNeeded() && steps.minVisualSteps() > 0 ? imageCost : 0;

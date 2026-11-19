@@ -60,6 +60,8 @@ public class GenerationConfigSection implements ConfigSection {
         sites.put("processGeneration", "Recipe process generation");
         sites.put("processEdit", "Recipe process edits");
         sites.put("visualization", "Single step image prompt");
+        sites.put("storyboardPlan", "Storyboard panel planning");
+        sites.put("storyboardPrompt", "Storyboard image prompt");
         sites.put("chat", "AI chat");
         sites.forEach((site, label) -> {
             Call live = call(site);
@@ -160,6 +162,8 @@ public class GenerationConfigSection implements ConfigSection {
             case "processGeneration" -> params.getProcessGeneration();
             case "processEdit" -> params.getProcessEdit();
             case "visualization" -> params.getVisualization();
+            case "storyboardPlan" -> params.getStoryboardPlan();
+            case "storyboardPrompt" -> params.getStoryboardPrompt();
             case "chat" -> params.getChat();
             default -> throw new IllegalArgumentException("Unknown call site " + site);
         };

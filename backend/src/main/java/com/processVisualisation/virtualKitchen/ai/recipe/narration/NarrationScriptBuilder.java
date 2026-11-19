@@ -44,6 +44,12 @@ public class NarrationScriptBuilder {
     }
 
     private String compose(RecipeProcessVisualizationInput input) {
+        // A step summary is already written to be spoken, continuing from the step before; it is said as it is.
+        // Steps without one keep the composed script below, so their text (and their existing audio) is unchanged.
+        String summary = clean(input.summary());
+        if (!summary.isEmpty()) {
+            return terminate(summary);
+        }
         List<String> sentences = new ArrayList<>();
 
         String description = clean(input.actionDescription());
