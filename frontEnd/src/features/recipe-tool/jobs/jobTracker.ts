@@ -11,7 +11,7 @@ import type {
   StoryboardStepFixResponse,
 } from '../../../types/recipe'
 import type { RecipeAiWorkflowCreateRequest, RecipeAiWorkflowResponse, RecipeAiWorkflowStatus } from '../../../types/recipeAiWorkflow'
-import { errorMessage } from '../../../shared/errors'
+import { errorMessage, friendlyJobError } from '../../../shared/errors'
 import type { RunModels } from '../workflow/model/workflowSelection'
 
 /**
@@ -459,7 +459,7 @@ export class JobTracker {
       const succeeded = job.steps.filter((step) => step.success).length
       if (job.status === 'COMPLETED') this.notifier.success(`Visuals ready for all ${job.totalSteps} steps`)
       else if (job.status === 'COMPLETED_WITH_ERRORS') this.notifier.error(`Visuals generated for ${succeeded}/${job.totalSteps} steps — ${job.totalSteps - succeeded} failed`)
-      else this.notifier.error(job.errorMessage || 'Unable to generate visuals right now.')
+      else this.notifier.error(friendlyJobError(job.errorMessage, 'Unable to generate visuals right now.'))
     } else if (tracked.kind === 'storyboard') {
       const { job } = tracked
       if (job.status === 'COMPLETED') {
@@ -467,16 +467,16 @@ export class JobTracker {
           ? 'The visuals are ready, with a note — open them from the AI menu.'
           : 'The visuals are ready — open them from the AI menu.')
       } else {
-        this.notifier.error(job.errorMessage || 'Unable to visualize this recipe right now.')
+        this.notifier.error(friendlyJobError(job.errorMessage, 'Unable to visualize this recipe right now.'))
       }
     } else if (tracked.kind === 'stepfix') {
       const { job } = tracked
       if (job.status === 'COMPLETED') this.notifier.success('The step image was redrawn. You can undo it from the step.')
-      else this.notifier.error(job.errorMessage || 'Unable to fix this step image right now.')
+      else this.notifier.error(friendlyJobError(job.errorMessage, 'Unable to fix this step image right now.'))
     } else if (tracked.job.status === 'FAILED') {
       // A successful generation is announced by the editor once it has loaded the result.
-      this.notifier.error(tracked.job.errorMessage
-        || (tracked.job.mode === 'EDIT' ? 'Unable to apply that change right now.' : 'Unable to generate this recipe right now.'))
+      this.notifier.error(friendlyJobError(tracked.job.errorMessage,
+        tracked.job.mode === 'EDIT' ? 'Unable to apply that change right now.' : 'Unable to generate this recipe right now.'))
     }
   }
 

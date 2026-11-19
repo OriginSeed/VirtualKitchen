@@ -1,5 +1,6 @@
 package com.processVisualisation.virtualKitchen.ai.recipe.generation;
 
+import com.processVisualisation.virtualKitchen.common.web.UserFacingErrors;
 import com.processVisualisation.virtualKitchen.ai.platform.logging.OperationLog;
 import com.processVisualisation.virtualKitchen.ai.recipe.edit.RecipeProcessEditService;
 import com.processVisualisation.virtualKitchen.ai.recipe.edit.dto.RecipeProcessEditResultDTO;
@@ -284,7 +285,7 @@ public class RecipeProcessGenerationJobService {
                 .mode((job.getMode() != null ? job.getMode() : ProcessGenerationMode.CREATE).name())
                 .progressPercent(stage.getPercent())
                 .result(job.getResult())
-                .errorMessage(job.getErrorMessage())
+                .errorMessage(UserFacingErrors.forJob(job.getErrorMessage()))
                 .reused(reused)
                 .build();
     }

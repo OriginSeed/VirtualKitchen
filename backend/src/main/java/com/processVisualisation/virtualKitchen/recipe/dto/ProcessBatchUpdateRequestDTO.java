@@ -1,5 +1,7 @@
 package com.processVisualisation.virtualKitchen.recipe.dto;
 
+import jakarta.validation.constraints.Size;
+import com.processVisualisation.virtualKitchen.common.web.InputLimits;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotEmpty;
 import lombok.Data;
@@ -23,6 +25,7 @@ import java.util.List;
 public class ProcessBatchUpdateRequestDTO {
 
     @NotEmpty
+    @Size(max = InputLimits.PROCESS_BATCH, message = "Too many processes in one save (at most " + InputLimits.PROCESS_BATCH + ")")
     @Valid
     private List<ProcessBatchItemDTO> processes;
 

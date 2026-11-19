@@ -46,6 +46,7 @@ import {
   type StepOutputGraph,
 } from '../../model/recipeStepOutputs'
 import StepDescriptionField, { type StepDataUpdater } from './annotations/StepDescriptionField'
+import { INPUT_LIMITS } from '../../../../shared/inputLimits'
 
 type RecipeStepPanelProps = {
   node: { id: string; data: unknown }
@@ -433,6 +434,7 @@ export default function RecipeStepPanel({
             className="flow-properties-textarea"
             rows={3}
             value={step.summary}
+            maxLength={INPUT_LIMITS.stepText}
             onChange={(e) => updateStepField(node.id, 'summary', e.target.value)}
             placeholder="Explain this step as you would say it aloud, carrying on from the step before"
             aria-label="Step summary"
@@ -769,6 +771,7 @@ export default function RecipeStepPanel({
             className="flow-properties-textarea"
             rows={3}
             value={step.expectedOutput}
+            maxLength={INPUT_LIMITS.stepText}
             onChange={(e) => updateStepField(node.id, 'expectedOutput', e.target.value)}
             placeholder="Describe the expected result after this step"
           />

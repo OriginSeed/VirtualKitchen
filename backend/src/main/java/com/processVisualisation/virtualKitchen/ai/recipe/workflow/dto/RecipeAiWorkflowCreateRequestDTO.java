@@ -1,5 +1,7 @@
 package com.processVisualisation.virtualKitchen.ai.recipe.workflow.dto;
 
+import jakarta.validation.constraints.Size;
+import com.processVisualisation.virtualKitchen.common.web.InputLimits;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotNull;
 import lombok.AllArgsConstructor;
@@ -20,6 +22,7 @@ public class RecipeAiWorkflowCreateRequestDTO {
     @NotNull(message = "selection is required")
     private RecipeAiTaskSelectionDTO selection;
 
+    @Size(max = InputLimits.RECIPE_TEXT, message = "Recipe text can be at most " + InputLimits.RECIPE_TEXT + " characters")
     private String recipeText;
 
     /**

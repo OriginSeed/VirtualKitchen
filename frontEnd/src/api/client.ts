@@ -24,19 +24,48 @@ export interface UiActionOptions {
 /**
  * A request that reached the server and got a non-2xx answer. Keeps the HTTP status so callers can
  * tell e.g. a validation error (422) or a conflict (409) from an outage (5xx) — a request that
- * never got a response (offline, timeout) throws a plain Error instead.
+ * never got a response (offline, timeout) throws a {@link NetworkError} instead.
+ *
+ * `message` is the backend's own message (empty when it sent none). Show errors through
+ * `errorMessage()` in shared/errors.ts, which picks plain-language text from `code` and `status`.
  */
 export class ApiError extends Error {
   readonly status: number
   /** The backend's `X-Request-ID` for this request, for users to quote when reporting the error. */
   readonly requestId?: string
+  /** The backend's stable error code (e.g. `VALIDATION_FAILED`, `RATE_LIMITED`, `AI_BUSY`), when it sent one. */
+  readonly code?: string
+  /** Seconds the server asked to wait before retrying (`Retry-After`), on 429 / 503. */
+  readonly retryAfterSeconds?: number
 
-  constructor(message: string, status: number, requestId?: string) {
+  constructor(message: string, status: number, requestId?: string, code?: string, retryAfterSeconds?: number) {
     super(message)
     this.name = 'ApiError'
     this.status = status
     this.requestId = requestId
+    this.code = code
+    this.retryAfterSeconds = retryAfterSeconds
   }
+}
+
+/** A request that never got an answer: offline, server unreachable, blocked by CORS, or timed out. */
+export class NetworkError extends Error {
+  readonly code: 'NETWORK' | 'TIMEOUT'
+
+  constructor(code: 'NETWORK' | 'TIMEOUT', options?: { cause?: unknown }) {
+    super(code === 'TIMEOUT' ? 'Request timed out. Please try again.' : 'Unable to reach the server.', options)
+    this.name = 'NetworkError'
+    this.code = code
+  }
+}
+
+/** `Retry-After` in seconds (it may also be an HTTP date), or undefined when absent or unreadable. */
+const parseRetryAfter = (value: string | null): number | undefined => {
+  if (!value) return undefined
+  const seconds = Number(value)
+  if (Number.isFinite(seconds)) return Math.max(0, seconds)
+  const date = Date.parse(value)
+  return Number.isNaN(date) ? undefined : Math.max(0, Math.ceil((date - Date.now()) / 1000))
 }
 
 /** The HTTP status of a failed request, or undefined when it never got a response. */
@@ -106,10 +135,14 @@ async function request<T>(
   } catch (error) {
     // Only our own timeout is reported as one; a caller's abort is passed through for it to recognise.
     if (controller.signal.reason === timedOut) {
-      throw new Error('Request timed out. Please try again.', { cause: error })
+      throw new NetworkError('TIMEOUT', { cause: error })
+    }
+    if (controller.signal.aborted) {
+      throw error
     }
 
-    throw error
+    // fetch rejects with a TypeError when the server can't be reached at all.
+    throw new NetworkError('NETWORK', { cause: error })
   } finally {
     if (timeoutId != null) {
       window.clearTimeout(timeoutId)
@@ -121,12 +154,15 @@ async function request<T>(
   }
 
   if (!response.ok) {
-    const errorData = await response.json().catch(() => ({}))
+    const errorData: { message?: unknown; code?: unknown; requestId?: unknown } =
+      await response.json().catch(() => ({}))
     throw new ApiError(
-      errorData.message ||
-      `HTTP ${response.status}: ${response.statusText}`,
+      typeof errorData.message === 'string' ? errorData.message : '',
       response.status,
-      response.headers.get('X-Request-ID') ?? undefined,
+      response.headers.get('X-Request-ID')
+        ?? (typeof errorData.requestId === 'string' ? errorData.requestId : undefined),
+      typeof errorData.code === 'string' ? errorData.code : undefined,
+      parseRetryAfter(response.headers.get('Retry-After')),
     )
   }
 

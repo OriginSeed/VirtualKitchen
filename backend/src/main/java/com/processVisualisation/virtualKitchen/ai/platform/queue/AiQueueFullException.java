@@ -2,6 +2,7 @@ package com.processVisualisation.virtualKitchen.ai.platform.queue;
 
 import com.processVisualisation.virtualKitchen.ai.platform.registry.AiCapability;
 import com.processVisualisation.virtualKitchen.common.web.ApiException;
+import com.processVisualisation.virtualKitchen.common.web.ErrorCode;
 
 import org.springframework.http.HttpStatus;
 
@@ -16,5 +17,10 @@ public class AiQueueFullException extends ApiException {
     public AiQueueFullException(AiCapability capability) {
         super("The AI system is busy handling " + capability + " requests — please try again in a moment",
                 HttpStatus.TOO_MANY_REQUESTS, "AI System Busy", Outcome.REJECTED);
+    }
+
+    @Override
+    public ErrorCode getCode() {
+        return ErrorCode.AI_BUSY;
     }
 }

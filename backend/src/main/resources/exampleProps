@@ -1,6 +1,6 @@
-# Copy this file to application.properties (already git-ignored) and fill in real values.
-# Anything using ${ENV_VAR:default} can instead be supplied as an environment variable
-# at runtime (recommended for secrets) without touching this file at all.
+# Reference only: optional settings and overrides, with notes. application.properties is committed and reads every
+# secret from an environment variable (or a git-ignored backend/.env); see backend/CONFIGURATION.md.
+# Never put a secret in application.properties or in this file.
 
 # ====================================================================================================
 # MongoDB
@@ -22,8 +22,8 @@ spring.data.mongodb.gridfs.bucket=${MONGODB_GRIDFS_BUCKET:ai_artifacts}
 app.jwt.secret=${JWT_SECRET:REPLACE_WITH_A_LONG_RANDOM_SECRET}
 app.jwt.expiration-ms=${JWT_EXPIRATION_MS:86400000}
 
-# Swagger UI / OpenAPI docs without signing in. Handy locally; set to false in production.
-app.security.api-docs-public=${API_DOCS_PUBLIC:true}
+# Swagger UI / OpenAPI docs: served (without signing in) only when SWAGGER_ENABLED=true. Never in production.
+app.swagger.enabled=${SWAGGER_ENABLED:false}
 
 # OAuth client ID from Google Cloud Console (Credentials > OAuth 2.0 Client IDs > Web application).
 # Must match the frontend's VITE_GOOGLE_CLIENT_ID.

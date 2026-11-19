@@ -1,5 +1,6 @@
 package com.processVisualisation.virtualKitchen.ai.recipe.assetimport;
 
+import jakarta.validation.Valid;
 import com.processVisualisation.virtualKitchen.common.logging.LogAction;
 
 import com.processVisualisation.virtualKitchen.auth.security.CurrentUser;
@@ -30,7 +31,7 @@ public class RecipeAssetImportController {
     /** Always answers 200 for an owned recipe: entries that could not be copied are listed, with their reason. */
     @PostMapping("/import")
     public ApiResponse<RecipeAssetImportDTO.Response> importAssets(
-            @PathVariable Long recipeId, @RequestBody(required = false) RecipeAssetImportDTO.Request request) {
+            @PathVariable Long recipeId, @Valid @RequestBody(required = false) RecipeAssetImportDTO.Request request) {
         RecipeAssetImportDTO.Response response = service.importAssets(CurrentUser.requireUserId(), recipeId, request);
         return ApiResponse.<RecipeAssetImportDTO.Response>builder()
                 .success(true)

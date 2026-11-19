@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { RecipeProcessVisualizationStepResult } from '../../../../types/recipe'
-import { errorMessage } from '../../../../shared/errors'
+import { errorMessage, friendlyJobError } from '../../../../shared/errors'
 import { isTrackedJobActive, visualsJobKey } from '../../jobs/jobTracker'
 import { useJobTracker, useTrackedJob } from '../../jobs/useJobTracker'
 import type { RunModels } from '../../workflow/model/workflowSelection'
@@ -86,7 +86,7 @@ export function useProcessVisuals({ recipeId, processId, stepCount, unit = 'step
     const successCount = job.steps.filter((step) => step.success).length
     if (job.status === 'COMPLETED') return { type: 'success', text: `Generated visuals for all ${job.totalSteps} ${unit}` }
     if (job.status === 'COMPLETED_WITH_ERRORS') return { type: 'error', text: `Generated ${successCount}/${job.totalSteps} ${unit} — ${job.totalSteps - successCount} failed` }
-    return { type: 'error', text: job.errorMessage || 'Unable to generate visuals right now.' }
+    return { type: 'error', text: friendlyJobError(job.errorMessage, 'Unable to generate visuals right now.') }
   }, [message, visualsJob, unit])
 
   const progressLabel = visualsJob && isTrackedJobActive(visualsJob)

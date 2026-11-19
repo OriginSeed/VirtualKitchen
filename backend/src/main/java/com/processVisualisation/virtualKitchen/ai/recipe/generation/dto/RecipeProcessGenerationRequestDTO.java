@@ -1,5 +1,7 @@
 package com.processVisualisation.virtualKitchen.ai.recipe.generation.dto;
 
+import jakarta.validation.constraints.Size;
+import com.processVisualisation.virtualKitchen.common.web.InputLimits;
 import com.processVisualisation.virtualKitchen.ai.recipe.edit.dto.EditTargetProcessDTO;
 
 import com.fasterxml.jackson.annotation.JsonIgnore;
@@ -24,6 +26,7 @@ import java.util.Map;
 public class RecipeProcessGenerationRequestDTO {
 
     @NotBlank(message = "recipeText is required")
+    @Size(max = InputLimits.RECIPE_TEXT, message = "Recipe text can be at most " + InputLimits.RECIPE_TEXT + " characters")
     private String recipeText;
 
     /**
@@ -40,6 +43,7 @@ public class RecipeProcessGenerationRequestDTO {
     private EditTargetProcessDTO targetProcess;
 
     /** EDIT only, optional: the node selected in the editor, so "this step" / "the previous step" can be resolved. */
+    @Size(max = InputLimits.ID)
     private String selectedNodeId;
 
     /**

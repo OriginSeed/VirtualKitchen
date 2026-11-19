@@ -1,5 +1,6 @@
 package com.processVisualisation.virtualKitchen.ai.recipe.visualization;
 
+import com.processVisualisation.virtualKitchen.common.web.UserFacingErrors;
 import com.processVisualisation.virtualKitchen.ai.asset.VisualizationAsset;
 import com.processVisualisation.virtualKitchen.ai.platform.logging.OperationLog;
 import com.processVisualisation.virtualKitchen.ai.recipe.RecipeProcessAiException;
@@ -559,7 +560,7 @@ public class RecipeProcessVisualizationJobService {
                         .success(sr.isSuccess())
                         .visualizationAssetId(sr.getVisualizationAssetId())
                         .imageUrl(sr.getImageUrl())
-                        .errorMessage(sr.getErrorMessage())
+                        .errorMessage(UserFacingErrors.forJob(sr.getErrorMessage()))
                         .modelKey(sr.getModelKey())
                         .tier(sr.getTier())
                         .usedFallback(sr.isUsedFallback())
@@ -574,7 +575,7 @@ public class RecipeProcessVisualizationJobService {
                 .totalSteps(job.getTotalSteps())
                 .completedSteps(job.getCompletedSteps())
                 .steps(steps)
-                .errorMessage(job.getErrorMessage())
+                .errorMessage(UserFacingErrors.forJob(job.getErrorMessage()))
                 .reused(reused)
                 .build();
     }

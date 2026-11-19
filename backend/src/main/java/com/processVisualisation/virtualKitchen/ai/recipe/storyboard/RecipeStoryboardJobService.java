@@ -1,5 +1,6 @@
 package com.processVisualisation.virtualKitchen.ai.recipe.storyboard;
 
+import com.processVisualisation.virtualKitchen.common.web.UserFacingErrors;
 import com.processVisualisation.virtualKitchen.ai.platform.artifact.AiArtifact;
 import com.processVisualisation.virtualKitchen.ai.platform.artifact.AiArtifactKeyBuilder;
 import com.processVisualisation.virtualKitchen.ai.platform.artifact.AiArtifactService;
@@ -557,7 +558,7 @@ public class RecipeStoryboardJobService {
                 .status(storyboard.getStatus() == null ? null : storyboard.getStatus().name())
                 .stage(storyboard.getStage() == null ? null : storyboard.getStage().name())
                 .failedStage(storyboard.getFailedStage() == null ? null : storyboard.getFailedStage().name())
-                .errorMessage(storyboard.getErrorMessage())
+                .errorMessage(UserFacingErrors.forJob(storyboard.getErrorMessage()))
                 .warnings(storyboard.getWarnings() == null ? List.of() : storyboard.getWarnings())
                 .reused(reused)
                 .outdated(outdated)

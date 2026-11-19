@@ -4,6 +4,7 @@ import {
   normalizeConditionNodeData,
   type ConditionNodeStructuredFields,
 } from '../../model/recipeConditionData'
+import { INPUT_LIMITS } from '../../../../shared/inputLimits'
 
 type ConditionPanelNode = {
   id: string
@@ -106,6 +107,7 @@ export default function RecipeConditionPanel({ node, updateNodeField, onDeleteNo
             className="flow-properties-textarea"
             rows={3}
             value={conditionData?.notes ?? ''}
+            maxLength={INPUT_LIMITS.notes}
             onChange={e => updateNodeField(node.id, 'condition.notes', e.target.value)}
             placeholder="Optional details"
           />

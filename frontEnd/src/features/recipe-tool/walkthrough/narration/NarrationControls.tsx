@@ -1,6 +1,7 @@
 import { useSyncExternalStore } from 'react'
 import { PLAYBACK_RATES, type NarrationPlayer, type NarrationPlayerState } from './narrationPlayer'
 import './NarrationControls.css'
+import { friendlyJobError } from '../../../../shared/errors'
 
 const formatTime = (seconds: number) => {
   const whole = Math.max(0, Math.floor(seconds))
@@ -68,7 +69,7 @@ const describe = (state: NarrationPlayerState, stepId: string | undefined, unava
     case 'unavailable':
       return { tone: 'muted', text: 'No narration for this step' }
     case 'failed':
-      return { tone: 'error', text: `Narration unavailable${state.failureReason ? `: ${state.failureReason}` : ''}` }
+      return { tone: 'error', text: `Narration unavailable${state.failureReason ? `: ${friendlyJobError(state.failureReason)}` : ''}` }
     default:
       if (known?.status === 'READY') return { tone: 'muted', text: 'Narration ready' }
       if (known?.status === 'GENERATING') return { tone: 'info', text: 'Generating narration…' }

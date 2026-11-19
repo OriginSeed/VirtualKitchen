@@ -38,6 +38,8 @@ import { runModelsFor, taskRunModelCapabilities, useRunModelChoices } from '../m
 import { ModelChoiceDialog, RunModelSelects } from './RunModelPicker'
 import ExistingAssetsChoice from './ExistingAssetsChoice'
 import '../../styles/modals.css'
+import { INPUT_LIMITS } from '../../../../shared/inputLimits'
+import CharCounter from '../../../../shared/components/CharCounter'
 
 type AiRecipeCreationDraft = { selection: WorkflowTaskSelection; recipeText: string }
 
@@ -269,8 +271,10 @@ function TaskSelectionStep({ recipeId, willReplaceMain, initialTasks, busy, erro
             placeholder={CREATE_PLACEHOLDER}
             rows={8}
             disabled={busy}
+            maxLength={INPUT_LIMITS.recipeText}
             style={{ minHeight: 150 }}
           />
+          <CharCounter length={recipeText.length} max={INPUT_LIMITS.recipeText} />
         </>
       ) : selectionKey ? (
         <div style={subtleText}>

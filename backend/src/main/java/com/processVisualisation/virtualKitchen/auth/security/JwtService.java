@@ -24,6 +24,9 @@ import java.util.Date;
 @Service
 public class JwtService {
 
+    /** HMAC-SHA256 needs a 256-bit key; anything shorter is refused at startup. */
+    static final int MIN_SECRET_BYTES = 32;
+
     private final SecretKey key;
     private final long expirationMs;
 
@@ -31,7 +34,12 @@ public class JwtService {
             @Value("${app.jwt.secret}") String secret,
             @Value("${app.jwt.expiration-ms}") long expirationMs
     ) {
-        this.key = Keys.hmacShaKeyFor(secret.getBytes(StandardCharsets.UTF_8));
+        byte[] secretBytes = secret == null ? new byte[0] : secret.getBytes(StandardCharsets.UTF_8);
+        if (secretBytes.length < MIN_SECRET_BYTES) {
+            throw new IllegalStateException("app.jwt.secret (JWT_SECRET) must be at least " + MIN_SECRET_BYTES
+                    + " bytes; set a long random value in the environment");
+        }
+        this.key = Keys.hmacShaKeyFor(secretBytes);
         this.expirationMs = expirationMs;
     }
 

@@ -1,5 +1,6 @@
 package com.processVisualisation.virtualKitchen.ai.recipe.storyboard;
 
+import com.processVisualisation.virtualKitchen.common.web.UserFacingErrors;
 import com.processVisualisation.virtualKitchen.ai.asset.VisualizationAsset;
 import com.processVisualisation.virtualKitchen.ai.asset.VisualizationAssetRepository;
 import com.processVisualisation.virtualKitchen.ai.asset.VisualizationAssetType;
@@ -478,7 +479,7 @@ public class StoryboardStepFixService {
                 .previousPrompt(fix.getPreviousPrompt())
                 .usedReference(fix.isUsedReference())
                 .promptFromTemplate(fix.isPromptFromTemplate())
-                .errorMessage(fix.getErrorMessage())
+                .errorMessage(UserFacingErrors.forJob(fix.getErrorMessage()))
                 .reverted(fix.getRevertedAt() != null)
                 .createdAt(fix.getCreatedAt())
                 .completedAt(fix.getCompletedAt())

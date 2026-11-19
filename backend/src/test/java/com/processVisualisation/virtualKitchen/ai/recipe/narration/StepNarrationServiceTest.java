@@ -1,5 +1,6 @@
 package com.processVisualisation.virtualKitchen.ai.recipe.narration;
 
+import com.processVisualisation.virtualKitchen.common.web.UserFacingErrors;
 import com.processVisualisation.virtualKitchen.ai.platform.artifact.AiArtifactService;
 import com.processVisualisation.virtualKitchen.ai.platform.artifact.codec.GeneratedAudioCodec;
 import com.processVisualisation.virtualKitchen.ai.platform.credit.AiCreditProperties;
@@ -153,7 +154,8 @@ class StepNarrationServiceTest {
 
         StepNarrationResponseDTO failed = service.get(OWNER, RECIPE_ID, PROCESS_ID, STEP_1);
         assertEquals("FAILED", failed.getStatus());
-        assertTrue(failed.getFailureReason().contains("noSuchTtsProvider"), failed.getFailureReason());
+        // Users get a plain message; the bean name stays in the stored record and the log.
+        assertEquals(UserFacingErrors.GENERIC, failed.getFailureReason());
         assertNull(failed.getAudioUrl());
     }
 
@@ -324,7 +326,7 @@ class StepNarrationServiceTest {
 
         StepNarrationResponseDTO failed = service.get(OWNER, RECIPE_ID, PROCESS_ID, STEP_1);
         assertEquals("FAILED", failed.getStatus());
-        assertTrue(failed.getFailureReason().contains("429"));
+        assertEquals(UserFacingErrors.BUSY, failed.getFailureReason());
         assertEquals(NOW.plusMillis(30_000), failed.getRetryAfter());
         int callsSoFar = spoken("geminiTtsProvider").size();
 

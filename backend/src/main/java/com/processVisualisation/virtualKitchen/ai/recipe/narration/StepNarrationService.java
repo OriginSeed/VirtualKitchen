@@ -1,5 +1,6 @@
 package com.processVisualisation.virtualKitchen.ai.recipe.narration;
 
+import com.processVisualisation.virtualKitchen.common.web.UserFacingErrors;
 import com.processVisualisation.virtualKitchen.common.logging.UsageLedger;
 
 import com.processVisualisation.virtualKitchen.ai.platform.analytics.AiAnalyticsRecorder;
@@ -220,7 +221,7 @@ public class StepNarrationService {
                         .status(StepNarrationStatus.FAILED.name())
                         .narratable(true)
                         .text(script.text())
-                        .failureReason(describeFailure(e))
+                        .failureReason(UserFacingErrors.forJob(describeFailure(e)))
                         .build());
             }
         }
@@ -379,7 +380,7 @@ public class StepNarrationService {
                     .languageCode(record.getLanguageCode())
                     .generatedAt(record.getGeneratedAt());
         } else if (status == StepNarrationStatus.FAILED) {
-            dto.failureReason(record.getFailureReason()).retryAfter(retryAfter(record));
+            dto.failureReason(UserFacingErrors.forJob(record.getFailureReason())).retryAfter(retryAfter(record));
         }
         return dto.build();
     }

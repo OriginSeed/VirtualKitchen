@@ -50,7 +50,7 @@ public class RecipeTemplateController {
      * @return an ApiResponse wrapping the created template
      */
     @PostMapping
-    public ApiResponse<RecipeTemplateResponseDTO> create(@RequestBody RecipeTemplateRequestDTO dto){
+    public ApiResponse<RecipeTemplateResponseDTO> create(@Valid @RequestBody RecipeTemplateRequestDTO dto){
         // The new recipe belongs to the caller, whatever the body says.
         dto.setCreatedBy(CurrentUser.requireUserId());
         return build(service.create(dto), "created");
@@ -128,7 +128,7 @@ public class RecipeTemplateController {
      */
     @PutMapping("/{id}")
     public ApiResponse<RecipeTemplateResponseDTO> update(@PathVariable Long id,
-                                                         @RequestBody RecipeTemplateUpdateDTO dto){
+                                                         @Valid @RequestBody RecipeTemplateUpdateDTO dto){
         return build(service.update(id, CurrentUser.requireUserId(), dto), "updated");
     }
 

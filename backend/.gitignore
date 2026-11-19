@@ -32,8 +32,8 @@ build/
 ### VS Code ###
 .vscode/
 
-# Custom sensitive properties
-application.properties
+# Local secrets (application.properties is committed and holds none; see CONFIGURATION.md)
+.env
 
 ### Logs ###
 logs/

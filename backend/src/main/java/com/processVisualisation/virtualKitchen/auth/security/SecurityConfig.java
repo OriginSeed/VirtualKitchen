@@ -1,7 +1,9 @@
 package com.processVisualisation.virtualKitchen.auth.security;
 
 import com.processVisualisation.virtualKitchen.ai.recipe.narration.storage.FileSystemNarrationAudioStorage;
+import com.processVisualisation.virtualKitchen.common.web.RateLimitFilter;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.boot.web.servlet.FilterRegistrationBean;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
@@ -29,7 +31,9 @@ import java.util.List;
 public class SecurityConfig {
 
     private final JwtAuthenticationFilter jwtAuthenticationFilter;
-    private final boolean apiDocsPublic;
+    private final RateLimitFilter rateLimitFilter;
+    private final boolean swaggerEnabled;
+    private final List<String> allowedOrigins;
 
     /**
      * Creates this configuration.
@@ -37,13 +41,49 @@ public class SecurityConfig {
      * @param jwtAuthenticationFilter filter that resolves the authenticated
      *                                user from the request's JWT before
      *                                Spring's default authentication filter runs
-     * @param apiDocsPublic           whether Swagger UI / OpenAPI docs are reachable without signing in
-     *                                ({@code app.security.api-docs-public}, default true; set false in production)
+     * @param rateLimitFilter         per-client request limits, run right after the JWT filter
+     * @param swaggerEnabled          whether Swagger UI / OpenAPI docs are served at all, and then without signing in
+     *                                ({@code app.swagger.enabled}, from {@code SWAGGER_ENABLED}; default false)
+     * @param allowedOrigins          frontend origins allowed by CORS ({@code app.cors.allowed-origins}); never "*"
      */
     public SecurityConfig(JwtAuthenticationFilter jwtAuthenticationFilter,
-                          @Value("${app.security.api-docs-public:true}") boolean apiDocsPublic) {
+                          RateLimitFilter rateLimitFilter,
+                          @Value("${app.swagger.enabled:false}") boolean swaggerEnabled,
+                          @Value("${app.cors.allowed-origins:http://localhost:5173,http://127.0.0.1:5173}") List<String> allowedOrigins) {
         this.jwtAuthenticationFilter = jwtAuthenticationFilter;
-        this.apiDocsPublic = apiDocsPublic;
+        this.rateLimitFilter = rateLimitFilter;
+        this.swaggerEnabled = swaggerEnabled;
+        this.allowedOrigins = validateOrigins(allowedOrigins);
+    }
+
+    /**
+     * Trims and checks the configured CORS origins: at least one, and no wildcard, since requests carry
+     * credentials and a wildcard would let any site call the API as the signed-in user.
+     */
+    static List<String> validateOrigins(List<String> configured) {
+        List<String> origins = configured == null ? List.of() : configured.stream()
+                .map(String::trim)
+                .filter(origin -> !origin.isEmpty())
+                .toList();
+        if (origins.isEmpty()) {
+            throw new IllegalStateException("app.cors.allowed-origins (CORS_ALLOWED_ORIGINS) must list at least one origin");
+        }
+        if (origins.stream().anyMatch(origin -> origin.contains("*"))) {
+            throw new IllegalStateException("app.cors.allowed-origins (CORS_ALLOWED_ORIGINS) must not contain '*'; "
+                    + "list the frontend origin(s) explicitly");
+        }
+        return origins;
+    }
+
+    /**
+     * Keeps the rate limit filter out of the plain servlet filter chain, where it would run before security and
+     * so never see the signed-in user. It runs only inside the security chain (see {@link #securityFilterChain}).
+     */
+    @Bean
+    public FilterRegistrationBean<RateLimitFilter> rateLimitFilterRegistration(RateLimitFilter filter) {
+        FilterRegistrationBean<RateLimitFilter> registration = new FilterRegistrationBean<>(filter);
+        registration.setEnabled(false);
+        return registration;
     }
 
     /**
@@ -63,8 +103,8 @@ public class SecurityConfig {
      * <ul>
      *   <li>public — sign-up / log-in / OTP / password-reset ({@code POST /api/v1/auth/**}, but not
      *       {@code /me}), narration audio files (played by {@code <audio>}, which can't send a token; their
-     *       names are unguessable UUIDs), CORS preflights, the error page, and — when
-     *       {@code app.security.api-docs-public} is true — Swagger / OpenAPI docs;</li>
+     *       names are unguessable UUIDs), CORS preflights, the error page, and — only when
+     *       {@code app.swagger.enabled} is true (never in production) — Swagger / OpenAPI docs;</li>
      *   <li>ADMIN — {@code /api/v1/admin/**}, plus back-office endpoints the product UI never calls: catalog,
      *       kitchen and inventory writes, item costs, raw kitchen-inventory links, user management and the
      *       {@code /api/ai/**} chat / response tools;</li>
@@ -95,8 +135,8 @@ public class SecurityConfig {
                             .requestMatchers("/api/v1/auth/me").authenticated()
                             .requestMatchers(HttpMethod.POST, "/api/v1/auth/**").permitAll()
                             .requestMatchers(HttpMethod.GET, FileSystemNarrationAudioStorage.URL_PATH + "**").permitAll();
-                    if (apiDocsPublic) {
-                        auth.requestMatchers("/swagger-ui/**", "/swagger-ui.html", "/v3/api-docs/**").permitAll();
+                    if (swaggerEnabled) {
+                        auth.requestMatchers("/ui", "/ui/**", "/swagger-ui/**", "/swagger-ui.html", "/v3/api-docs/**").permitAll();
                     }
                     auth
                             // Admin area
@@ -119,6 +159,8 @@ public class SecurityConfig {
 
                 // 4. Resolve the authenticated user (if any) from the JWT before Spring's default auth filter runs
                 .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class)
+                // 4b. Per-client rate limits, once the user (if any) is known
+                .addFilterAfter(rateLimitFilter, JwtAuthenticationFilter.class)
 
                 // 5. Answer unauthenticated requests with a plain 401. Not HTTP Basic: its
                 // WWW-Authenticate challenge pops a browser login (e.g. from Swagger) that no
@@ -130,19 +172,20 @@ public class SecurityConfig {
 
     /**
      * Defines the CORS policy applied to every endpoint ({@code /**}):
-     * allows the local Vite dev frontend origins ({@code http://localhost:5173}
-     * and {@code http://127.0.0.1:5173}), the GET/POST/PUT/PATCH/DELETE/OPTIONS
-     * methods, any request header, and credentialed (cookie/auth-header) requests.
+     * allows only the configured frontend origins ({@code app.cors.allowed-origins}, from
+     * {@code CORS_ALLOWED_ORIGINS}; the local Vite dev server by default), the GET/POST/PUT/PATCH/DELETE/OPTIONS
+     * methods, any request header, and credentialed (cookie/auth-header) requests. {@code X-Request-ID} and
+     * {@code Retry-After} are readable by the frontend.
      *
      * @return the {@link CorsConfigurationSource} used by {@link #securityFilterChain}
      */
     @Bean
     public CorsConfigurationSource corsConfigurationSource() {
         CorsConfiguration configuration = new CorsConfiguration();
-        configuration.setAllowedOrigins(List.of("http://localhost:5173", "http://127.0.0.1:5173"));
+        configuration.setAllowedOrigins(allowedOrigins);
         configuration.setAllowedMethods(List.of("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"));
         configuration.setAllowedHeaders(List.of("*"));
-        configuration.setExposedHeaders(List.of("X-Request-ID"));
+        configuration.setExposedHeaders(List.of("X-Request-ID", "Retry-After"));
         configuration.setAllowCredentials(true);
 
         UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();

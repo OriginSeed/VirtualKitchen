@@ -29,6 +29,7 @@ import { workflowBadge, workflowChipLabel, workflowHeadline } from '../../workfl
 import type { RecipeAiTaskType } from '../../../../types/recipeAiWorkflow'
 import type { RecipeAiActions } from './AiActionsMenu'
 import { errorMessage } from '../../../../shared/errors'
+import { friendlyJobError } from '../../../../shared/errors'
 
 const GENERATION_STAGE_LABELS: Record<string, string> = {
   QUEUED: 'Queued…',
@@ -164,7 +165,7 @@ export default function RecipeEditorView({
 
   const generationError = generationJob && !isTrackedJobActive(generationJob)
     ? (generationJob.pollError ?? (generationJob.job.status === 'FAILED'
-      ? (generationJob.job.errorMessage || (generationJob.job.mode === 'EDIT' ? 'Unable to apply that change right now.' : 'Unable to generate this recipe right now.'))
+      ? friendlyJobError(generationJob.job.errorMessage, generationJob.job.mode === 'EDIT' ? 'Unable to apply that change right now.' : 'Unable to generate this recipe right now.')
       : null))
     : null
 
