@@ -14,8 +14,8 @@ export default function ExportProcessModal({ file, onClose }: { file: ExportedRe
   return (
     <div className="flow-canvas-export-modal-overlay" onClick={onClose}>
       <div className="flow-canvas-export-modal" role="dialog" aria-modal="true" aria-label="Export recipe" onClick={(e) => e.stopPropagation()}>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, padding: '14px 18px', borderBottom: '1px solid var(--flow-border)' }}>
-          <div>
+        <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between', gap: 12, padding: '14px 18px', borderBottom: '1px solid var(--flow-border)' }}>
+          <div style={{ minWidth: 0, flex: '1 1 200px', overflowWrap: 'anywhere' }}>
             <div style={{ fontWeight: 700, fontSize: 14, color: 'var(--flow-text)' }}>📤 Export recipe</div>
             <div style={{ fontSize: 11, color: 'var(--flow-text-subtle)', marginTop: 2 }}>{fileName} · {contents}</div>
           </div>

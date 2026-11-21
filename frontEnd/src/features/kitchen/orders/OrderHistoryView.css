@@ -286,8 +286,27 @@
 }
 
 @media (max-width: 760px) {
+  /* Without the row layout the three figures can't be told apart: the name takes a row and each figure gets
+     its label. */
   .order-item-row {
-    grid-template-columns: 1fr 1fr;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .order-item-row .order-item-name {
+    grid-column: 1 / -1;
+    color: var(--flow-text);
+    font-weight: 650;
+    overflow-wrap: anywhere;
+  }
+
+  .order-item-row [data-label]::before {
+    display: block;
+    color: var(--flow-text-subtle);
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    content: attr(data-label);
   }
 
   .order-status-block {

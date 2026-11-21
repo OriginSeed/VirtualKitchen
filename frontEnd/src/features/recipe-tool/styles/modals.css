@@ -83,8 +83,19 @@
   width: 740px;
   max-width: 95vw;
   max-height: 88vh;
+  max-height: 88dvh;
   display: flex;
   flex-direction: column;
+  /* Content never spills past the box; each dialog's body scrolls (min-height: 0; overflow-y: auto). */
+  overflow: hidden;
+}
+
+/* The part of a dialog that scrolls when the dialog is taller than the screen. */
+.flow-canvas-export-modal > .flow-modal-scroll-body {
+  flex: 0 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
 }
 
 /* --- AI edit mode (RecipeProcessGenerationModal) --- */

@@ -1,6 +1,9 @@
 .kitchen-page {
-  width: 100vw;
+  /* 100% not 100vw: 100vw includes a desktop scrollbar and causes sideways scrolling.
+     dvh: on phones 100vh runs under the browser toolbar. */
+  width: 100%;
   height: 100vh;
+  height: 100dvh;
   display: flex;
   flex-direction: column;
   background: var(--flow-bg);

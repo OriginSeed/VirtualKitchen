@@ -95,6 +95,7 @@
 }
 
 .ro-step-inner {
+  min-width: 0;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -1097,6 +1098,8 @@ p.ro-muted {
 }
 
 .ro-price dd {
+  min-width: 0;
+  overflow-wrap: anywhere;
   margin: 0;
   color: var(--flow-text);
   font-weight: 700;
@@ -1437,6 +1440,7 @@ p.ro-muted {
 .ro-snapshot-modal {
   width: min(100%, 560px);
   max-height: calc(100vh - 2rem);
+  max-height: calc(100dvh - 2rem);
   overflow-y: auto;
 }
 
@@ -1605,5 +1609,44 @@ p.ro-muted {
   .ro-timeline-time {
     margin-left: 0;
     width: 100%;
+  }
+}
+
+/* Step labels can't wrap: between the phone breakpoint and ~720px they ran into the next step. */
+.ro-step-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Text-only buttons get a real hit area. */
+.ro-link-btn {
+  min-height: 32px;
+  padding: 6px 4px;
+}
+
+.ro-basis-badge {
+  padding: 5px 10px;
+}
+
+/* Phones: finger-sized controls, and fields at 16px so iOS doesn't zoom into them. */
+@media (max-width: 640px) {
+  .ro-input {
+    font-size: 16px;
+  }
+
+  .ro-icon-btn,
+  .ro-servings-btn {
+    width: 44px;
+    height: 44px;
+  }
+
+  .ro-tab {
+    min-height: 44px;
+  }
+
+  .ro-link-btn {
+    min-height: 40px;
   }
 }

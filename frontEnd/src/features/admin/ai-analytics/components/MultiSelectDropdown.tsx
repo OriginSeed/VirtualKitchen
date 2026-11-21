@@ -13,19 +13,27 @@ interface MultiSelectDropdownProps {
 export default function MultiSelectDropdown({ label, hint, values, selected, valueLabel, onChange }: MultiSelectDropdownProps) {
   const [open, setOpen] = useState(false)
   const ref = useRef<HTMLDivElement>(null)
+  // Opens towards whichever side has room: a dropdown near the right edge (the right column on a phone) opens
+  // leftwards instead of pushing the page sideways. 200px is the menu's minimum width (aiAnalytics.css).
+  const [alignRight, setAlignRight] = useState(false)
+  const openMenu = () => {
+    const box = ref.current?.getBoundingClientRect()
+    setAlignRight(Boolean(box && box.left + 200 > document.documentElement.clientWidth - 8))
+    setOpen(true)
+  }
 
   useEffect(() => {
     if (!open) return
-    const onPointer = (e: MouseEvent) => {
+    const onPointer = (e: PointerEvent) => {
       if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false)
     }
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') setOpen(false)
     }
-    document.addEventListener('mousedown', onPointer)
+    document.addEventListener('pointerdown', onPointer)
     document.addEventListener('keydown', onKey)
     return () => {
-      document.removeEventListener('mousedown', onPointer)
+      document.removeEventListener('pointerdown', onPointer)
       document.removeEventListener('keydown', onKey)
     }
   }, [open])
@@ -40,12 +48,12 @@ export default function MultiSelectDropdown({ label, hint, values, selected, val
     <div className="aia-dropdown" ref={ref}>
       <span className="aia-dropdown-label" title={hint}>{label}</span>
       <button type="button" className={`aia-dropdown-button${selected.length ? ' is-set' : ''}`}
-        aria-haspopup="true" aria-expanded={open} onClick={() => setOpen(!open)}>
+        aria-haspopup="true" aria-expanded={open} onClick={() => (open ? setOpen(false) : openMenu())}>
         <span className="aia-dropdown-value">{summary}</span>
         <span aria-hidden="true">▾</span>
       </button>
       {open && (
-        <div className="aia-dropdown-menu" role="group" aria-label={label}>
+        <div className={`aia-dropdown-menu${alignRight ? ' is-right' : ''}`} role="group" aria-label={label}>
           <label className="aia-inline-field">
             <input type="checkbox" checked={selected.length === 0} onChange={() => onChange([])} />
             <span>All</span>

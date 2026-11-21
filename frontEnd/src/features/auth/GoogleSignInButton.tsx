@@ -30,13 +30,35 @@ export default function GoogleSignInButton({ onCredential, disabled }: GoogleSig
       callback: response => onCredentialRef.current(response.credential),
     })
 
-    buttonRef.current.innerHTML = ''
-    google.accounts.id.renderButton(buttonRef.current, {
-      theme: 'outline',
-      size: 'large',
-      width: 320,
-      text: 'continue_with',
+    const container = buttonRef.current
+    // Google draws a fixed-width button (200..400px). Match it to the card, which is narrower than 320px on
+    // phones, and draw it again when the card's width changes (rotation, resize).
+    let renderedWidth = 0
+    const render = () => {
+      const width = Math.max(200, Math.min(320, Math.floor(container.clientWidth)))
+      if (width === renderedWidth) return
+      renderedWidth = width
+      container.innerHTML = ''
+      google.accounts.id.renderButton(container, {
+        theme: 'outline',
+        size: 'large',
+        width,
+        text: 'continue_with',
+      })
+    }
+    render()
+
+    if (typeof ResizeObserver === 'undefined') return
+    let frame = 0
+    const observer = new ResizeObserver(() => {
+      cancelAnimationFrame(frame)
+      frame = requestAnimationFrame(render)
     })
+    observer.observe(container)
+    return () => {
+      cancelAnimationFrame(frame)
+      observer.disconnect()
+    }
   }, [disabled])
 
   if (!GOOGLE_CLIENT_ID) {

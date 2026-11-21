@@ -8,6 +8,7 @@
   --home-gradient: linear-gradient(135deg, var(--flow-accent), var(--flow-accent-secondary));
 
   min-height: 100vh;
+  min-height: 100dvh;
   overflow-x: clip;
   background: var(--flow-bg);
   color: var(--flow-text);
@@ -1376,5 +1377,29 @@
 
   .home-cta-card {
     padding: 48px 20px;
+  }
+}
+
+/* Touch screens: a tap leaves :hover applied, so the lift effects would stay stuck on a card or button. */
+@media (hover: none) {
+  .home-card:hover,
+  .home-page .home-card.is-visible:hover,
+  .home-btn-primary:hover,
+  .home-btn-secondary:hover,
+  .home-btn-primary:hover span {
+    transform: none;
+  }
+
+  .home-card:hover {
+    box-shadow: var(--flow-shadow-card);
+  }
+}
+
+/* Menu links are finger-sized when the section links fold into the menu. */
+@media (max-width: 1000px) {
+  .home-nav-links.is-open a {
+    min-height: 44px;
+    display: flex;
+    align-items: center;
   }
 }

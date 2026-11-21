@@ -133,7 +133,7 @@ export function ModelChoiceDialog({ title, description, capabilities, initial = 
           <div id={titleId} style={{ fontWeight: 700, fontSize: 14, color: 'var(--flow-text)' }}>{title}</div>
           {description && <div style={{ fontSize: 11.5, color: 'var(--flow-text-subtle)', marginTop: 2 }}>{description}</div>}
         </div>
-        <div style={{ padding: '16px 18px', display: 'flex', flexDirection: 'column', gap: 12 }}>
+        <div className="flow-modal-scroll-body" style={{ padding: '16px 18px', display: 'flex', flexDirection: 'column', gap: 12 }}>
           {choices.error ? (
             <div className="recipe-builder-status recipe-builder-status-error" role="alert">
               Couldn&apos;t load the available models. Your account setting will be used.

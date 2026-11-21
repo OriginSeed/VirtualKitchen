@@ -1,4 +1,4 @@
-import { useEffect, useId, useRef } from 'react'
+import { useEffect, useId, useRef, useState } from 'react'
 import '../../../shared/components/page/page.css'
 import './orderEntry.css'
 
@@ -22,6 +22,8 @@ type OrderEntryDialogProps = {
 export default function OrderEntryDialog({ recipeName, canOrder, starting, onTryDemo, onClose }: OrderEntryDialogProps) {
   const id = useId()
   const closeRef = useRef<HTMLButtonElement>(null)
+  // Touch screens have no hover: tapping the info icon shows the demo's description.
+  const [infoOpen, setInfoOpen] = useState(false)
 
   useEffect(() => {
     closeRef.current?.focus()
@@ -70,11 +72,18 @@ export default function OrderEntryDialog({ recipeName, canOrder, starting, onTry
               >
                 {starting ? 'Starting demo…' : 'Try the demo →'}
               </button>
-              <span className="order-entry-demo-info" tabIndex={0} aria-describedby={`${id}-demo`}>
+              <button
+                type="button"
+                className="order-entry-demo-info"
+                aria-describedby={`${id}-demo`}
+                aria-expanded={infoOpen}
+                onClick={() => setInfoOpen((open) => !open)}
+                onBlur={() => setInfoOpen(false)}
+              >
                 <span aria-hidden="true">ⓘ</span>
                 <span className="vk-sr-only">What is the demo?</span>
-                <span id={`${id}-demo`} role="tooltip" className="order-entry-tooltip">{DEMO_DESCRIPTION}</span>
-              </span>
+              </button>
+              <span id={`${id}-demo`} role="tooltip" className="order-entry-tooltip">{DEMO_DESCRIPTION}</span>
             </>
           ) : (
             <span className="order-entry-demo-note">

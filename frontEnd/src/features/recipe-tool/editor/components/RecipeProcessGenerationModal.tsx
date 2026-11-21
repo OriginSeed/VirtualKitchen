@@ -154,7 +154,7 @@ export default function RecipeProcessGenerationModal({
           </button>
         </div>
 
-        <div style={{ padding: '16px 18px', display: 'flex', flexDirection: 'column', gap: 12 }}>
+        <div className="flow-modal-scroll-body" style={{ padding: '16px 18px', display: 'flex', flexDirection: 'column', gap: 12 }}>
           {allowCreate && editTargetName && !pendingEdit && (
             <div className="recipe-ai-mode-toggle" role="radiogroup" aria-label="What should the AI do?">
               {(['EDIT', 'CREATE'] as const).map((option) => (

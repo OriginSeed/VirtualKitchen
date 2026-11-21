@@ -3,8 +3,13 @@
   inset: 0;
   z-index: 100;
   display: flex;
-  align-items: center;
+  /* The sign-up form is taller than a phone screen (more so with the keyboard open): the overlay scrolls, and
+     the card centres itself with auto margins, which (unlike align-items: center) never pushes its top
+     off-screen. */
+  align-items: flex-start;
   justify-content: center;
+  overflow-y: auto;
+  overscroll-behavior: contain;
   padding: 24px;
   background: var(--flow-overlay);
   backdrop-filter: blur(6px);
@@ -15,6 +20,7 @@
   position: relative;
   width: 100%;
   max-width: 420px;
+  margin: auto;
   padding: 44px 36px 36px;
   border: 1px solid var(--flow-border);
   border-radius: var(--flow-radius-xl);
@@ -253,8 +259,43 @@
   cursor: not-allowed;
 }
 
+@media (hover: none) {
+  .auth-submit-btn:hover:not(:disabled) {
+    transform: none;
+  }
+}
+
 @media (max-width: 480px) {
+  .auth-overlay {
+    padding: 12px;
+  }
+
   .auth-card {
-    padding: 36px 24px 28px;
+    padding: 36px 20px 24px;
+  }
+
+  .auth-close-btn {
+    top: 10px;
+    right: 10px;
+    width: 40px;
+    height: 40px;
+  }
+
+  .auth-title {
+    font-size: 23px;
+  }
+
+  .auth-subtitle {
+    margin-bottom: 22px;
+  }
+
+  /* Under 16px iOS zooms the page into the field. */
+  .auth-form-group input {
+    font-size: 16px;
+  }
+
+  .auth-link-btn {
+    min-height: 40px;
+    padding: 8px;
   }
 }

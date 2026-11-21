@@ -657,7 +657,7 @@ export default function RecipeEditorView({
   if (selectedProcessId == null) {
     return (
       <div className="flex h-full w-full">
-        <div style={{ width: 260, flexShrink: 0, borderRight: '1px solid var(--flow-border)', overflow: 'hidden' }}>
+        <div style={{ width: 'min(260px, 45%)', flexShrink: 0, borderRight: '1px solid var(--flow-border)', overflow: 'hidden' }}>
           {processListSidebar}
         </div>
         <div className="flex min-w-0 flex-1 flex-col items-center justify-center gap-3" style={{ color: 'var(--flow-text-muted)', fontSize: 13 }}>

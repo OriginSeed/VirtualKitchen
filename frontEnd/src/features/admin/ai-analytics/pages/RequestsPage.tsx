@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { PHONE_MAX_WIDTH } from '../../../../shared/hooks/useViewport'
 import type { ReactNode } from 'react'
 import { AiAnalyticsApi } from '../api/aiAnalyticsApi'
 import type { AnalyticsRequest } from '../api/aiAnalyticsApi'
@@ -39,6 +40,7 @@ const COLUMNS: Column[] = [
 ]
 
 const DEFAULT_VISIBLE = ['time', 'id', 'context', 'model', 'status', 'in', 'out', 'cost', 'latency', 'retries', 'recipe']
+const PHONE_DEFAULT_VISIBLE = ['time', 'context', 'status', 'cost']
 const PAGE_SIZES = [25, 50, 100]
 
 /** Searchable, sortable, paginated request explorer; filters, sorting and paging all run on the backend. */
@@ -47,7 +49,9 @@ export default function RequestsPage({ params, onOpenRequest, onViewResult }: Re
   const [direction, setDirection] = useState<'asc' | 'desc'>('desc')
   const [page, setPage] = useState(0)
   const [size, setSize] = useState(25)
-  const [visible, setVisible] = useState<string[]>(DEFAULT_VISIBLE)
+  const [visible, setVisible] = useState<string[]>(
+    () => (window.innerWidth <= PHONE_MAX_WIDTH ? PHONE_DEFAULT_VISIBLE : DEFAULT_VISIBLE),
+  )
   const [columnsOpen, setColumnsOpen] = useState(false)
   const [lastParamsKey, setLastParamsKey] = useState(requestKey(params))
 

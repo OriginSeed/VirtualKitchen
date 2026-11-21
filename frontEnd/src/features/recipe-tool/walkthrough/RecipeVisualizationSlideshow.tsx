@@ -1,4 +1,7 @@
-import { useEffect, useId, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from 'react'
+import {
+  useEffect, useId, useMemo, useRef, useState,
+  type KeyboardEvent as ReactKeyboardEvent, type PointerEvent as ReactPointerEvent,
+} from 'react'
 import { ImageZoomButton } from '../../../shared/components/image-viewer/ZoomableImage'
 import { useImageLightbox } from '../../../shared/components/image-viewer/useImageLightbox'
 import NarrationControls from './narration/NarrationControls'
@@ -238,6 +241,22 @@ export default function RecipeVisualizationSlideshow({
     }
   }
 
+  // Touch: a sideways swipe over the step changes step, like the arrow keys.
+  const swipeStart = useRef<{ x: number; y: number } | null>(null)
+  const onSwipeStart = (event: ReactPointerEvent) => {
+    swipeStart.current = event.pointerType === 'mouse' ? null : { x: event.clientX, y: event.clientY }
+  }
+  const onSwipeEnd = (event: ReactPointerEvent) => {
+    const start = swipeStart.current
+    swipeStart.current = null
+    if (!start) return
+    const dx = event.clientX - start.x
+    const dy = event.clientY - start.y
+    if (Math.abs(dx) < 50 || Math.abs(dx) < Math.abs(dy) * 1.5) return
+    if (dx < 0) player.next()
+    else player.previous()
+  }
+
   const isPlaying = state.autoplay && state.phase !== 'blocked'
   const playLabel = isPlaying ? '⏸ Pause' : state.finished ? '↺ Play again' : '▶ Play'
 
@@ -270,6 +289,9 @@ export default function RecipeVisualizationSlideshow({
             <div
               key={currentStep?.id ?? index}
               className={`recipe-slideshow-stage recipe-slideshow-stage-${view.direction}`}
+              onPointerDown={onSwipeStart}
+              onPointerUp={onSwipeEnd}
+              onPointerCancel={() => { swipeStart.current = null }}
             >
               {currentStep && (
                 <StepStage

@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import type { AnalyticsFilters, DatePreset } from '../model/analyticsQuery'
 import { activeFilterCount, emptyFilters } from '../model/analyticsQuery'
 import type { AnalyticsChoice } from '../api/aiAnalyticsApi'
@@ -48,6 +49,8 @@ const withAll = (allLabel: string, choices: AnalyticsChoice[]) =>
 export default function FilterBar({ filters, options, users, recipes, onChange }: FilterBarProps) {
   const set = <K extends keyof AnalyticsFilters>(key: K, value: AnalyticsFilters[K]) => onChange({ ...filters, [key]: value })
   const reset = () => onChange({ ...emptyFilters(), preset: filters.preset, fromDate: filters.fromDate, toDate: filters.toDate })
+  // Phones only (the toggle is hidden on wider screens): the filter dropdowns fold away until asked for.
+  const [showFilters, setShowFilters] = useState(false)
 
   return (
     <div className="aia-filters">
@@ -74,7 +77,17 @@ export default function FilterBar({ filters, options, users, recipes, onChange }
         )}
       </div>
 
-      <div className="aia-dropdown-row">
+      <button
+        type="button"
+        className="aia-button aia-filters-toggle"
+        aria-expanded={showFilters}
+        onClick={() => setShowFilters((value) => !value)}
+      >
+        {showFilters ? 'Hide filters' : 'Filters'}
+        {activeFilterCount(filters) > 0 && ` (${activeFilterCount(filters)})`}
+      </button>
+
+      <div className={`aia-dropdown-row${showFilters ? ' is-open' : ''}`}>
         {LIST_FILTERS.map((f) => (
           <MultiSelectDropdown
             key={f.key}

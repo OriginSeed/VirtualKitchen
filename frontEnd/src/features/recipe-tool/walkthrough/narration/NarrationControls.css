@@ -151,3 +151,27 @@
     animation: none;
   }
 }
+
+/* Touch screens: the thin seek bar and small buttons are hard to hit with a finger. */
+@media (pointer: coarse) {
+  .narration-seek {
+    height: 28px;
+  }
+
+  .narration-control-btn,
+  .narration-speed select {
+    min-height: 40px;
+  }
+
+  .narration-link-btn {
+    min-height: 36px;
+    padding: 6px 8px;
+  }
+}
+
+@media (max-width: 640px), (orientation: landscape) and (max-height: 500px) {
+  .narration-controls {
+    gap: 6px;
+    padding: 0 12px 10px;
+  }
+}

@@ -59,18 +59,20 @@ export default function SearchableSelect({
 
   useEffect(() => {
     if (!isOpen) return
-    const handleClickOutside = (event: MouseEvent) => {
+    const handleClickOutside = (event: PointerEvent) => {
       if (containerRef.current && !containerRef.current.contains(event.target as globalThis.Node)) {
         setIsOpen(false)
         setQuery('')
       }
     }
-    document.addEventListener('mousedown', handleClickOutside)
-    return () => document.removeEventListener('mousedown', handleClickOutside)
+    // pointerdown, not mousedown: iOS sends no mouse events for taps on non-clickable areas.
+    document.addEventListener('pointerdown', handleClickOutside)
+    return () => document.removeEventListener('pointerdown', handleClickOutside)
   }, [isOpen])
 
   useEffect(() => {
-    if (isOpen) searchInputRef.current?.focus()
+    // Touch screens: focusing the search box would open the keyboard over the list; the user taps it to search.
+    if (isOpen && !window.matchMedia?.('(pointer: coarse)').matches) searchInputRef.current?.focus()
   }, [isOpen])
 
   const handleSelect = useCallback((optionValue: string) => {

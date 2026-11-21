@@ -75,17 +75,18 @@ export default function ToolbarMenu({
 
   useEffect(() => {
     if (!open) return undefined
-    const onPointerDown = (event: MouseEvent) => {
+    const onPointerDown = (event: PointerEvent) => {
       const target = event.target as Node
       if (menuRef.current?.contains(target) || buttonRef.current?.contains(target)) return
       setOpen(false)
     }
-    window.addEventListener('mousedown', onPointerDown)
+    // pointerdown: iOS sends no mouse events for taps on non-clickable areas such as the canvas.
+    window.addEventListener('pointerdown', onPointerDown)
     window.addEventListener('resize', place)
     // The first item gets focus, so the menu is usable from the keyboard right away.
     menuRef.current?.querySelector<HTMLElement>('[role="menuitem"]:not([disabled])')?.focus()
     return () => {
-      window.removeEventListener('mousedown', onPointerDown)
+      window.removeEventListener('pointerdown', onPointerDown)
       window.removeEventListener('resize', place)
     }
   }, [open, place])

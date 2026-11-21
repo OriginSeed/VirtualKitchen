@@ -395,6 +395,26 @@
   .recipe-node-selector select { max-width: 150px; }
 }
 
+/* Narrow bars: the selector gives up its minimum (it can't push the actions off-screen), and below ~640px
+   it steps aside entirely: tapping a node on the canvas selects it. */
+@container (max-width: 48rem) {
+  .recipe-node-selector { min-width: 0; }
+  .recipe-node-selector select { max-width: 110px; }
+  .recipe-breadcrumb-current { min-width: 3rem; }
+}
+
+@container (max-width: 40rem) {
+  .recipe-node-selector { display: none; }
+}
+
+/* Top bar overflow: below 48rem these actions (and the dividers) hide and the ⋯ menu holds them. */
+.recipe-topbar-overflow { display: none; }
+
+@container (max-width: 47.99rem) {
+  .recipe-topbar .is-overflowable { display: none; }
+  .recipe-topbar-overflow { display: inline-flex; }
+}
+
 /* --- popover menus (ToolbarMenu) ----------------------------------------------------------- */
 
 .recipe-toolbar-menu {
@@ -509,6 +529,14 @@
 
 .recipe-toolbar-menu-footer.is-low strong {
   color: var(--flow-warning);
+}
+
+.recipe-toolbar-menu-note {
+  margin: 0;
+  padding: 0 8px 4px;
+  color: var(--flow-warning);
+  font-size: 11px;
+  line-height: 1.35;
 }
 
 /* --- process sidebar ---------------------------------------------------------------------- */

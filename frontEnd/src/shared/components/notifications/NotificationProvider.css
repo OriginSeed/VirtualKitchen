@@ -47,7 +47,14 @@
 }
 
 .notification-toast-close {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 32px;
+  min-height: 32px;
+  margin: -0.4rem -0.4rem -0.4rem 0;
   padding: 0.15rem;
+  border-radius: 0.5rem;
   border: none;
   background: transparent;
   color: var(--flow-text-subtle);
@@ -58,6 +65,24 @@
 
 .notification-toast-close:hover {
   color: var(--flow-text);
+}
+
+/* Phones: top-right toasts covered the navbar's cart and account buttons. Show them at the bottom instead,
+   above the floating cart button and the home indicator. */
+@media (max-width: 640px) {
+  .notification-container {
+    top: auto;
+    right: 50%;
+    bottom: calc(5rem + env(safe-area-inset-bottom, 0px));
+    flex-direction: column-reverse;
+    width: calc(100vw - 1.5rem);
+    transform: translateX(50%);
+  }
+
+  .notification-toast-close {
+    min-width: 40px;
+    min-height: 40px;
+  }
 }
 
 @keyframes notification-toast-in {

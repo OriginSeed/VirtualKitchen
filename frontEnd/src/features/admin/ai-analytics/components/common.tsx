@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useRef, useState, type CSSProperties } from 'react'
 import type { Cost, GroupMetrics } from '../api/aiAnalyticsApi'
 import type { ReactNode } from 'react'
 import { MISSING, costBreakdown, formatCost, humanize, statusTone } from '../model/analyticsFormat'
@@ -16,23 +16,45 @@ export function StatusBadge({ status }: { status: string | null | undefined }) {
 
 /** A cost with its basis, and its breakdown on hover/focus or click. */
 export function CostCell({ cost, total }: { cost: Cost | null | undefined; total?: number | null }) {
-  const [open, setOpen] = useState(false)
+  // The breakdown is positioned against the screen (fixed), so a table's sideways scroll area never clips it.
+  const [position, setPosition] = useState<CSSProperties | null>(null)
+  const anchorRef = useRef<HTMLSpanElement>(null)
+  const open = position != null
   const value = total !== undefined ? total : cost?.totalCost ?? null
   const basis = cost?.costBasis
+  const show = () => {
+    const box = anchorRef.current?.getBoundingClientRect()
+    if (!box) return
+    const width = Math.min(320, window.innerWidth - 16)
+    const left = Math.max(8, Math.min(box.right - width, window.innerWidth - width - 8))
+    const below = box.bottom + 6
+    // Near the bottom of the screen it opens upwards.
+    setPosition(below + 160 > window.innerHeight
+      ? { position: 'fixed', left, width, bottom: window.innerHeight - box.top + 6 }
+      : { position: 'fixed', left, width, top: below })
+  }
+  const hide = () => setPosition(null)
   return (
     <span
+      ref={anchorRef}
       className="aia-cost"
       tabIndex={0}
-      onMouseEnter={() => setOpen(true)}
-      onMouseLeave={() => setOpen(false)}
-      onFocus={() => setOpen(true)}
-      onBlur={() => setOpen(false)}
+      onMouseEnter={show}
+      onMouseLeave={hide}
+      onFocus={show}
+      onBlur={hide}
+      // Touch: a tap toggles the breakdown, without also opening the table row's details.
+      onClick={(event) => {
+        event.stopPropagation()
+        if (open) hide()
+        else show()
+      }}
     >
       <span className={value === null ? 'aia-muted' : undefined}>{value === null ? 'Unavailable' : formatCost(value, cost?.currency)}</span>
       {basis === 'ESTIMATED' && <span className="aia-tag" title="Estimate">est.</span>}
       {cost?.complete === false && value !== null && <span className="aia-tag aia-tag--warn" title="Some calls could not be priced">partial</span>}
       {open && cost && (
-        <span className="aia-popover" role="tooltip">
+        <span className="aia-popover" role="tooltip" style={position ?? undefined}>
           {costBreakdown(cost).map((line) => (
             <span key={line.label} className="aia-popover-row">
               <span>{line.label}</span>

@@ -135,6 +135,10 @@ export default function AiActionsMenu({ recipeActions }: AiActionsMenuProps) {
               <span>AI credits</span>
               <strong>⚡ {credits.credit.availableBalance} / {credits.credit.monthlyAllocation}</strong>
             </div>
+            {/* Shown, not only in the tooltip: touch screens have no hover. */}
+            {credits.isLow && (
+              <p className="recipe-toolbar-menu-note">Running low: AI falls back to a standard model.</p>
+            )}
           </>
         )}
       </>

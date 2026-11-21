@@ -33,3 +33,14 @@
 }
 .admin-subnav-item:hover { color: var(--flow-text); }
 .admin-subnav-item.is-active { color: var(--flow-accent-strong); border-bottom-color: var(--flow-accent); }
+
+@media (max-width: 640px) {
+  .admin-subnav {
+    padding-right: 24px;
+    scrollbar-width: none;
+    -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 24px), transparent 100%);
+    mask-image: linear-gradient(to right, #000 calc(100% - 24px), transparent 100%);
+  }
+
+  .admin-subnav-item { min-height: 40px; }
+}

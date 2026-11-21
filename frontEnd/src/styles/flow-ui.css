@@ -1,5 +1,6 @@
 .flow-editor-shell {
-  min-height: 100vh;
+  /* No full-screen min-height: this shell sits inside the kitchen layout, below the navbar, and filling the
+     screen again added a navbar's height of scrolling and pushed the footer off-screen. */
   background: var(--flow-bg);
   color: var(--flow-text);
   font-family: var(--flow-font);
@@ -372,7 +373,8 @@
   display: inline-flex;
   align-items: center;
   gap: 0.3rem;
-  padding: 0.3rem 0.7rem;
+  min-height: 2.25rem;
+  padding: 0.3rem 0.85rem;
   border: 0;
   border-radius: 999px;
   background: linear-gradient(135deg, var(--flow-accent), var(--flow-accent-secondary));
@@ -571,6 +573,11 @@
 
 .recipe-modal {
   width: min(100%, 520px);
+  /* Never taller than the screen: header and footer stay put and the body scrolls (phones, landscape, keyboard). */
+  display: flex;
+  flex-direction: column;
+  max-height: calc(100vh - 2rem);
+  max-height: calc(100dvh - 2rem);
   overflow: hidden;
   border: 1px solid var(--flow-border);
   border-radius: var(--flow-radius-xl);
@@ -607,10 +614,19 @@
 }
 
 .recipe-modal-body {
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
   padding: 1.5rem;
 }
 
+.recipe-modal-header,
 .recipe-modal-footer {
+  flex-shrink: 0;
+}
+
+.recipe-modal-footer {
+  flex-wrap: wrap;
   display: flex;
   justify-content: flex-end;
   gap: 0.625rem;
@@ -777,4 +793,24 @@
 .recipe-sort-select:focus-visible {
   outline: 2px solid var(--flow-accent);
   outline-offset: 1px;
+}
+
+/* Touch screens: a tap leaves :hover applied, so the card's lift would stay stuck. */
+@media (hover: none) {
+  .recipe-card:hover {
+    transform: none;
+    border-color: var(--flow-border);
+    box-shadow: var(--flow-shadow-card);
+  }
+}
+
+@media (pointer: coarse) {
+  .recipe-modal-close {
+    width: 2.5rem;
+    height: 2.5rem;
+  }
+
+  .recipe-sort-select {
+    height: 2.5rem;
+  }
 }

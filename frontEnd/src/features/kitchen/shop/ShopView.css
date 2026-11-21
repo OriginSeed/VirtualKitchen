@@ -202,7 +202,7 @@
 @media (max-width: 640px) {
   .shop-cart-fab {
     right: 16px;
-    bottom: 16px;
+    bottom: calc(16px + env(safe-area-inset-bottom, 0px));
   }
 
   .shop-cart-fab-total {
@@ -267,11 +267,11 @@
 
 .shop-search-clear {
   position: absolute;
-  right: 12px;
+  right: 4px;
   top: 50%;
   display: flex;
-  width: 24px;
-  height: 24px;
+  width: 38px;
+  height: 38px;
   align-items: center;
   justify-content: center;
   transform: translateY(-50%);
@@ -578,8 +578,8 @@
 
 .cart-drawer-close {
   display: flex;
-  width: 34px;
-  height: 34px;
+  width: 40px;
+  height: 40px;
   flex-shrink: 0;
   align-items: center;
   justify-content: center;
@@ -642,6 +642,9 @@
 }
 
 .cart-remove-button {
+  min-height: 36px;
+  margin: -8px -6px 0 0;
+  padding: 0 8px;
   border: 0;
   background: transparent;
   color: var(--flow-danger);
@@ -888,6 +891,14 @@
     padding: 0;
   }
 
+  /* Icon-only button: the count sits on its corner, like the floating cart's, instead of overflowing it. */
+  .shop-cart-button .shop-cart-badge {
+    position: absolute;
+    top: -6px;
+    right: -6px;
+    border: 2px solid var(--flow-surface);
+  }
+
   .shop-grid {
     grid-template-columns:
       repeat(auto-fill, minmax(190px, 1fr));
@@ -901,7 +912,7 @@
   }
 
   .shop-grid {
-    grid-template-columns: 1fr 1fr;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   .shop-card {
@@ -931,5 +942,29 @@
 
   .cart-drawer {
     width: 100%;
+  }
+}
+
+/* Touch screens: no stuck hover lift after a tap, and fields at 16px so iOS doesn't zoom into them. */
+@media (hover: none) {
+  .shop-card:hover,
+  .shop-cart-button:hover,
+  .shop-cart-fab.visible:hover {
+    transform: none;
+  }
+}
+
+@media (pointer: coarse) {
+  .shop-search-input,
+  .cart-item-controls input,
+  .cart-item-controls select {
+    font-size: 16px;
+  }
+}
+
+/* Phones: leave room under the page for the floating cart so it never covers the footer or the last cards. */
+@media (max-width: 640px) {
+  .kitchen-body:has(.shop-cart-fab.visible) {
+    padding-bottom: calc(84px + env(safe-area-inset-bottom, 0px));
   }
 }
