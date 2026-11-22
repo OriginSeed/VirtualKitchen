@@ -4,6 +4,7 @@ import type {
   RecipeStoryboardStage,
   RecipeStoryboardStep,
 } from '../../../types/recipe'
+import { friendlyJobError } from '../../../shared/errors.ts'
 
 /**
  * How a recipe storyboard (the whole recipe as panels in one image) is worded and summarised for the UI.
@@ -55,7 +56,7 @@ export const storyboardProgressBadge = (storyboard: Pick<RecipeStoryboardRespons
 /** The error line of a failed generation: what failed, then the backend's reason when it gave one. */
 export const storyboardFailureText = (storyboard: Pick<RecipeStoryboardResponse, 'failedStage' | 'errorMessage'>): string => {
   const what = storyboard.failedStage ? FAILED_STAGE_LABELS[storyboard.failedStage] : 'Visualize did not finish'
-  const reason = storyboard.errorMessage?.trim()
+  const reason = friendlyJobError(storyboard.errorMessage?.trim())
   return reason ? `${what}: ${reason}` : `${what}. Please try again.`
 }
 

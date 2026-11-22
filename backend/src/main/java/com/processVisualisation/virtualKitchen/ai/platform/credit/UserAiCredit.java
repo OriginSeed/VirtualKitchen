@@ -1,5 +1,6 @@
 package com.processVisualisation.virtualKitchen.ai.platform.credit;
 
+import org.springframework.data.mongodb.core.index.Indexed;
 import lombok.Data;
 import org.springframework.data.annotation.CreatedDate;
 import org.springframework.data.annotation.Id;
@@ -33,6 +34,8 @@ public class UserAiCredit {
     private int reservedBalance;
 
     private LocalDate cycleStart;
+    /** Indexed: the nightly reset finds expired cycles by it. */
+    @Indexed
     private LocalDate cycleEnd;
 
     @CreatedDate

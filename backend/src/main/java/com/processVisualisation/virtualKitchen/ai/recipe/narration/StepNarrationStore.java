@@ -40,6 +40,13 @@ public interface StepNarrationStore {
     /** Marks the narration FAILED, but only while it still carries {@code token}. */
     boolean markFailed(String narrationKey, String token, String reason, Instant failedAt);
 
+    /**
+     * Extends the lease of a generation that is still GENERATING under {@code token}. A worker calls this when it
+     * finally starts (its task may have waited in the pool queue past the original lease); false means another
+     * request has since taken the claim, and this worker must not generate.
+     */
+    boolean renewLease(String narrationKey, String token, Instant leaseUntil, Instant now);
+
     /** Every READY narration of the recipe, whatever process it belongs to. */
     List<StepNarration> findReadyByRecipeId(Long recipeId);
 

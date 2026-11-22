@@ -1,5 +1,6 @@
 package com.processVisualisation.virtualKitchen.ai.recipe.narration.controller;
 
+import jakarta.validation.Valid;
 import com.processVisualisation.virtualKitchen.common.logging.LogAction;
 
 import com.processVisualisation.virtualKitchen.ai.recipe.narration.StepNarrationService;
@@ -48,7 +49,7 @@ public class StepNarrationController {
     @PostMapping("/narrations")
     public ApiResponse<List<StepNarrationResponseDTO>> ensureAll(
             @PathVariable Long recipeId, @PathVariable Long processId,
-            @RequestBody(required = false) NarrationBatchRequestDTO request) {
+            @Valid @RequestBody(required = false) NarrationBatchRequestDTO request) {
         List<String> stepIds = request == null ? null : request.getStepIds();
         return build(stepNarrationService.ensureAll(currentUserId(), recipeId, processId, stepIds),
                 "Process narration requested");

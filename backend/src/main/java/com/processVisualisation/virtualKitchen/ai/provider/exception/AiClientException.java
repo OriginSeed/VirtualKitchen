@@ -1,6 +1,7 @@
 package com.processVisualisation.virtualKitchen.ai.provider.exception;
 
 import com.processVisualisation.virtualKitchen.common.web.ApiException;
+import com.processVisualisation.virtualKitchen.common.web.ErrorCode;
 
 import org.springframework.http.HttpStatus;
 
@@ -36,5 +37,19 @@ public class AiClientException extends ApiException {
     /** For subclasses: a provider failure answered with its own status and error title. */
     protected AiClientException(String message, Throwable cause, HttpStatus status, String error) {
         super(message, cause, status, error, Outcome.UPSTREAM_FAILURE);
+    }
+
+    /** Message sent to users for every provider failure; the provider's own error text is only logged. */
+    public static final String CLIENT_MESSAGE =
+            "The AI service had a problem handling this request. Please try again in a moment.";
+
+    @Override
+    public ErrorCode getCode() {
+        return ErrorCode.AI_UNAVAILABLE;
+    }
+
+    @Override
+    public String getClientMessage() {
+        return CLIENT_MESSAGE;
     }
 }

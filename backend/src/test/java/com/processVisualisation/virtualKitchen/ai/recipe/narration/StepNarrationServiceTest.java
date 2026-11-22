@@ -1,5 +1,6 @@
 package com.processVisualisation.virtualKitchen.ai.recipe.narration;
 
+import com.processVisualisation.virtualKitchen.common.web.UserFacingErrors;
 import com.processVisualisation.virtualKitchen.ai.platform.artifact.AiArtifactService;
 import com.processVisualisation.virtualKitchen.ai.platform.artifact.codec.GeneratedAudioCodec;
 import com.processVisualisation.virtualKitchen.ai.platform.credit.AiCreditProperties;
@@ -153,7 +154,8 @@ class StepNarrationServiceTest {
 
         StepNarrationResponseDTO failed = service.get(OWNER, RECIPE_ID, PROCESS_ID, STEP_1);
         assertEquals("FAILED", failed.getStatus());
-        assertTrue(failed.getFailureReason().contains("noSuchTtsProvider"), failed.getFailureReason());
+        // Users get a plain message; the bean name stays in the stored record and the log.
+        assertEquals(UserFacingErrors.GENERIC, failed.getFailureReason());
         assertNull(failed.getAudioUrl());
     }
 
@@ -295,6 +297,20 @@ class StepNarrationServiceTest {
     }
 
     @Test
+    void queuedGenerationWhoseLeaseWasTakenOverNeverCallsTheProvider() throws Exception {
+        service.ensure(OWNER, RECIPE_ID, PROCESS_ID, STEP_1, false);   // generation A waits in the queue...
+        clock.advance(Duration.ofMinutes(10));                          // ...past its lease
+        service.ensure(OWNER, RECIPE_ID, PROCESS_ID, STEP_1, false);   // generation B takes the claim over
+        assertEquals(2, pool.queuedCount());
+
+        pool.runAll();
+
+        // Only B speaks: A finds its claim gone when it finally starts, so the audio is paid for once.
+        assertEquals(1, spoken("geminiTtsProvider").size());
+        assertEquals("READY", service.get(OWNER, RECIPE_ID, PROCESS_ID, STEP_1).getStatus());
+    }
+
+    @Test
     void supersededGenerationCannotOverwriteNewerNarration() throws Exception {
         service.ensure(OWNER, RECIPE_ID, PROCESS_ID, STEP_1, false);           // generation A, old text
         stepInputs.put(STEP_1, input("Add three tablespoons of oil to the pan"));
@@ -324,7 +340,7 @@ class StepNarrationServiceTest {
 
         StepNarrationResponseDTO failed = service.get(OWNER, RECIPE_ID, PROCESS_ID, STEP_1);
         assertEquals("FAILED", failed.getStatus());
-        assertTrue(failed.getFailureReason().contains("429"));
+        assertEquals(UserFacingErrors.BUSY, failed.getFailureReason());
         assertEquals(NOW.plusMillis(30_000), failed.getRetryAfter());
         int callsSoFar = spoken("geminiTtsProvider").size();
 

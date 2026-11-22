@@ -1,5 +1,6 @@
 package com.processVisualisation.virtualKitchen.ai.recipe.workflow;
 
+import com.processVisualisation.virtualKitchen.common.web.UserFacingErrors;
 import com.processVisualisation.virtualKitchen.ai.recipe.generation.model.RecipeProcessGenerationJob;
 import com.processVisualisation.virtualKitchen.ai.recipe.generation.model.RecipeProcessGenerationJobStatus;
 import com.processVisualisation.virtualKitchen.ai.recipe.generation.model.RecipeProcessGenerationStage;
@@ -129,7 +130,7 @@ public class RecipeAiWorkflowStatusResolver {
             case COMPLETED -> task.status(RecipeAiTaskStatus.COMPLETED).progressPercent(100).build();
             case FAILED -> task.status(RecipeAiTaskStatus.FAILED)
                     .progressPercent(100)
-                    .errorMessage(job.getErrorMessage())
+                    .errorMessage(UserFacingErrors.forJob(job.getErrorMessage()))
                     .retryable(!approved && workflow.getStatus() != RecipeAiWorkflowStatus.CANCELLED)
                     .build();
         };
@@ -315,7 +316,7 @@ public class RecipeAiWorkflowStatusResolver {
                 .completed(succeeded)
                 .failed(failed)
                 .total(total)
-                .errorMessage(error)
+                .errorMessage(UserFacingErrors.forJob(error))
                 .retryable(!running && failed > 0)
                 .retryAfter(retryAfter)
                 .build();

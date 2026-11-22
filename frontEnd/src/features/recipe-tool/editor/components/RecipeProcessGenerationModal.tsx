@@ -10,6 +10,8 @@ import type { RunModelCapability } from '../../../../types/recipeAiWorkflow'
 import { pickRunModels, useRunModelChoices } from '../../workflow/model/runModels'
 import type { RunModels } from '../../workflow/model/workflowSelection'
 import { RunModelSelects } from '../../workflow/components/RunModelPicker'
+import { INPUT_LIMITS } from '../../../../shared/inputLimits'
+import CharCounter from '../../../../shared/components/CharCounter'
 
 /** A finished AI edit waiting for the user's review — either a list of changes or a question back. */
 export type PendingProcessEdit = {
@@ -152,7 +154,7 @@ export default function RecipeProcessGenerationModal({
           </button>
         </div>
 
-        <div style={{ padding: '16px 18px', display: 'flex', flexDirection: 'column', gap: 12 }}>
+        <div className="flow-modal-scroll-body" style={{ padding: '16px 18px', display: 'flex', flexDirection: 'column', gap: 12 }}>
           {allowCreate && editTargetName && !pendingEdit && (
             <div className="recipe-ai-mode-toggle" role="radiogroup" aria-label="What should the AI do?">
               {(['EDIT', 'CREATE'] as const).map((option) => (
@@ -196,8 +198,10 @@ export default function RecipeProcessGenerationModal({
                 placeholder={editing ? EDIT_PLACEHOLDER : CREATE_PLACEHOLDER}
                 rows={editing ? 5 : 10}
                 disabled={isGenerating}
+                maxLength={INPUT_LIMITS.recipeText}
                 style={{ minHeight: editing ? 110 : 180 }}
               />
+              <CharCounter length={text.length} max={INPUT_LIMITS.recipeText} />
 
               <RunModelSelects
                 choices={modelChoices.data}

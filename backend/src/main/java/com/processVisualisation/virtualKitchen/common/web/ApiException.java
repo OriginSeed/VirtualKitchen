@@ -57,4 +57,17 @@ public abstract class ApiException extends RuntimeException {
     public Outcome getOutcome() {
         return outcome;
     }
+
+    /** The response's machine-readable code; by default the one for its status. */
+    public ErrorCode getCode() {
+        return ErrorCode.forStatus(status);
+    }
+
+    /**
+     * The message sent to the client. By default the exception's own message, which feature code writes for
+     * users; exceptions whose message can carry internal or third-party detail override this.
+     */
+    public String getClientMessage() {
+        return getMessage();
+    }
 }

@@ -38,6 +38,11 @@ public class Otp {
 
     private int attempts = 0;
 
+    /**
+     * Set by OtpService when the code is created (Mongo auditing is not enabled, so {@code @CreatedDate} alone
+     * would leave it null). Codes are deleted by Mongo a day after creation; they expire for use much sooner.
+     */
     @CreatedDate
+    @Indexed(name = "otp_created_ttl", expireAfter = "1d")
     private LocalDateTime createdAt;
 }

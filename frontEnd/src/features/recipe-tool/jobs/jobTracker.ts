@@ -11,7 +11,8 @@ import type {
   StoryboardStepFixResponse,
 } from '../../../types/recipe'
 import type { RecipeAiWorkflowCreateRequest, RecipeAiWorkflowResponse, RecipeAiWorkflowStatus } from '../../../types/recipeAiWorkflow'
-import { errorMessage } from '../../../shared/errors'
+import { errorMessage, friendlyJobError } from '../../../shared/errors'
+import { isDocumentHidden, pollDelay } from './pollTiming'
 import type { RunModels } from '../workflow/model/workflowSelection'
 
 /**
@@ -121,7 +122,27 @@ export class JobTracker {
   /** Keys `refresh` was asked for while their poll was in flight. */
   private refreshAfterPoll = new Set<JobKey>()
   private finishedCount = 0
+  /** Whether the page is hidden: polls slow down to HIDDEN_POLL_INTERVAL_MS until it is visible again. */
+  private hidden = isDocumentHidden()
   private notifier: JobNotifier = { success: () => {}, error: () => {}, info: () => {} }
+
+  /**
+   * Called on `visibilitychange`. Going hidden only stretches the polls already scheduled from now on; becoming
+   * visible polls every active job right away, so what the user sees is current.
+   */
+  setHidden(hidden: boolean) {
+    if (this.hidden === hidden) return
+    this.hidden = hidden
+    if (hidden) return
+    for (const [key, tracked] of this.jobs) {
+      if (isTrackedJobActive(tracked) && !this.aborters.has(key)) this.schedulePoll(key, 0)
+    }
+  }
+
+  /** The delay before `tracked`'s next poll, slower while the page is hidden. */
+  private nextPollDelay(tracked: TrackedJob) {
+    return pollDelay(pollInterval(tracked), this.hidden)
+  }
 
   setNotifier(notifier: JobNotifier) {
     this.notifier = notifier
@@ -382,7 +403,7 @@ export class JobTracker {
     if (current && trackedId(current) !== trackedId(tracked)) this.stopPolling(key)
     this.set(key, tracked)
     if (isTrackedJobActive(tracked)) {
-      if (!this.timers.has(key) && !this.aborters.has(key)) this.schedulePoll(key, pollInterval(tracked))
+      if (!this.timers.has(key) && !this.aborters.has(key)) this.schedulePoll(key, this.nextPollDelay(tracked))
     } else {
       this.stopPolling(key)
     }
@@ -423,7 +444,7 @@ export class JobTracker {
       if (next.kind === 'workflow') this.adoptWorkflowJobs(next.recipeId, next.job)
       if (isTrackedJobActive(next)) {
         this.set(key, next)
-        this.schedulePoll(key, this.refreshAfterPoll.delete(key) ? 0 : pollInterval(next))
+        this.schedulePoll(key, this.refreshAfterPoll.delete(key) ? 0 : this.nextPollDelay(next))
       } else {
         this.finishedCount += 1
         this.set(key, next)
@@ -439,7 +460,7 @@ export class JobTracker {
         return
       }
       if (failures >= CONNECTION_LOST_AFTER) this.patch(key, { connectionLost: true })
-      this.schedulePoll(key, Math.min(POLL_INTERVAL_MS * 2 ** failures, MAX_POLL_BACKOFF_MS))
+      this.schedulePoll(key, pollDelay(Math.min(POLL_INTERVAL_MS * 2 ** failures, MAX_POLL_BACKOFF_MS), this.hidden))
     } finally {
       if (this.aborters.get(key) === controller) this.aborters.delete(key)
     }
@@ -459,7 +480,7 @@ export class JobTracker {
       const succeeded = job.steps.filter((step) => step.success).length
       if (job.status === 'COMPLETED') this.notifier.success(`Visuals ready for all ${job.totalSteps} steps`)
       else if (job.status === 'COMPLETED_WITH_ERRORS') this.notifier.error(`Visuals generated for ${succeeded}/${job.totalSteps} steps — ${job.totalSteps - succeeded} failed`)
-      else this.notifier.error(job.errorMessage || 'Unable to generate visuals right now.')
+      else this.notifier.error(friendlyJobError(job.errorMessage, 'Unable to generate visuals right now.'))
     } else if (tracked.kind === 'storyboard') {
       const { job } = tracked
       if (job.status === 'COMPLETED') {
@@ -467,16 +488,16 @@ export class JobTracker {
           ? 'The visuals are ready, with a note — open them from the AI menu.'
           : 'The visuals are ready — open them from the AI menu.')
       } else {
-        this.notifier.error(job.errorMessage || 'Unable to visualize this recipe right now.')
+        this.notifier.error(friendlyJobError(job.errorMessage, 'Unable to visualize this recipe right now.'))
       }
     } else if (tracked.kind === 'stepfix') {
       const { job } = tracked
       if (job.status === 'COMPLETED') this.notifier.success('The step image was redrawn. You can undo it from the step.')
-      else this.notifier.error(job.errorMessage || 'Unable to fix this step image right now.')
+      else this.notifier.error(friendlyJobError(job.errorMessage, 'Unable to fix this step image right now.'))
     } else if (tracked.job.status === 'FAILED') {
       // A successful generation is announced by the editor once it has loaded the result.
-      this.notifier.error(tracked.job.errorMessage
-        || (tracked.job.mode === 'EDIT' ? 'Unable to apply that change right now.' : 'Unable to generate this recipe right now.'))
+      this.notifier.error(friendlyJobError(tracked.job.errorMessage,
+        tracked.job.mode === 'EDIT' ? 'Unable to apply that change right now.' : 'Unable to generate this recipe right now.'))
     }
   }
 

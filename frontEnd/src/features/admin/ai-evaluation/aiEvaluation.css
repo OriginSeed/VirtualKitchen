@@ -50,6 +50,19 @@
   margin: 0.9rem 0 0.4rem; font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--flow-text-muted);
 }
 
-@media (max-width: 760px) {
+.aie-rating-guide dl { margin: 0 0 0.4rem; display: flex; flex-direction: column; gap: 0.35rem; font-size: 0.8rem; }
+.aie-rating-guide dt { font-weight: 600; }
+.aie-rating-guide dd { margin: 0; color: var(--flow-text-muted); }
+.aie-rating-guide p { margin: 0; }
+
+/* Two columns need ~900px: below that the scene sits above the verdict. */
+@media (max-width: 900px) {
   .aie-set-top { grid-template-columns: 1fr; }
+}
+
+/* Tablets and phones: scoring is the main task here, so the 1-5 buttons are finger-sized. */
+@media (max-width: 768px) {
+  .aie-rating { flex-wrap: wrap; }
+  .aie-rating-buttons { gap: 0.4rem; }
+  .aie-rating-button { width: 2.6rem; height: 2.6rem; }
 }

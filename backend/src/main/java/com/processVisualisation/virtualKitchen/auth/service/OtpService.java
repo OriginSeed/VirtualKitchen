@@ -4,13 +4,18 @@ import com.processVisualisation.virtualKitchen.auth.exception.AuthException;
 import com.processVisualisation.virtualKitchen.auth.model.Otp;
 import com.processVisualisation.virtualKitchen.auth.model.OtpPurpose;
 import com.processVisualisation.virtualKitchen.auth.repository.OtpRepository;
+import org.springframework.data.mongodb.core.FindAndModifyOptions;
+import org.springframework.data.mongodb.core.MongoTemplate;
+import org.springframework.data.mongodb.core.query.Criteria;
+import org.springframework.data.mongodb.core.query.Query;
+import org.springframework.data.mongodb.core.query.Update;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 
 import java.security.SecureRandom;
+import java.time.Clock;
 import java.time.LocalDateTime;
-import java.util.Optional;
 
 /**
  * Generates six-digit numeric codes,
@@ -22,6 +27,10 @@ import java.util.Optional;
  * (app.otp.max-attempts) before it is locked out, and a resend rate limit
  * capping how many codes may be generated per email+purpose within a rolling
  * window (app.otp.resend-window-minutes, app.otp.max-per-window).
+ * <p>
+ * Every state change on a code is a single conditional database update, so concurrent requests can't get past
+ * the attempt limit together, and a code can be used (verified or consumed) only once even when two requests
+ * submit it at the same moment.
  */
 @Service
 public class OtpService {
@@ -29,17 +38,26 @@ public class OtpService {
     private static final SecureRandom RANDOM = new SecureRandom();
 
     private final OtpRepository otpRepository;
+    private final MongoTemplate mongoTemplate;
     private final EmailService emailService;
     private final PasswordEncoder passwordEncoder;
-
     private final OtpProperties limits;
+    private final Clock clock;
 
-    public OtpService(OtpRepository otpRepository, EmailService emailService, PasswordEncoder passwordEncoder,
-                      OtpProperties limits) {
+    @org.springframework.beans.factory.annotation.Autowired
+    public OtpService(OtpRepository otpRepository, MongoTemplate mongoTemplate, EmailService emailService,
+                      PasswordEncoder passwordEncoder, OtpProperties limits) {
+        this(otpRepository, mongoTemplate, emailService, passwordEncoder, limits, Clock.systemDefaultZone());
+    }
+
+    OtpService(OtpRepository otpRepository, MongoTemplate mongoTemplate, EmailService emailService,
+               PasswordEncoder passwordEncoder, OtpProperties limits, Clock clock) {
         this.otpRepository = otpRepository;
+        this.mongoTemplate = mongoTemplate;
         this.emailService = emailService;
         this.passwordEncoder = passwordEncoder;
         this.limits = limits;
+        this.clock = clock;
     }
 
     /**
@@ -53,8 +71,9 @@ public class OtpService {
      * @throws AuthException if too many codes have already been requested for this email and purpose within the resend window
      */
     public void generateAndSendOtp(String email, OtpPurpose purpose) {
+        LocalDateTime now = LocalDateTime.now(clock);
         long recentCount = otpRepository.countByEmailAndPurposeAndCreatedAtAfter(
-                email, purpose, LocalDateTime.now().minusMinutes(limits.getResendWindowMinutes()));
+                email, purpose, now.minusMinutes(limits.getResendWindowMinutes()));
 
         if (recentCount >= limits.getMaxPerWindow()) {
             throw new AuthException(
@@ -68,7 +87,10 @@ public class OtpService {
         otp.setEmail(email);
         otp.setPurpose(purpose);
         otp.setCodeHash(passwordEncoder.encode(code));
-        otp.setExpiresAt(LocalDateTime.now().plusMinutes(limits.getExpirationMinutes()));
+        otp.setExpiresAt(now.plusMinutes(limits.getExpirationMinutes()));
+        // Set explicitly: Mongo auditing is not enabled, so @CreatedDate alone would leave it null, and both the
+        // resend window and "latest code" lookups depend on it.
+        otp.setCreatedAt(now);
 
         otpRepository.save(otp);
 
@@ -87,9 +109,7 @@ public class OtpService {
      */
     public void verifyAndConsume(String email, String code, OtpPurpose purpose) {
         Otp otp = validateAndGetActiveOtp(email, code, purpose);
-        otp.setVerified(true);
-        otp.setConsumed(true);
-        otpRepository.save(otp);
+        markUsed(otp, new Update().set("verified", true).set("consumed", true));
     }
 
     /**
@@ -105,8 +125,7 @@ public class OtpService {
      */
     public void verifyOnly(String email, String code, OtpPurpose purpose) {
         Otp otp = validateAndGetActiveOtp(email, code, purpose);
-        otp.setVerified(true);
-        otpRepository.save(otp);
+        markUsed(otp, new Update().set("verified", true));
     }
 
     /**
@@ -127,19 +146,22 @@ public class OtpService {
             throw new AuthException("Please verify your code first", HttpStatus.BAD_REQUEST);
         }
 
-        if (otp.getExpiresAt().isBefore(LocalDateTime.now())) {
+        if (otp.getExpiresAt().isBefore(LocalDateTime.now(clock))) {
             throw new AuthException("Verification has expired. Please request a new code.", HttpStatus.BAD_REQUEST);
         }
 
-        otp.setConsumed(true);
-        otpRepository.save(otp);
+        // Only one concurrent reset may consume the verification.
+        Query unconsumed = Query.query(Criteria.where("_id").is(otp.getId())
+                .and("verified").is(true).and("consumed").is(false));
+        if (mongoTemplate.updateFirst(unconsumed, new Update().set("consumed", true), Otp.class).getModifiedCount() == 0) {
+            throw new AuthException("Please verify your code first", HttpStatus.BAD_REQUEST);
+        }
     }
 
     /**
      * Fetches the most recent OTP for the given email and purpose, checks it
-     * is unconsumed/unverified, unexpired, and under its attempt limit,
-     * increments its attempt counter, and verifies the submitted code against
-     * the stored hash.
+     * is unconsumed/unverified and unexpired, atomically counts this attempt (refusing once the limit is reached),
+     * and verifies the submitted code against the stored hash.
      *
      * @param email the email address the OTP was issued for
      * @param code the plaintext OTP code submitted by the caller
@@ -148,30 +170,41 @@ public class OtpService {
      * @throws AuthException if no active OTP is found, it is already used, has expired, has exceeded its attempt limit, or the code does not match the stored hash
      */
     private Otp validateAndGetActiveOtp(String email, String code, OtpPurpose purpose) {
-        Optional<Otp> latest = otpRepository.findTopByEmailAndPurposeOrderByCreatedAtDesc(email, purpose);
-
-        Otp otp = latest.orElseThrow(
+        Otp otp = otpRepository.findTopByEmailAndPurposeOrderByCreatedAtDesc(email, purpose).orElseThrow(
                 () -> new AuthException("No verification code found. Please request a new one.", HttpStatus.BAD_REQUEST));
 
         if (otp.isConsumed() || otp.isVerified()) {
             throw new AuthException("This code has already been used. Please request a new one.", HttpStatus.BAD_REQUEST);
         }
 
-        if (otp.getExpiresAt().isBefore(LocalDateTime.now())) {
+        if (otp.getExpiresAt().isBefore(LocalDateTime.now(clock))) {
             throw new AuthException("This code has expired. Please request a new one.", HttpStatus.BAD_REQUEST);
         }
 
-        if (otp.getAttempts() >= limits.getMaxAttempts()) {
+        // Count the attempt only while the code is still open and under the limit, in one update: concurrent
+        // guesses each take one of the remaining attempts and can never exceed the limit together.
+        Query open = Query.query(Criteria.where("_id").is(otp.getId())
+                .and("consumed").is(false).and("verified").is(false)
+                .and("attempts").lt(limits.getMaxAttempts()));
+        Otp counted = mongoTemplate.findAndModify(open, new Update().inc("attempts", 1),
+                FindAndModifyOptions.options().returnNew(true), Otp.class);
+        if (counted == null) {
             throw new AuthException("Too many incorrect attempts. Please request a new code.", HttpStatus.TOO_MANY_REQUESTS);
         }
 
-        otp.setAttempts(otp.getAttempts() + 1);
-        otpRepository.save(otp);
-
-        if (!passwordEncoder.matches(code, otp.getCodeHash())) {
+        if (!passwordEncoder.matches(code, counted.getCodeHash())) {
             throw new AuthException("Incorrect verification code.", HttpStatus.BAD_REQUEST);
         }
 
-        return otp;
+        return counted;
+    }
+
+    /** Applies {@code update} only if the code is still unused, so a code can succeed for one request only. */
+    private void markUsed(Otp otp, Update update) {
+        Query unused = Query.query(Criteria.where("_id").is(otp.getId())
+                .and("consumed").is(false).and("verified").is(false));
+        if (mongoTemplate.updateFirst(unused, update, Otp.class).getModifiedCount() == 0) {
+            throw new AuthException("This code has already been used. Please request a new one.", HttpStatus.BAD_REQUEST);
+        }
     }
 }

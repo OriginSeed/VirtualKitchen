@@ -1,5 +1,7 @@
 package com.processVisualisation.virtualKitchen.recipe.controller;
 
+import jakarta.validation.constraints.Size;
+import com.processVisualisation.virtualKitchen.common.web.InputLimits;
 import com.processVisualisation.virtualKitchen.auth.exception.AuthException;
 import com.processVisualisation.virtualKitchen.common.web.ApiResponse;
 import com.processVisualisation.virtualKitchen.recipe.dto.NutritionInfoDTO;
@@ -79,7 +81,7 @@ public class RecipeDetailController {
     @PutMapping("/ingredients")
     public ApiResponse<RecipeDetailResponseDTO> updateIngredients(
             @PathVariable Long recipeId,
-            @Valid @RequestBody List<RecipeIngredientDTO> ingredients
+            @Valid @RequestBody @Size(max = InputLimits.RECIPE_INGREDIENTS, message = "Too many ingredients (at most " + InputLimits.RECIPE_INGREDIENTS + ")") List<RecipeIngredientDTO> ingredients
     ) {
         return build(recipeService.updateIngredients(recipeId, currentUserId(), ingredients), "updated");
     }

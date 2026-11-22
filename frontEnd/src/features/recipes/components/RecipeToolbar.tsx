@@ -39,7 +39,7 @@ export default function RecipeToolbar({
           <button
             type="button"
             onClick={() => onSearchChange('')}
-            className="absolute right-3 top-1/2 -translate-y-1/2 text-sm text-[var(--flow-text-muted)] hover:text-[var(--flow-text)]"
+            className="absolute right-1 top-1/2 flex h-9 w-9 -translate-y-1/2 items-center justify-center rounded-lg text-sm text-[var(--flow-text-muted)] hover:text-[var(--flow-text)]"
             aria-label="Clear search"
           >
             ✕

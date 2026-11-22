@@ -60,7 +60,7 @@ function JsonView({ text }: { text: string }) {
   }
   return (
     <>
-      {summary.length > 0 && <p className="aia-summary">{summary.join(' · ')}</p>}
+      {summary.length > 0 && <p className="aia-result-summary">{summary.join(' · ')}</p>}
       <pre className="aia-pre">{JSON.stringify(parsed, null, 2)}</pre>
     </>
   )

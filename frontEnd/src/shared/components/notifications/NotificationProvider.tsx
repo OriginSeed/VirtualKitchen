@@ -11,6 +11,8 @@ type NotificationItem = {
 }
 
 const AUTO_DISMISS_MS = 4000
+/** Errors stay longer: they usually ask the user to do something, and are read more slowly. */
+const ERROR_AUTO_DISMISS_MS = 8000
 
 export function NotificationProvider({ children }: { children: ReactNode }) {
   const [notifications, setNotifications] = useState<NotificationItem[]>([])
@@ -24,7 +26,7 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
     const id = nextId.current++
 
     setNotifications(current => [...current, { id, message, type }])
-    window.setTimeout(() => dismiss(id), AUTO_DISMISS_MS)
+    window.setTimeout(() => dismiss(id), type === 'error' ? ERROR_AUTO_DISMISS_MS : AUTO_DISMISS_MS)
   }, [dismiss])
 
   const notifySuccess = useCallback((message: string) => notify(message, 'success'), [notify])
@@ -40,6 +42,8 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
           <div
             key={item.id}
             className={`notification-toast notification-toast-${item.type}`}
+            // Errors interrupt the screen reader (assertive); other toasts wait their turn (the polite container).
+            role={item.type === 'error' ? 'alert' : undefined}
           >
             <span className="notification-toast-icon" aria-hidden="true">
               {item.type === 'success' ? '✅' : item.type === 'error' ? '⚠️' : 'ℹ️'}

@@ -136,8 +136,8 @@ export function LineChart({ data, format, ariaLabel }: LineChartProps) {
         viewBox={`0 0 ${WIDTH} ${HEIGHT}`}
         role="img"
         aria-label={ariaLabel}
-        onMouseLeave={() => setHover(null)}
-        onMouseMove={(event) => {
+        onPointerLeave={() => setHover(null)}
+        onPointerMove={(event) => {
           const rect = event.currentTarget.getBoundingClientRect()
           const px = ((event.clientX - rect.left) / rect.width) * WIDTH
           const index = Math.round(((px - PAD.left) / innerW) * (data.length - 1))
@@ -161,7 +161,7 @@ export function LineChart({ data, format, ariaLabel }: LineChartProps) {
         {hover !== null && <line className="aia-crosshair" x1={x(hover)} x2={x(hover)} y1={PAD.top} y2={PAD.top + innerH} />}
       </svg>
       {hovered && (
-        <div className="aia-tooltip" style={{ left: `${(x(hover ?? 0) / WIDTH) * 100}%` }}>
+        <div className="aia-tooltip" style={{ left: `${Math.min(88, Math.max(12, (x(hover ?? 0) / WIDTH) * 100))}%` }}>
           <strong>{hovered.label}</strong>
           <span>{format(hovered.value)}</span>
           {hovered.detail && <span className="aia-muted">{hovered.detail}</span>}

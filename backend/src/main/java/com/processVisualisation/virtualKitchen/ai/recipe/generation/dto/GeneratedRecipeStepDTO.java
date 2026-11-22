@@ -1,5 +1,7 @@
 package com.processVisualisation.virtualKitchen.ai.recipe.generation.dto;
 
+import jakarta.validation.constraints.Size;
+import com.processVisualisation.virtualKitchen.common.web.InputLimits;
 import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
@@ -31,6 +33,7 @@ public class GeneratedRecipeStepDTO {
     // --- STEP-only fields ---
     private String action;
     /** Only meaningful when {@code action} is "custom". */
+    @Size(max = InputLimits.NAME, message = "Action name can be at most " + InputLimits.NAME + " characters")
     private String customActionName;
     private GeneratedActionOnDTO actionOn;
     /** Numeric temperature; its meaning (oven/oil/liquid/...) comes from the action's catalog temperatureContext. */
@@ -46,15 +49,20 @@ public class GeneratedRecipeStepDTO {
     private String repeatInterval;
 
     // --- CONDITION: the question; STEP: an optional short title (empty = derived from the action) ---
+    @Size(max = InputLimits.STEP_TITLE, message = "Step title can be at most " + InputLimits.STEP_TITLE + " characters")
     private String title;
     /** "success" or "failure". */
+    @Size(max = InputLimits.STEP_TEXT, message = "Expected result can be at most " + InputLimits.STEP_TEXT + " characters")
     private String expectedResult;
 
     // --- shared core fields (both STEP and CONDITION) ---
+    @Size(max = InputLimits.STEP_TEXT, message = "Step description can be at most " + InputLimits.STEP_TEXT + " characters")
     private String actionDescription;
+    @Size(max = InputLimits.STEP_TEXT, message = "Expected output can be at most " + InputLimits.STEP_TEXT + " characters")
     private String expectedOutput;
 
     /** STEP only: a plain spoken explanation of the step that continues from the one before it (used by TTS). */
+    @Size(max = InputLimits.STEP_TEXT, message = "Step summary can be at most " + InputLimits.STEP_TEXT + " characters")
     private String summary;
 
     /** REFINE only: the id of the cook's node this step re-authors, so it keeps that node's id (and its image). */

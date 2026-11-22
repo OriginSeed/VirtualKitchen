@@ -107,6 +107,18 @@ class InMemoryStepNarrationStore implements StepNarrationStore {
     }
 
     @Override
+    public synchronized boolean renewLease(String narrationKey, String token, Instant leaseUntil, Instant now) {
+        StepNarration record = records.get(narrationKey);
+        if (record == null || !token.equals(record.getGenerationToken())
+                || record.getStatus() != StepNarrationStatus.GENERATING) {
+            return false;
+        }
+        record.setLeaseUntil(leaseUntil);
+        record.setUpdatedAt(now);
+        return true;
+    }
+
+    @Override
     public synchronized List<StepNarration> findReadyByRecipeId(Long recipeId) {
         return records.values().stream()
                 .filter(r -> recipeId.equals(r.getRecipeId()) && r.getStatus() == StepNarrationStatus.READY)

@@ -4,6 +4,7 @@ import type {
   RecipeAiWorkflowResponse,
   RecipeAiWorkflowTask,
 } from '../../../../types/recipeAiWorkflow'
+import { friendlyJobError } from '../../../../shared/errors.ts'
 
 /**
  * Turns AI Recipe Creation's backend state into what the status UI shows: one row per task (icon,
@@ -125,11 +126,11 @@ export const describeWorkflowTask = (task: RecipeAiWorkflowTask, processSummary:
       return row('pending', '○', 'Waiting', 'Starts once the recipe process is ready')
     case 'FAILED': {
       const failed = task.type === 'PROCESS'
-        ? row('failed', '⚠', 'Failed', task.errorMessage || 'Unable to generate the recipe process.')
+        ? row('failed', '⚠', 'Failed', friendlyJobError(task.errorMessage, 'Unable to generate the recipe process.'))
         : isVisualize(task)
-          ? row('failed', '⚠', 'Failed', task.errorMessage || 'Visualize did not finish.')
+          ? row('failed', '⚠', 'Failed', friendlyJobError(task.errorMessage, 'Visualize did not finish.'))
           : row('failed', '⚠', task.completed > 0 ? `${task.completed} / ${task.total}` : 'Failed',
-          task.total > 0 ? countedDetail(task) : (task.errorMessage || 'Failed'))
+          task.total > 0 ? countedDetail(task) : friendlyJobError(task.errorMessage, 'Failed'))
       if (task.retryable) {
         failed.retry = {
           label: task.type === 'PROCESS'

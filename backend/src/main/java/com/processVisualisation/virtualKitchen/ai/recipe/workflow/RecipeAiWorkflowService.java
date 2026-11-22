@@ -890,14 +890,17 @@ public class RecipeAiWorkflowService {
     private RecipeAiWorkflowResponseDTO toDto(RecipeAiWorkflow workflow, Resolution resolution, boolean reused,
                                               RecipeProcessGenerationJobResponseDTO generation) {
         RecipeProcessGenerationJob generationJob = generationJob(workflow);
+        // One query for all of the workflow's visualization jobs (this runs on every status poll).
+        List<String> visualizationJobIds = workflow.getVisualizationJobs().stream()
+                .map(VisualizationJobRef::getJobId).filter(Objects::nonNull).toList();
+        Map<String, VisualizationJobResponseDTO> jobStatuses = visualizationJobIds.isEmpty() ? Map.of()
+                : visualizationJobService.getJobStatuses(workflow.getUserId(), workflow.getRecipeId(), visualizationJobIds);
         List<VisualizationJobResponseDTO> visualizationJobs = workflow.getVisualizationJobs().stream()
                 .filter(ref -> ref.getJobId() != null)
                 .map(ref -> {
-                    try {
-                        return visualizationJobService.getJobStatus(workflow.getUserId(), workflow.getRecipeId(), ref.getProcessId(), ref.getJobId());
-                    } catch (NoSuchElementException e) {
-                        return null;
-                    }
+                    VisualizationJobResponseDTO status = jobStatuses.get(ref.getJobId());
+                    // Same rule as getJobStatus: the job must also belong to the process the workflow recorded.
+                    return status != null && Objects.equals(status.getProcessId(), ref.getProcessId()) ? status : null;
                 })
                 .filter(Objects::nonNull)
                 .toList();

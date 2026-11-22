@@ -52,6 +52,22 @@ public class TaskPoolConfig {
     }
 
     /**
+     * Registers the {@link TaskPool} that runs step-image fixes ({@code StoryboardStepFixService}), sized via
+     * {@code app.taskpool.step-fix.n-threads} (defaults to 2 threads). A fix redraws one image; on its own pool it
+     * never waits behind whole-recipe visualization or storyboard jobs.
+     *
+     * @param taskPoolFactory factory used to create or reuse the named pool
+     * @param nThreads number of worker threads to size this pool with
+     * @return the {@code "step-fix"} {@link TaskPool}
+     */
+    @Bean
+    public TaskPool stepFixTaskPool(
+            TaskPoolFactory taskPoolFactory,
+            @Value("${app.taskpool.step-fix.n-threads:2}") int nThreads) {
+        return taskPoolFactory.getOrCreate("step-fix", nThreads);
+    }
+
+    /**
      * Registers the {@link TaskPool} that bounds text-to-text AI calls
      * (recipe generation, chat) submitted via {@code
      * ai.queue.AiRequestQueueService#executeBounded}, sized via the {@code

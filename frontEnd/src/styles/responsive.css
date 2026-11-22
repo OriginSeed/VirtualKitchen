@@ -1,0 +1,49 @@
+/*
+ * App-wide responsive helpers.
+ *
+ * Breakpoint tiers (keep new rules on these; shared/hooks/useViewport.ts mirrors them in code):
+ *   phone    max-width: 640px          (also: landscape phones, max-height: 500px)
+ *   tablet   641px .. 1024px           (navigation strips already switch at 900px)
+ *   laptop   > 1024px
+ *
+ * Heights use dvh with a vh fallback first: on phones 100vh is the height with the browser bar hidden, so
+ * anything sized to it runs under the toolbar.
+ */
+
+/* ---------- Dialog that always fits the screen ----------
+   Apply to the dialog box; its body (.vk-sheet-body) scrolls while header/footer stay visible. */
+.vk-sheet {
+  display: flex;
+  flex-direction: column;
+  max-height: calc(100vh - 2rem);
+  max-height: calc(100dvh - 2rem);
+}
+
+.vk-sheet-body {
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+/* ---------- Horizontal strip with a fade at the edges that can scroll ---------- */
+.vk-scroll-x-fade {
+  overflow-x: auto;
+  scrollbar-width: none;
+  -webkit-mask-image: linear-gradient(to right, transparent 0, #000 16px, #000 calc(100% - 16px), transparent 100%);
+  mask-image: linear-gradient(to right, transparent 0, #000 16px, #000 calc(100% - 16px), transparent 100%);
+}
+
+.vk-scroll-x-fade::-webkit-scrollbar {
+  display: none;
+}
+
+/* ---------- Touch screens ---------- */
+@media (pointer: coarse) {
+  /* iOS zooms the page into any focused field under 16px. */
+  input:not([type='checkbox']):not([type='radio']):not([type='range']):not([type='color']),
+  select,
+  textarea,
+  [contenteditable='true'] {
+    font-size: max(16px, 1em);
+  }
+}

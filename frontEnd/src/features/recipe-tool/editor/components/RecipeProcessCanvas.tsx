@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import type { Dispatch, ReactNode, SetStateAction } from 'react'
+import type { Dispatch, ReactNode, RefObject, SetStateAction } from 'react'
+import { createPortal } from 'react-dom'
 import {
   ReactFlow,
   Background,
@@ -84,6 +85,7 @@ import ExportProcessModal from './ExportProcessModal'
 import { exportRecipeFile, type ExportedRecipeFile } from '../../session/recipeFile'
 import { errorMessage } from '../../../../shared/errors'
 import { startPanelResize } from './panelResize'
+import { TABLET_MAX_WIDTH, useViewport } from '../../../../shared/hooks/useViewport'
 import { useCanvasShortcuts } from '../hooks/useCanvasShortcuts'
 import EmptyCanvasPrompt from './EmptyCanvasPrompt'
 import ShortcutHelpDialog from './ShortcutHelpDialog'
@@ -182,7 +184,8 @@ const graphPayloadJson = (flowNodes: Node[], flowEdges: Edge[]) => {
  */
 export default function RecipeProcessCanvas(props: RecipeProcessCanvasProps) {
   const session = useRecipeSession()
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
+  // Tablets and phones start with the process list folded away: open, it covers the canvas there.
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(() => window.innerWidth <= TABLET_MAX_WIDTH)
   const [sidebarWidth, setSidebarWidth] = useState(260)
   const [propsCollapsed, setPropsCollapsed] = useState(true)
   const [propsWidth, setPropsWidth] = useState(280)
@@ -232,6 +235,41 @@ export default function RecipeProcessCanvas(props: RecipeProcessCanvasProps) {
       propsWidth={propsWidth}
       setPropsWidth={setPropsWidth}
     />
+  )
+}
+
+/** Phones: the step editor as a full-screen sheet over everything (it doesn't fit beside a node there). */
+function StepEditorSheet({ popupRef, onClose, children }: {
+  popupRef: RefObject<HTMLDivElement | null>
+  onClose: () => void
+  children: ReactNode
+}) {
+  // Focus moves into the sheet when it opens, so Escape and screen readers start there.
+  useEffect(() => {
+    if (!popupRef.current?.contains(document.activeElement)) popupRef.current?.focus()
+  }, [popupRef])
+
+  return createPortal(
+    <div className="flow-step-sheet-backdrop">
+      <div
+        ref={popupRef}
+        tabIndex={-1}
+        className="flow-step-popup is-sheet"
+        data-canvas-shortcuts="off"
+        role="dialog"
+        aria-modal="true"
+        aria-label="Edit step"
+        onKeyDown={(event) => {
+          if (event.key === 'Escape') {
+            event.stopPropagation()
+            onClose()
+          }
+        }}
+      >
+        {children}
+      </div>
+    </div>,
+    document.body,
   )
 }
 
@@ -304,6 +342,24 @@ function RecipeProcessCanvasContent({
   const bodyRef = useRef<HTMLDivElement | null>(null)
   const reactFlowWrapperRef = useRef<HTMLDivElement | null>(null)
 
+  // Tablets and phones held sideways: an open panel slides over the canvas instead of squeezing it to a
+  // sliver, and there are no resize handles. On phones the step editor opens as a full-screen sheet.
+  const viewport = useViewport()
+  const compact = viewport.width <= TABLET_MAX_WIDTH || viewport.isPhoneLandscape
+  const sheetPopup = viewport.isPhone
+
+  // The canvas's own size: the step popup is sized to fit inside it (React Flow clips anything past its edge).
+  const [canvasSize, setCanvasSize] = useState<{ width: number; height: number } | null>(null)
+  useEffect(() => {
+    const wrapper = reactFlowWrapperRef.current
+    if (!wrapper || typeof ResizeObserver === 'undefined') return undefined
+    const observer = new ResizeObserver(([entry]) => {
+      setCanvasSize({ width: Math.round(entry.contentRect.width), height: Math.round(entry.contentRect.height) })
+    })
+    observer.observe(wrapper)
+    return () => observer.disconnect()
+  }, [])
+
   // Always-current mirrors of `nodes`/`edges`, for callbacks that must read the latest state without
   // being recreated on every nodes/edges change (drag-start/resize-start snapshotting below fires
   // from gesture callbacks that are handed to React Flow / a node component once, not re-subscribed
@@ -356,6 +412,15 @@ function RecipeProcessCanvasContent({
   useEffect(() => {
     onSelectedNodeChange?.(selectedNodeId)
   }, [selectedNodeId, onSelectedNodeChange])
+
+  // A panel dragged wide on a big window must still leave the canvas room after a resize or rotation.
+  useEffect(() => {
+    if (compact) return
+    const sidebarMax = getMaxPanelWidth(460, propsCollapsed ? 48 : propsWidth, 20)
+    if (sidebarWidth > sidebarMax) setSidebarWidth(Math.max(200, sidebarMax))
+    const propsMax = getMaxPanelWidth(520, sidebarHeader ? (sidebarCollapsed ? 48 : sidebarWidth) : 0, 20)
+    if (propsWidth > propsMax) setPropsWidth(Math.max(220, propsMax))
+  }, [viewport.width, compact, getMaxPanelWidth, propsCollapsed, propsWidth, sidebarWidth, sidebarCollapsed, sidebarHeader, setSidebarWidth, setPropsWidth])
 
   // Highlighting is applied only to what React Flow renders, so it never reaches the session or a save.
   const displayedNodes = useMemo(() => (highlightedNodeIds && highlightedNodeIds.size > 0
@@ -1004,14 +1069,14 @@ function RecipeProcessCanvasContent({
     const width = node.measured?.width ?? node.width ?? DEFAULT_NODE_SIZE.step.width
     const topLeft = instance.flowToScreenPosition({ x: node.position.x, y: node.position.y })
     const bottomRight = instance.flowToScreenPosition({ x: node.position.x + width, y: node.position.y })
-    const needed = STEP_POPUP_WIDTH + STEP_POPUP_GAP + 12
+    const needed = Math.min(STEP_POPUP_WIDTH, box.width - 24) + STEP_POPUP_GAP + 12
     const roomRight = box.right - bottomRight.x
     const roomLeft = topLeft.x - box.left
     const side = roomRight >= needed || roomRight >= roomLeft ? Position.Right : Position.Left
     let dx = 0
     if (side === Position.Right && roomRight < needed) dx = -Math.min(needed - roomRight, Math.max(0, roomLeft - 12))
     if (side === Position.Left && roomLeft < needed) dx = Math.min(needed - roomLeft, Math.max(0, roomRight - 12))
-    const popupHeight = Math.min(STEP_POPUP_HEIGHT, window.innerHeight - 140)
+    const popupHeight = Math.min(STEP_POPUP_HEIGHT, box.height - 24)
     const overflowBottom = topLeft.y + popupHeight + 12 - box.bottom
     const dy = overflowBottom > 0 ? -Math.min(overflowBottom, Math.max(0, topLeft.y - box.top - 12)) : 0
     if (dx !== 0 || dy !== 0) {
@@ -1085,7 +1150,18 @@ function RecipeProcessCanvasContent({
         onSelectNode={handleSelectNode}
       />
 
-      <div className="flow-canvas-body" ref={bodyRef}>
+      <div className={`flow-canvas-body${compact ? ' is-compact' : ''}`} ref={bodyRef}>
+        {/* Compact layout: an open panel covers the canvas; tapping the canvas beside it folds it away. */}
+        {compact && ((sidebarHeader && !sidebarCollapsed) || !propsCollapsed) && (
+          <div
+            className="flow-panel-backdrop"
+            aria-hidden
+            onClick={() => {
+              setSidebarCollapsed(true)
+              setPropsCollapsed(true)
+            }}
+          />
+        )}
         {sidebarHeader && (
           <div
             ref={sidebarRef}
@@ -1116,13 +1192,13 @@ function RecipeProcessCanvasContent({
           </div>
         )}
 
-        {sidebarHeader && !sidebarCollapsed && (
+        {sidebarHeader && !sidebarCollapsed && !compact && (
           <div
             className="flow-inline-resizer"
             role="separator"
             aria-orientation="vertical"
             aria-label="Resize sidebar"
-            onMouseDown={(event) => startPanelResize(event, {
+            onPointerDown={(event) => startPanelResize(event, {
               side: 'left',
               startWidth: sidebarRef.current?.offsetWidth ?? sidebarWidth,
               minWidth: 200,
@@ -1202,21 +1278,25 @@ function RecipeProcessCanvasContent({
                   panOnScrollMode={PanOnScrollMode.Free}
                   zoomOnScroll={false}
                   zoomOnPinch
-                  selectionOnDrag
                   connectionRadius={28}
                   style={{ width: '100%', height: '100%' }}
                 >
                   <Background variant={BackgroundVariant.Dots} gap={16} size={1} />
                   <Controls style={{ borderRadius: 10, border: '1px solid var(--flow-border)', boxShadow: '0 2px 8px rgba(0,0,0,0.06)' }} />
-                  {/* The minimap would sit on top of the step popup, so it steps aside while one is open. */}
-                  {!popupNode && (
+                  {/* The minimap would sit on top of the step popup, so it steps aside while one is open; on
+                      tablets and phones it would cover too much of the canvas. */}
+                  {!popupNode && !compact && (
                     <MiniMap pannable zoomable style={{ borderRadius: 12, border: '1px solid var(--flow-border)', boxShadow: '0 2px 8px rgba(0,0,0,0.06)' }} />
                   )}
-                  {stepPopup && popupNode && (
+                  {stepPopup && popupNode && !sheetPopup && (
                     <NodeToolbar nodeId={popupNode.id} isVisible position={stepPopup.side} align="start" offset={STEP_POPUP_GAP}>
                       <div
                         ref={popupRef}
                         className="flow-step-popup nodrag nowheel nopan"
+                        style={canvasSize ? {
+                          width: Math.max(260, Math.min(STEP_POPUP_WIDTH, canvasSize.width - 24)),
+                          height: Math.max(240, Math.min(STEP_POPUP_HEIGHT, canvasSize.height - 24)),
+                        } : undefined}
                         data-canvas-shortcuts="off"
                         role="dialog"
                         aria-label="Edit step"
@@ -1266,12 +1346,13 @@ function RecipeProcessCanvasContent({
           </div>
         </div>
 
+        {!propsCollapsed && !compact && (
         <div
           className="flow-inline-resizer"
           role="separator"
           aria-orientation="vertical"
           aria-label="Resize properties panel"
-          onMouseDown={(event) => startPanelResize(event, {
+          onPointerDown={(event) => startPanelResize(event, {
             side: 'right',
             startWidth: propsRef.current?.offsetWidth ?? propsWidth,
             minWidth: 220,
@@ -1280,6 +1361,7 @@ function RecipeProcessCanvasContent({
             onResize: setPropsWidth,
           })}
         />
+        )}
 
         <div
           ref={propsRef}
@@ -1326,6 +1408,33 @@ function RecipeProcessCanvasContent({
           )}
         </div>
       </div>
+
+      {stepPopup && popupNode && sheetPopup && (
+        <StepEditorSheet popupRef={popupRef} onClose={closeStepPopup}>
+            <RecipeStepPanel
+              key={popupNode.id}
+              variant="popup"
+              node={{ id: popupNode.id, data: popupNode.data }}
+              recipeProcesses={recipeProcesses}
+              isPreparation={process.type === 'SUBPROCESS'}
+              updateStepField={updateRecipeStepField}
+              updateActionOnIngredients={updateActionOnIngredients}
+              updateActionOnProcesses={updateActionOnProcesses}
+              updateActionOnSteps={updateActionOnSteps}
+              updateStepData={updateStepData}
+              stepOutputGraph={stepOutputGraph}
+              onDeleteNode={(id) => void requestDeleteNode(id)}
+              onDuplicateNode={duplicateNode}
+              onOpenSubprocess={handleOpenSubprocess}
+              recipeId={recipeId}
+              processId={processId}
+              issues={readiness?.issues.filter((issue) => issue.nodeId === popupNode.id && issue.processId === processId) ?? []}
+              autoFocusDescription={false}
+              onClose={closeStepPopup}
+              onSaveAndClose={() => void handleSaveAndClose()}
+            />
+        </StepEditorSheet>
+      )}
 
       {showSlideshow && (
         <RecipeVisualizationSlideshow

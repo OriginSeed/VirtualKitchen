@@ -148,3 +148,12 @@
   width: 16px;
   height: 16px;
 }
+
+/* Small zoom buttons get an invisible finger-sized hit area on touch screens. */
+@media (pointer: coarse) {
+  .image-zoom-button::after {
+    position: absolute;
+    inset: -8px;
+    content: '';
+  }
+}

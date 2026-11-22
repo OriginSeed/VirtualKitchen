@@ -96,12 +96,25 @@
   .kitchen-sidenav {
     position: static;
     padding: 6px;
-    overflow-x: auto;
-    scrollbar-width: none;
   }
 
-  .kitchen-sidenav::-webkit-scrollbar {
+  /* The tabs don't fit on a phone: the list scrolls sideways inside the card and its edges fade, so the strip
+     reads as scrollable. */
+  .kitchen-sidenav-list {
+    overflow-x: auto;
+    overscroll-behavior-x: contain;
+    padding-inline: 8px;
+    scrollbar-width: none;
+    -webkit-mask-image: linear-gradient(to right, transparent 0, #000 12px, #000 calc(100% - 12px), transparent 100%);
+    mask-image: linear-gradient(to right, transparent 0, #000 12px, #000 calc(100% - 12px), transparent 100%);
+  }
+
+  .kitchen-sidenav-list::-webkit-scrollbar {
     display: none;
+  }
+
+  .kitchen-sidenav-list > li {
+    flex-shrink: 0;
   }
 
   .kitchen-sidenav-title,

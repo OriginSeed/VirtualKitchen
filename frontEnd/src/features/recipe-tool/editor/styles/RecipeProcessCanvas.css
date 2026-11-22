@@ -17,6 +17,7 @@
 
 /* Body row: sidebar + canvas + properties share the remaining viewport height */
 .flow-canvas-body {
+  position: relative; /* compact layout: open panels are placed over the canvas inside this row */
   display: flex;
   flex: 1;
   overflow: hidden;
@@ -146,6 +147,14 @@
   height: 100%;
   flex-shrink: 0;
   cursor: col-resize;
+  touch-action: none; /* a finger drag resizes instead of scrolling the page */
+}
+
+/* Touch: a wider grab area around the same thin line. */
+@media (pointer: coarse) {
+  .flow-inline-resizer {
+    width: 20px;
+  }
 }
 
 .flow-inline-resizer::before {
@@ -174,4 +183,90 @@
 @keyframes flow-node-ai-changed-pulse {
   0% { box-shadow: 0 0 0 0 var(--flow-magic); }
   100% { box-shadow: 0 0 0 10px transparent; }
+}
+
+/* ---------- Compact layout (tablets, phones held sideways) ----------
+   The collapsed rails stay in the row; an open panel slides over the canvas, with a dimmed backdrop that folds
+   it away on tap, instead of squeezing the canvas to a sliver. */
+.flow-canvas-body.is-compact .flow-sidebar-wrapper:not(.collapsed),
+.flow-canvas-body.is-compact .flow-properties-wrapper:not(.collapsed) {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  z-index: 20;
+  max-width: calc(100% - 56px);
+  background: var(--flow-surface);
+  box-shadow: var(--flow-shadow-panel);
+}
+
+.flow-canvas-body.is-compact .flow-sidebar-wrapper:not(.collapsed) {
+  left: 0;
+}
+
+.flow-canvas-body.is-compact .flow-properties-wrapper:not(.collapsed) {
+  right: 0;
+}
+
+/* The canvas keeps the rails' space, so the layout doesn't jump when a panel opens. */
+.flow-canvas-body.is-compact:has(.flow-sidebar-wrapper:not(.collapsed))::before,
+.flow-canvas-body.is-compact:has(.flow-properties-wrapper:not(.collapsed))::after {
+  flex: 0 0 48px;
+  content: '';
+}
+
+.flow-canvas-body.is-compact:has(.flow-properties-wrapper:not(.collapsed))::after {
+  order: 99;
+}
+
+.flow-panel-backdrop {
+  position: absolute;
+  inset: 0;
+  z-index: 19;
+  background: rgba(15, 23, 42, 0.28);
+}
+
+/* Short screens (phones sideways): the collapsed rails are slimmer. */
+@media (orientation: landscape) and (max-height: 500px) {
+  .flow-canvas-body.is-compact .flow-sidebar-wrapper.collapsed,
+  .flow-canvas-body.is-compact .flow-properties-wrapper.collapsed {
+    width: 44px;
+    min-width: 44px;
+  }
+
+  .flow-canvas-body.is-compact .sidebar-collapse-tab,
+  .flow-canvas-body.is-compact .props-collapse-tab {
+    width: 36px;
+    height: 36px;
+    margin: 4px;
+  }
+}
+
+/* Touch: connection handles big enough to start a connection with a finger. */
+@media (pointer: coarse) {
+  .flow-canvas-viewport .react-flow__handle {
+    min-width: 22px;
+    min-height: 22px;
+  }
+}
+
+/* ---------- Step editor as a full-screen sheet (phones) ---------- */
+.flow-step-sheet-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: flex;
+  background: var(--flow-overlay);
+}
+
+.flow-step-popup.is-sheet:focus {
+  outline: none;
+}
+
+.flow-step-popup.is-sheet {
+  width: 100%;
+  height: 100%;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+  padding: env(safe-area-inset-top, 0px) env(safe-area-inset-right, 0px) env(safe-area-inset-bottom, 0px) env(safe-area-inset-left, 0px);
 }

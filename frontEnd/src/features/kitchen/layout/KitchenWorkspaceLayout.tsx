@@ -1,4 +1,5 @@
-import { NavLink, Outlet } from 'react-router-dom'
+import { useEffect, useRef } from 'react'
+import { NavLink, Outlet, useLocation } from 'react-router-dom'
 import { groupKitchenSections, kitchenSectionPath } from './kitchenSections'
 import './KitchenWorkspaceLayout.css'
 
@@ -7,11 +8,25 @@ import './KitchenWorkspaceLayout.css'
  * strip on narrow screens. Full-screen pages (the Recipe Tool, order wizard) sit outside it.
  */
 export default function KitchenWorkspaceLayout() {
+  const listRef = useRef<HTMLUListElement>(null)
+  const { pathname } = useLocation()
+
+  // On narrow screens the tabs scroll sideways: keep the current one in view (e.g. Orders, the last tab).
+  useEffect(() => {
+    const list = listRef.current
+    const active = list?.querySelector<HTMLElement>('.kitchen-sidenav-link.active')
+    if (!list || !active || list.scrollWidth <= list.clientWidth) return
+    const listBox = list.getBoundingClientRect()
+    const activeBox = active.getBoundingClientRect()
+    const centre = activeBox.left - listBox.left + list.scrollLeft - (list.clientWidth - activeBox.width) / 2
+    list.scrollTo({ left: Math.max(0, centre) })
+  }, [pathname])
+
   return (
     <div className="kitchen-workspace">
       <nav className="kitchen-sidenav" aria-label="My Kitchen">
         <div className="kitchen-sidenav-title">My Kitchen</div>
-        <ul className="kitchen-sidenav-list">
+        <ul ref={listRef} className="kitchen-sidenav-list">
           {groupKitchenSections().map((row) =>
             'heading' in row ? (
               <li key={`group-${row.heading}`} className="kitchen-sidenav-heading" aria-hidden="true">{row.heading}</li>

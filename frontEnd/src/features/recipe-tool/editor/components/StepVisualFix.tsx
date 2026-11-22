@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import type { RunModelCapability } from '../../../../types/recipeAiWorkflow'
-import { errorMessage } from '../../../../shared/errors'
+import { errorMessage, friendlyJobError } from '../../../../shared/errors'
 import { isTrackedJobActive, stepFixJobKey } from '../../jobs/jobTracker'
 import { useJobTracker, useTrackedJob } from '../../jobs/useJobTracker'
 import { ModelChoiceDialog } from '../../workflow/components/RunModelPicker'
@@ -103,7 +103,7 @@ export default function StepVisualFix({ recipeId, processId, stepId, imageUrl, i
       {fix?.status === 'COMPLETED' && fix.promptFromTemplate && !fix.reverted && (
         <div style={{ fontSize: 10.5, color: 'var(--flow-text-subtle)' }}>Your feedback was added to the old prompt as it was.</div>
       )}
-      {fix?.status === 'FAILED' && <div role="alert" style={{ fontSize: 11, color: 'var(--flow-danger)' }}>{fix.errorMessage || 'The image could not be fixed.'}</div>}
+      {fix?.status === 'FAILED' && <div role="alert" style={{ fontSize: 11, color: 'var(--flow-danger)' }}>{friendlyJobError(fix.errorMessage, 'The image could not be fixed.')}</div>}
       {error && <div role="alert" style={{ fontSize: 11, color: 'var(--flow-danger)' }}>{error}</div>}
 
       {choosingModels && (

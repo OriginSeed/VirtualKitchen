@@ -27,6 +27,9 @@ import java.time.Instant;
  */
 @Data
 @Document(collection = "ai_request_jobs")
+// The stale-job reconciler looks up stuck requests by status and start / queue time.
+@CompoundIndex(name = "status_started_idx", def = "{'status': 1, 'startedAt': 1}")
+@CompoundIndex(name = "status_queued_idx", def = "{'status': 1, 'queuedAt': 1}")
 @CompoundIndex(name = "user_idempotency_idx", def = "{'userId': 1, 'idempotencyKey': 1}", unique = true)
 public class AiRequestJob {
 

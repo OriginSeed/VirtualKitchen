@@ -9,12 +9,15 @@ import org.slf4j.MDC;
 import org.springframework.data.mongodb.core.FindAndModifyOptions;
 import org.springframework.data.mongodb.core.MongoTemplate;
 import org.springframework.data.mongodb.core.query.Query;
-import org.springframework.data.mongodb.core.query.Update;
+import org.bson.Document;
+import org.springframework.data.mongodb.core.aggregation.AggregationExpression;
+import org.springframework.data.mongodb.core.aggregation.AggregationUpdate;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.util.List;
 
 import static org.springframework.data.mongodb.core.query.Criteria.where;
 
@@ -62,13 +65,7 @@ public class CreditCycleResetJob {
         UserAiCredit expired;
         while ((expired = mongoTemplate.findAndModify(
                 Query.query(where("cycleEnd").lt(today)),
-                new Update()
-                        .set("monthlyAllocation", allocation)
-                        .set("availableBalance", allocation)
-                        .set("reservedBalance", 0)
-                        .set("cycleStart", newCycleStart)
-                        .set("cycleEnd", newCycleEnd)
-                        .set("updatedAt", LocalDateTime.now()),
+                resetUpdate(allocation, newCycleStart, newCycleEnd, LocalDateTime.now()),
                 FindAndModifyOptions.options().returnNew(true),
                 UserAiCredit.class)) != null) {
 
@@ -76,7 +73,7 @@ public class CreditCycleResetJob {
             tx.setUserId(expired.getUserId());
             tx.setType(CreditTransactionType.MONTHLY_GRANT);
             tx.setAmount(allocation);
-            tx.setBalanceAfter(allocation);
+            tx.setBalanceAfter(expired.getAvailableBalance());
             tx.setCreatedAt(LocalDateTime.now());
             transactionRepository.save(tx);
             resetCount++;
@@ -85,5 +82,24 @@ public class CreditCycleResetJob {
         if (resetCount > 0) {
             log.info("event=ai_credit_cycle_reset_completed users={} allocation={}", resetCount, allocation);
         }
+    }
+
+    /**
+     * The new cycle's balance, computed in the database in one update. Credits reserved by AI requests still in
+     * flight stay reserved (and come out of the new allocation), so that request's later consume or release
+     * balances out exactly: zeroing the reservation would hand back free credits on release, or drive
+     * {@code reservedBalance} negative on consume.
+     */
+    static AggregationUpdate resetUpdate(int allocation, LocalDate cycleStart, LocalDate cycleEnd, LocalDateTime now) {
+        AggregationExpression reserved = context -> new Document("$ifNull", List.of("$reservedBalance", 0));
+        AggregationExpression available = context -> new Document("$max", List.of(0,
+                new Document("$subtract", List.of(allocation, reserved.toDocument(context)))));
+        return AggregationUpdate.update()
+                .set("monthlyAllocation").toValue(allocation)
+                .set("availableBalance").toValue(available)
+                .set("reservedBalance").toValue(reserved)
+                .set("cycleStart").toValue(cycleStart)
+                .set("cycleEnd").toValue(cycleEnd)
+                .set("updatedAt").toValue(now);
     }
 }

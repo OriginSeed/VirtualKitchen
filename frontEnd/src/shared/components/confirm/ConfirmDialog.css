@@ -16,6 +16,11 @@
 
 .confirm-dialog {
   width: min(100%, 460px);
+  /* A long message scrolls; the title and buttons stay on screen. */
+  display: flex;
+  flex-direction: column;
+  max-height: calc(100vh - 2rem);
+  max-height: calc(100dvh - 2rem);
   overflow: hidden;
   border: 1px solid var(--flow-border);
   border-radius: var(--flow-radius-xl, 1rem);
@@ -82,6 +87,14 @@
   line-height: 1.4rem;
   /* A message may list items, one per line. */
   white-space: pre-line;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-wrap: anywhere;
+}
+
+.confirm-dialog-header,
+.confirm-dialog-footer {
+  flex-shrink: 0;
 }
 
 .confirm-dialog-footer {
@@ -130,6 +143,25 @@
 @media (max-width: 520px) {
   .confirm-dialog-footer {
     flex-direction: column-reverse;
+  }
+
+  .confirm-dialog-header {
+    padding: 1.25rem 1.25rem 0.9rem;
+  }
+
+  .confirm-dialog-message {
+    padding: 1rem 1.25rem;
+  }
+
+  .confirm-dialog-footer {
+    padding: 0 1.25rem 1.25rem;
+  }
+}
+
+@media (pointer: coarse) {
+  .confirm-dialog-close {
+    width: 2.5rem;
+    height: 2.5rem;
   }
 }
 

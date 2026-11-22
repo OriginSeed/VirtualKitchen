@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
-import { Link, Navigate, useNavigate } from 'react-router-dom'
+import { Navigate, useNavigate } from 'react-router-dom'
 import { RecipeApi, RecipeDetailApi } from '../../../api'
 import type { NutritionInfo, RecipeDetail } from '../../../types/recipe'
 import { RecipeSessionProvider } from '../session/RecipeSessionProvider'
@@ -17,6 +17,9 @@ import { errorMessage } from '../../../shared/errors'
 import { copyText } from '../../../shared/clipboard'
 import { ErrorState } from '../../../shared/components/page'
 import type { ReadinessIssue } from '../model/recipeReadiness'
+import '../../../shared/components/page/page.css'
+import { useViewport } from '../../../shared/hooks/useViewport'
+import RotateToEditPrompt from './RotateToEditPrompt'
 
 export type OrderRecipeRequest = {
   recipeId: number
@@ -69,6 +72,7 @@ export default function RecipeToolPage({
   // Process), so switching tabs never loses its canvas state — undo history, selection, the open
   // process. Not mounted up front: React Flow shouldn't initialise inside a hidden container.
   const [editorMounted, setEditorMounted] = useState(view === 'editor')
+  const phonePortrait = useViewport().isPhonePortrait
   if (view === 'editor' && !editorMounted) setEditorMounted(true)
   // An issue that blocked ordering or cook mode, opened in the editor from the dialog's "Show me".
   const navigate = useNavigate()
@@ -263,16 +267,17 @@ export default function RecipeToolPage({
           onClose={() => setEditingDetails(false)}
         />
 
-        {view === 'editor' && isOwner && (
-          <div className="rt-small-screen-note" role="note">
-            <span aria-hidden>💻</span>
-            <span>Editing works best on a larger screen.</span>
-            <Link to={recipeToolPath(recipeId, 'process')}>View the Recipe Process →</Link>
-          </div>
+        {/* A phone held upright: editing waits for the phone to turn sideways (the editor stays mounted, hidden,
+            so nothing is lost when it does). */}
+        {view === 'editor' && isOwner && phonePortrait && (
+          <RotateToEditPrompt processPath={recipeToolPath(recipeId, 'process')} />
         )}
 
         {editorMounted && isOwner && (
-          <div className="min-h-0 flex-1" style={{ display: view === 'editor' ? 'flex' : 'none', flexDirection: 'column' }}>
+          <div
+            className={`min-h-0 flex-1${view === 'editor' ? ' rt-editor-active' : ''}`}
+            style={{ display: view === 'editor' && !phonePortrait ? 'flex' : 'none', flexDirection: 'column' }}
+          >
             <RecipeEditorView
               recipeId={recipeId}
               recipeName={recipe.name}

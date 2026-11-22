@@ -1,5 +1,6 @@
 package com.processVisualisation.virtualKitchen.ai.recipe.generation;
 
+import com.processVisualisation.virtualKitchen.common.web.UserFacingErrors;
 import com.processVisualisation.virtualKitchen.ai.platform.logging.OperationLog;
 import com.processVisualisation.virtualKitchen.ai.recipe.edit.RecipeProcessEditService;
 import com.processVisualisation.virtualKitchen.ai.recipe.edit.dto.RecipeProcessEditResultDTO;
@@ -121,6 +122,10 @@ public class RecipeProcessGenerationJobService {
         job.setMode(mode);
         job.setCreatedAt(Instant.now());
         job.setUpdatedAt(Instant.now());
+        // Refuse a new job (429 AI_BUSY) when this user or the whole system already has too much queued.
+        if (jobAdmission != null) {
+            jobAdmission.checkCanStart(userId);
+        }
         try {
             jobRepository.insert(job);
         } catch (DuplicateKeyException e) {
@@ -205,12 +210,15 @@ public class RecipeProcessGenerationJobService {
     private void runPipeline(Long userId, Long recipeId, String jobId, RecipeProcessGenerationRequestDTO request) {
         String recipeText = request.getRecipeText();
         ProcessGenerationMode mode = request.effectiveMode();
+        // Claim the job: one the stale-job reconciler failed while it waited in the queue must not run (and pay).
+        if (!claim(jobId)) {
+            log.warn("event=process_generation_job_skipped jobId={} reason=no_longer_queued", jobId);
+            return;
+        }
         // Runs on the orchestrator pool; the pool restores the thread's MDC afterwards.
         OperationLog operation = OperationLog.start(log, "process_generation_job", jobId,
                 "jobId=" + jobId + " recipeId=" + recipeId + " mode=" + mode
                         + " inputChars=" + (recipeText == null ? 0 : recipeText.length()));
-        markStatus(jobId, RecipeProcessGenerationJobStatus.IN_PROGRESS, RecipeProcessGenerationStage.QUEUED,
-                Map.of("startedAt", Instant.now()));
         try {
             RecipeProcessGenerationResultDTO result = switch (mode) {
                 case EDIT -> recipeProcessEditService.edit(userId, recipeText, request.getTargetProcess(), request.getSelectedNodeId(),
@@ -228,7 +236,7 @@ public class RecipeProcessGenerationJobService {
                     .set("updatedAt", Instant.now())
                     .set("aiUsage", operation.aiTotals())
                     .unset("activeKey");
-            mongoTemplate.updateFirst(query(where("_id").is(jobId)), update, RecipeProcessGenerationJob.class);
+            mongoTemplate.updateFirst(activeJob(jobId), update, RecipeProcessGenerationJob.class);
             operation.completed("recipeId=" + recipeId + " mode=" + mode + " modelKey=" + result.getModelUsed()
                     + " usedFallback=" + result.isUsedFallback() + " " + describeOutcome(result));
         } catch (Exception e) {
@@ -243,7 +251,7 @@ public class RecipeProcessGenerationJobService {
                     .set("updatedAt", Instant.now())
                     .set("aiUsage", operation.aiTotals())
                     .unset("activeKey");
-            mongoTemplate.updateFirst(query(where("_id").is(jobId)), update, RecipeProcessGenerationJob.class);
+            mongoTemplate.updateFirst(activeJob(jobId), update, RecipeProcessGenerationJob.class);
         } finally {
             operation.close();
         }
@@ -261,13 +269,24 @@ public class RecipeProcessGenerationJobService {
     private void updateStage(String jobId, RecipeProcessGenerationStage stage) {
         log.debug("event=process_generation_stage_changed stage={}", stage);
         Update update = new Update().set("stage", stage).set("updatedAt", Instant.now());
-        mongoTemplate.updateFirst(query(where("_id").is(jobId)), update, RecipeProcessGenerationJob.class);
+        mongoTemplate.updateFirst(activeJob(jobId), update, RecipeProcessGenerationJob.class);
     }
 
-    private void markStatus(String jobId, RecipeProcessGenerationJobStatus status, RecipeProcessGenerationStage stage, Map<String, Object> extraFields) {
-        Update update = new Update().set("status", status).set("stage", stage).set("updatedAt", Instant.now());
-        extraFields.forEach(update::set);
-        mongoTemplate.updateFirst(query(where("_id").is(jobId)), update, RecipeProcessGenerationJob.class);
+    /** The job, only while it is still QUEUED or IN_PROGRESS: writes through this never revive a finished job. */
+    private static org.springframework.data.mongodb.core.query.Query activeJob(String jobId) {
+        return query(where("_id").is(jobId).and("status")
+                .in(RecipeProcessGenerationJobStatus.QUEUED, RecipeProcessGenerationJobStatus.IN_PROGRESS));
+    }
+
+    /** Moves the job from QUEUED to IN_PROGRESS; false when it is no longer queued (e.g. failed as stale). */
+    boolean claim(String jobId) {
+        Instant now = Instant.now();
+        Update update = new Update().set("status", RecipeProcessGenerationJobStatus.IN_PROGRESS)
+                .set("stage", RecipeProcessGenerationStage.QUEUED)
+                .set("startedAt", now).set("updatedAt", now);
+        return mongoTemplate.updateFirst(
+                query(where("_id").is(jobId).and("status").is(RecipeProcessGenerationJobStatus.QUEUED)),
+                update, RecipeProcessGenerationJob.class).getMatchedCount() > 0;
     }
 
     private String safeMessage(Throwable t) {
@@ -284,8 +303,16 @@ public class RecipeProcessGenerationJobService {
                 .mode((job.getMode() != null ? job.getMode() : ProcessGenerationMode.CREATE).name())
                 .progressPercent(stage.getPercent())
                 .result(job.getResult())
-                .errorMessage(job.getErrorMessage())
+                .errorMessage(UserFacingErrors.forJob(job.getErrorMessage()))
                 .reused(reused)
                 .build();
+    }
+
+    private com.processVisualisation.virtualKitchen.ai.recipe.AiJobAdmission jobAdmission;
+
+    /** Per-user and system-wide limits on queued AI jobs, checked before a new job is created (optional in tests). */
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    void setJobAdmission(com.processVisualisation.virtualKitchen.ai.recipe.AiJobAdmission jobAdmission) {
+        this.jobAdmission = jobAdmission;
     }
 }

@@ -41,7 +41,9 @@
   .ai-job-indicator-dot { animation: none; }
 }
 
-@media (max-width: 900px) {
+/* Icon-only from 1100px down, with the navbar's name (KitchenNavbar.css): the label added ~150px to a bar that
+   was already full. */
+@media (max-width: 1100px) {
   .ai-job-indicator { width: 32px; padding: 0; justify-content: center; }
   .ai-job-indicator-label {
     position: absolute;

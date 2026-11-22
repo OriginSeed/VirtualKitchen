@@ -1,5 +1,6 @@
 package com.processVisualisation.virtualKitchen.ai.recipe.storyboard;
 
+import com.processVisualisation.virtualKitchen.common.web.UserFacingErrors;
 import com.processVisualisation.virtualKitchen.ai.asset.VisualizationAsset;
 import com.processVisualisation.virtualKitchen.ai.asset.VisualizationAssetRepository;
 import com.processVisualisation.virtualKitchen.ai.asset.VisualizationAssetType;
@@ -106,7 +107,7 @@ public class StoryboardStepFixService {
                                     GeneratedImageCodec generatedImageCodec, StoryboardStepFixArtifactConsumer imageConsumer,
                                     ImageStorageClient imageStorageClient, StoryboardProperties properties,
                                     MongoTemplate mongoTemplate,
-                                    @Qualifier("visualizationOrchestratorTaskPool") TaskPool taskPool) {
+                                    @Qualifier("stepFixTaskPool") TaskPool taskPool) {
         this.fixRepository = fixRepository;
         this.storyboardRepository = storyboardRepository;
         this.recipeTemplateRepository = recipeTemplateRepository;
@@ -165,6 +166,10 @@ public class StoryboardStepFixService {
         fix.setPreviousSourceGridKey(asset == null ? null : asset.getSourceGridKey());
         fix.setCreatedAt(Instant.now());
         fix.setUpdatedAt(Instant.now());
+        // Refuse a new job (429 AI_BUSY) when this user or the whole system already has too much queued.
+        if (jobAdmission != null) {
+            jobAdmission.checkCanStart(userId);
+        }
         try {
             fixRepository.insert(fix);
         } catch (DuplicateKeyException e) {
@@ -216,8 +221,12 @@ public class StoryboardStepFixService {
 
     private void run(StoryboardStepFix fix) {
         String id = fix.getId();
+        // Claim the job: one the stale-job reconciler failed while it waited in the queue must not run (and pay).
+        if (!claim(id)) {
+            log.warn("event=step_fix_skipped fixId={} reason=no_longer_queued", id);
+            return;
+        }
         try {
-            update(id, new Update().set("status", StoryboardStatus.IN_PROGRESS));
             RecipeStoryboard.Panel panel = panelOf(fix.getRecipeId(), fix.getStepId());
             RecipeStoryboard storyboard = latestStoryboard(fix.getRecipeId());
 
@@ -446,8 +455,18 @@ public class StoryboardStepFixService {
                 .orElseThrow(() -> new NoSuchElementException("Step image fix not found: " + fixId));
     }
 
+    /** Writes apply only while the fix is still QUEUED or IN_PROGRESS, so a fix failed as stale is never revived. */
     private void update(String fixId, Update update) {
-        mongoTemplate.updateFirst(query(where("_id").is(fixId)), update.set("updatedAt", Instant.now()), StoryboardStepFix.class);
+        mongoTemplate.updateFirst(query(where("_id").is(fixId)
+                        .and("status").in(StoryboardStatus.QUEUED, StoryboardStatus.IN_PROGRESS)),
+                update.set("updatedAt", Instant.now()), StoryboardStepFix.class);
+    }
+
+    /** Moves the fix from QUEUED to IN_PROGRESS; false when it is no longer queued (e.g. failed as stale). */
+    boolean claim(String fixId) {
+        return mongoTemplate.updateFirst(query(where("_id").is(fixId).and("status").is(StoryboardStatus.QUEUED)),
+                new Update().set("status", StoryboardStatus.IN_PROGRESS).set("updatedAt", Instant.now()),
+                StoryboardStepFix.class).getMatchedCount() > 0;
     }
 
     static String activeKey(Long recipeId, String stepId) {
@@ -478,10 +497,18 @@ public class StoryboardStepFixService {
                 .previousPrompt(fix.getPreviousPrompt())
                 .usedReference(fix.isUsedReference())
                 .promptFromTemplate(fix.isPromptFromTemplate())
-                .errorMessage(fix.getErrorMessage())
+                .errorMessage(UserFacingErrors.forJob(fix.getErrorMessage()))
                 .reverted(fix.getRevertedAt() != null)
                 .createdAt(fix.getCreatedAt())
                 .completedAt(fix.getCompletedAt())
                 .build();
+    }
+
+    private com.processVisualisation.virtualKitchen.ai.recipe.AiJobAdmission jobAdmission;
+
+    /** Per-user and system-wide limits on queued AI jobs, checked before a new job is created (optional in tests). */
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    void setJobAdmission(com.processVisualisation.virtualKitchen.ai.recipe.AiJobAdmission jobAdmission) {
+        this.jobAdmission = jobAdmission;
     }
 }

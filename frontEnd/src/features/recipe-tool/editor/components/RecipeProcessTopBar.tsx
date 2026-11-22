@@ -5,6 +5,7 @@ import type { RecipeProcessBreadcrumbEntry } from '../../../../types/recipe'
 import RecipeProcessBreadcrumb from './RecipeProcessBreadcrumb'
 import AiActionsMenu, { type RecipeAiActions } from './AiActionsMenu'
 import AddNodeMenu from './AddNodeMenu'
+import ToolbarMenu, { MenuDivider, MenuItem } from './ToolbarMenu'
 
 /** One entry of the node selector: a STEP ("Step 2 · Chop") or a CONDITION. */
 export type NodeSelectorOption = { id: string; label: string; kind: 'STEP' | 'CONDITION' }
@@ -128,6 +129,8 @@ export default function RecipeProcessTopBar({
     </span>
   )
 
+  const hasOverflow = Boolean(onPreview || onAutoArrange || onFitView || onExport || onShowShortcuts)
+
   return (
     <div className="recipe-topbar @container">
       <div className="recipe-topbar-inner">
@@ -167,7 +170,7 @@ export default function RecipeProcessTopBar({
                 type="button"
                 onClick={onAutoArrange}
                 disabled={!canAutoArrange}
-                className="recipe-topbar-button"
+                className="recipe-topbar-button is-overflowable"
                 aria-label="Auto Arrange"
                 title="Auto Arrange: lay the flow out in rows (Undo restores your layout)"
               >
@@ -176,7 +179,7 @@ export default function RecipeProcessTopBar({
             )}
 
             {onFitView && (
-              <button type="button" onClick={onFitView} className="recipe-topbar-button" aria-label="Fit to view" title="Fit: show the whole flow">
+              <button type="button" onClick={onFitView} className="recipe-topbar-button is-overflowable" aria-label="Fit to view" title="Fit: show the whole flow">
                 ⛶ <span className="hidden @7xl:inline">Fit</span>
               </button>
             )}
@@ -204,29 +207,48 @@ export default function RecipeProcessTopBar({
             )}
           </div>
 
-          <span className="recipe-topbar-divider" aria-hidden />
+          <span className="recipe-topbar-divider is-overflowable" aria-hidden />
 
           <div className="recipe-topbar-group">
             <AiActionsMenu recipeActions={aiActions} />
 
             {onPreview && (
-              <button type="button" onClick={onPreview} className="recipe-topbar-button" aria-label="Preview this process" title="Preview this process as a slideshow with its visuals and narration (Cook mode, in the header, plays the whole recipe)">
+              <button type="button" onClick={onPreview} className="recipe-topbar-button is-overflowable" aria-label="Preview this process" title="Preview this process as a slideshow with its visuals and narration (Cook mode, in the header, plays the whole recipe)">
                 ▶ <span className="hidden @3xl:inline">Preview process</span>
               </button>
             )}
 
             {onExport && (
-              <button type="button" onClick={onExport} className="recipe-topbar-button" aria-label="Export recipe" title="Export the whole recipe as a file that can be imported from New recipe">
+              <button type="button" onClick={onExport} className="recipe-topbar-button is-overflowable" aria-label="Export recipe" title="Export the whole recipe as a file that can be imported from New recipe">
                 ⤓ <span className="hidden @6xl:inline">Export</span>
               </button>
             )}
           </div>
 
-          <span className="recipe-topbar-divider" aria-hidden />
+          {hasOverflow && (
+            // Narrow bars (tablets, phones held sideways): the less frequent actions share one menu so Save and
+            // AI always stay on screen.
+            <span className="recipe-topbar-overflow">
+              <ToolbarMenu ariaLabel="More canvas actions" label="⋯" placement="bottom-end" width={230} buttonClassName="recipe-topbar-button">
+                {onPreview && <MenuItem icon="▶" label="Preview process" onSelect={onPreview} />}
+                {onAutoArrange && <MenuItem icon="⇅" label="Auto Arrange" onSelect={onAutoArrange} disabled={!canAutoArrange} />}
+                {onFitView && <MenuItem icon="⛶" label="Fit to view" onSelect={onFitView} />}
+                {onExport && <MenuItem icon="⤓" label="Export recipe" onSelect={onExport} />}
+                {onShowShortcuts && (
+                  <>
+                    <MenuDivider />
+                    <MenuItem icon="⌨" label="Keyboard shortcuts" onSelect={onShowShortcuts} />
+                  </>
+                )}
+              </ToolbarMenu>
+            </span>
+          )}
+
+          <span className="recipe-topbar-divider is-overflowable" aria-hidden />
 
           <div className="recipe-topbar-save">
             {onShowShortcuts && (
-              <button type="button" onClick={onShowShortcuts} className="recipe-topbar-button" aria-label="Keyboard shortcuts" title="Keyboard shortcuts (?)">
+              <button type="button" onClick={onShowShortcuts} className="recipe-topbar-button is-overflowable" aria-label="Keyboard shortcuts" title="Keyboard shortcuts (?)">
                 ⌨
               </button>
             )}

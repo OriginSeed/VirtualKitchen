@@ -185,7 +185,7 @@ export default function IngredientSelector({ excludeIngredientIds, action, onAdd
       style={{ border: `1px solid ${editing ? 'var(--flow-accent)' : 'var(--flow-border)'}`, background: editing ? 'var(--flow-surface)' : 'var(--flow-surface-muted)' }}
     >
       <div className="flex flex-wrap items-end gap-2">
-        <div style={{ minWidth: 200, flex: 1 }}>
+        <div style={{ minWidth: 'min(200px, 100%)', flex: 1 }}>
           <label className="flow-properties-label">Ingredient</label>
           <SearchableSelect
             value={ingredientIdValue}

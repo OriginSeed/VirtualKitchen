@@ -17,6 +17,7 @@ import RecipeCard from './components/RecipeCard'
 import RecipeToolbar from './components/RecipeToolbar'
 import { searchRecipes, sortRecipes, type RecipeSort } from './recipeListing'
 import { useRecipeLibrary, type RecipeScope } from './useRecipeLibrary'
+import { INPUT_LIMITS } from '../../shared/inputLimits'
 
 export type CreatedRecipe = {
   recipeId: number
@@ -130,6 +131,10 @@ export default function RecipeLibraryPage({
   /** Reads the picked file in the browser and checks it is a recipe file; its name fills an empty title. */
   const chooseRecipeFile = async (file: File) => {
     setCreateError(null)
+    if (file.size > INPUT_LIMITS.importFileBytes) {
+      setCreateError(`That file is too large to import (the limit is ${INPUT_LIMITS.importFileBytes / (1024 * 1024)} MB).`)
+      return
+    }
     try {
       const doc = parseRecipeFile(await file.text(), file.name)
       setRecipeFile({ chosen: { fileName: file.name, ...summarizeRecipeFile(doc) }, doc })

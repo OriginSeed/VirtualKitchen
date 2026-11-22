@@ -16,6 +16,8 @@
  *   next edit or an explicit Save; a 409 parks the coordinator in `conflict` until resolved.
  */
 
+import { errorMessage } from '../../../../shared/errors.ts'
+
 export type SaveStatus = 'saved' | 'dirty' | 'saving' | 'failed' | 'conflict'
 
 /** How a failed save should be handled: `network` retries automatically, the rest don't. */
@@ -193,7 +195,7 @@ export class SaveCoordinator {
 
   private fail(error: unknown) {
     const kind = classifySaveError(this.statusOf(error))
-    const message = error instanceof Error ? error.message : 'Unable to save this recipe right now'
+    const message = errorMessage(error, 'Unable to save this recipe right now')
     let retryAt: number | null = null
     if (kind === 'network' && this.autosave) {
       this.attempts += 1

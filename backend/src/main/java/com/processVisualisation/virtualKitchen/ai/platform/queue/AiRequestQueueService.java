@@ -35,6 +35,7 @@ import java.time.Instant;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.concurrent.CancellationException;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutionException;
@@ -163,7 +164,7 @@ public class AiRequestQueueService {
                 return reused.get();
             }
 
-            return withAdmissionControl(AI_TEXT_POOL, capability, depth -> {
+            return withAdmissionControl(AI_TEXT_POOL, capability, (depth, ticket) -> {
                 AiRequestJob job = createJob(analyticsId, userId, capability, preferredModelKey, idempotencyKey,
                         correlationType, correlationId);
                 ModelSelectionOutcome selection = beginProcessing(job, capability, preferredModelKey, depth);
@@ -171,22 +172,18 @@ public class AiRequestQueueService {
 
                 AiRequestOutcome<R> outcome = runWithRetries(job, selection, usage, () -> {
                 // Bound on the pool thread, where the provider calls actually happen.
-                CompletableFuture<TaskResult<R>> future = aiTextTaskPool.submit(new NamedTask<>(job.getId(),
-                        () -> AiUsageMeter.measure(usage, () -> {
-                            markWorkStarted(usage);
-                            return work.run(selection);
-                        })));
-                TaskResult<R> result;
-                try {
-                    result = future.get(timeoutMs, TimeUnit.MILLISECONDS);
-                } catch (ExecutionException ee) {
-                    throw ee.getCause() instanceof Exception ex ? ex : ee;
-                }
-                if (!result.isSuccess()) {
-                    Throwable error = result.error();
-                    throw error instanceof Exception ex ? ex : new RuntimeException(error);
-                }
-                return result.value();
+                StartGate gate = new StartGate();
+                CompletableFuture<TaskResult<R>> future = aiTextTaskPool.submit(new NamedTask<>(job.getId(), () -> {
+                    if (!gate.start()) {
+                        // The caller already gave up waiting for a thread: never call (and pay) the provider.
+                        throw new CancellationException("AI request abandoned before it started");
+                    }
+                    return AiUsageMeter.measure(usage, () -> {
+                        markWorkStarted(usage);
+                        return work.run(selection);
+                    });
+                }));
+                return awaitBounded(future, gate, timeoutMs, ticket);
                 });
 
                 return withStagedArtifact(userId, capability, correlationType, correlationId, artifactSpec, outcome);
@@ -227,7 +224,7 @@ public class AiRequestQueueService {
                 return reused.get();
             }
 
-            return withAdmissionControl(pool, capability, depth -> {
+            return withAdmissionControl(pool, capability, (depth, ticket) -> {
                 AiRequestJob job = createJob(analyticsId, userId, capability, preferredModelKey, idempotencyKey,
                         correlationType, correlationId);
                 ModelSelectionOutcome selection = beginProcessing(job, capability, preferredModelKey, depth);
@@ -358,9 +355,101 @@ public class AiRequestQueueService {
         }
     }
 
+    /**
+     * Whether a pooled task may still start: the caller and the worker race on one compare-and-set, so exactly one
+     * of "the task started" and "the caller gave up waiting for it" wins.
+     */
+    static final class StartGate {
+        private static final int WAITING = 0, STARTED = 1, ABANDONED = 2;
+        private final AtomicInteger state = new AtomicInteger(WAITING);
+        private final CompletableFuture<Long> startedAt = new CompletableFuture<>();
+
+        /** Called by the worker; false when the caller already abandoned the task. */
+        boolean start() {
+            if (state.compareAndSet(WAITING, STARTED)) {
+                startedAt.complete(System.nanoTime());
+                return true;
+            }
+            return false;
+        }
+
+        /** Called by the caller; false when the task already started (and so will run). */
+        boolean abandon() {
+            return state.compareAndSet(WAITING, ABANDONED);
+        }
+    }
+
+    /**
+     * Waits for a pooled AI call. The {@code timeoutMs} budget counts from when a worker thread actually starts the
+     * call, not from submission: time spent queued behind other calls is not the provider's slowness. Waiting for a
+     * thread is bounded by the same budget; a call abandoned before it starts never runs. A call that times out
+     * while running can't be stopped mid-request, so it keeps its admission slot until it really finishes, which
+     * keeps the queue cap honest.
+     */
+    static <R> R awaitBounded(CompletableFuture<TaskResult<R>> future, StartGate gate, long timeoutMs,
+                              AdmissionTicket ticket) throws Exception {
+        long started;
+        try {
+            started = gate.startedAt.get(timeoutMs, TimeUnit.MILLISECONDS);
+        } catch (TimeoutException waitedTooLong) {
+            if (gate.abandon()) {
+                throw new TimeoutException("AI request waited " + timeoutMs + " ms for a free worker");
+            }
+            started = gate.startedAt.join();
+        }
+        long remainingMs = Math.max(1, timeoutMs - TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - started));
+        TaskResult<R> result;
+        try {
+            result = future.get(remainingMs, TimeUnit.MILLISECONDS);
+        } catch (ExecutionException ee) {
+            throw ee.getCause() instanceof Exception ex ? ex : ee;
+        } catch (TimeoutException stillRunning) {
+            if (ticket != null) {
+                ticket.releaseWhenDone(future);
+            }
+            throw stillRunning;
+        }
+        if (!result.isSuccess()) {
+            Throwable error = result.error();
+            throw error instanceof Exception ex ? ex : new RuntimeException(error);
+        }
+        return result.value();
+    }
+
+    /**
+     * One admitted request's place in its pool's in-flight count. Released once: normally when the request returns,
+     * or, for a call that timed out but is still running on a worker, when that call actually finishes.
+     */
+    static final class AdmissionTicket {
+        private final AtomicInteger counter;
+        private final java.util.concurrent.atomic.AtomicBoolean released = new java.util.concurrent.atomic.AtomicBoolean();
+        private volatile boolean deferred;
+
+        AdmissionTicket(AtomicInteger counter) {
+            this.counter = counter;
+        }
+
+        void releaseWhenDone(CompletableFuture<?> stillRunning) {
+            deferred = true;
+            stillRunning.whenComplete((ignoredResult, ignoredError) -> release());
+        }
+
+        void releaseUnlessDeferred() {
+            if (!deferred) {
+                release();
+            }
+        }
+
+        private void release() {
+            if (released.compareAndSet(false, true)) {
+                counter.decrementAndGet();
+            }
+        }
+    }
+
     /** Runs {@code body} with the pool's in-flight depth (including this request) once admitted. */
     private <R> AiRequestOutcome<R> withAdmissionControl(String poolName, AiCapability capability,
-                                                          java.util.function.IntFunction<AiRequestOutcome<R>> body) {
+                                                          java.util.function.BiFunction<Integer, AdmissionTicket, AiRequestOutcome<R>> body) {
         AtomicInteger counter = inFlightByPool.computeIfAbsent(poolName, k -> new AtomicInteger());
         int maxDepth = switch (poolName) {
             case AI_TEXT_POOL -> queueProperties.getAiTextMaxDepth();
@@ -375,10 +464,11 @@ public class AiRequestQueueService {
                     poolName, capability, maxDepth);
             throw new AiQueueFullException(capability);
         }
+        AdmissionTicket ticket = new AdmissionTicket(counter);
         try {
-            return body.apply(depth);
+            return body.apply(depth, ticket);
         } finally {
-            counter.decrementAndGet();
+            ticket.releaseUnlessDeferred();
         }
     }
 

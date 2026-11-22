@@ -15,7 +15,12 @@
 
 .pay-sheet {
   width: min(100%, 400px);
-  overflow: hidden;
+  /* Landscape phones are shorter than the sheet: it scrolls so the result button stays reachable. */
+  max-height: calc(100vh - 2rem);
+  max-height: calc(100dvh - 2rem);
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
   border: 1px solid var(--flow-border);
   border-radius: 1.25rem;
   background: var(--flow-surface);

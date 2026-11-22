@@ -1,5 +1,6 @@
 package com.processVisualisation.virtualKitchen.ai.recipe.edit.dto;
 
+import com.processVisualisation.virtualKitchen.common.web.InputLimits;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
@@ -22,6 +23,7 @@ public class EditTargetProcessDTO {
     /** The process's id in the working session (negative while it is still unsaved). */
     private Long processId;
 
+    @Size(max = InputLimits.NAME, message = "Process name can be at most " + InputLimits.NAME + " characters")
     private String name;
 
     /** Every STEP/CONDITION node of the process, in reading order. */

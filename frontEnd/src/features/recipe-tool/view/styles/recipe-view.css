@@ -1158,11 +1158,15 @@ button.rp-continuation:hover {
     font-size: 18px;
   }
 
-  /* Stages: one swipeable row of chips; the header keeps title and count, the summary wraps below. */
+  /* Stages: one swipeable row of chips; the header keeps title and count, the summary wraps below. The right
+     edge fades so the row reads as scrollable. */
   .rp-stage-overview {
     flex-wrap: nowrap;
     overflow-x: auto;
     scrollbar-width: none;
+    -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 24px), transparent 100%);
+    mask-image: linear-gradient(to right, #000 calc(100% - 24px), transparent 100%);
+    padding-right: 24px;
   }
 
   .rp-stage-chip {
@@ -1436,5 +1440,12 @@ button.rp-continuation:hover {
 
   .rp-step-media {
     max-width: 180px;
+  }
+}
+
+/* Touch screens: a tap leaves :hover applied, so the ingredient lift would stay stuck. */
+@media (hover: none) {
+  .rp-ingredient:hover {
+    transform: none;
   }
 }

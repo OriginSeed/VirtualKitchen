@@ -1,5 +1,6 @@
 package com.processVisualisation.virtualKitchen.store.controller;
 
+import jakarta.validation.Valid;
 import com.processVisualisation.virtualKitchen.common.web.ApiResponse;
 import com.processVisualisation.virtualKitchen.store.dto.EquipmentRequestDTO;
 import com.processVisualisation.virtualKitchen.store.dto.EquipmentResponseDTO;
@@ -31,7 +32,7 @@ public class EquipmentController {
      * @throws RuntimeException if equipment with the same name already exists
      */
     @PostMapping
-    public ApiResponse<EquipmentResponseDTO> create(@RequestBody EquipmentRequestDTO dto){
+    public ApiResponse<EquipmentResponseDTO> create(@Valid @RequestBody EquipmentRequestDTO dto){
         return build(service.create(dto), "created");
     }
 

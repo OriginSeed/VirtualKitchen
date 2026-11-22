@@ -1,4 +1,4 @@
-import { useRef, useState, type CSSProperties, type ReactNode } from 'react'
+import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react'
 import './HomePage.css'
 import chefLogo from '../../assets/kitchen/blackShadowChef.png'
 import AppFooter from '../../shared/components/AppFooter'
@@ -49,10 +49,28 @@ export default function HomePage({ signedIn = false, onTryIt, onLogin }: Props) 
   useReveal(rootRef)
   // Narrow screens: the section links fold into a menu.
   const [menuOpen, setMenuOpen] = useState(false)
+  const headerRef = useRef<HTMLElement>(null)
+
+  // The open menu closes on Escape or a tap anywhere outside the header (like the kitchen's account menu).
+  useEffect(() => {
+    if (!menuOpen) return undefined
+    const onPointerDown = (event: PointerEvent) => {
+      if (!headerRef.current?.contains(event.target as Node)) setMenuOpen(false)
+    }
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setMenuOpen(false)
+    }
+    document.addEventListener('pointerdown', onPointerDown)
+    document.addEventListener('keydown', onKeyDown)
+    return () => {
+      document.removeEventListener('pointerdown', onPointerDown)
+      document.removeEventListener('keydown', onKeyDown)
+    }
+  }, [menuOpen])
 
   return (
     <div className="home-page" ref={rootRef}>
-      <header className="home-nav">
+      <header className="home-nav" ref={headerRef}>
         <a className="home-brand" href="#top">
           <span className="home-logo"><img src={chefLogo} alt="" /></span>
           Virtual Kitchen

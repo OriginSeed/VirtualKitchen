@@ -3,6 +3,7 @@ package com.processVisualisation.virtualKitchen.common.web;
 import ch.qos.logback.classic.Level;
 import ch.qos.logback.classic.spi.ILoggingEvent;
 import com.processVisualisation.virtualKitchen.ai.provider.exception.AiCommunicationException;
+import com.processVisualisation.virtualKitchen.ai.provider.exception.AiClientException;
 import com.processVisualisation.virtualKitchen.ai.provider.exception.AiTimeoutException;
 import com.processVisualisation.virtualKitchen.common.logging.LogCapture;
 import com.processVisualisation.virtualKitchen.recipe.exception.RecipeAccessDeniedException;
@@ -106,7 +107,9 @@ class GlobalExceptionHandlerLoggingTest {
         assertThat(response.getStatusCode().value()).isEqualTo(504);
         assertThat(response.getBody().getStatus()).isEqualTo(504);
         assertThat(response.getBody().getError()).isEqualTo("AI Timeout");
-        assertThat(response.getBody().getMessage()).isEqualTo("slow provider");
+        // The provider's own text is logged, never sent to the user.
+        assertThat(response.getBody().getMessage()).isEqualTo(AiClientException.CLIENT_MESSAGE).doesNotContain("slow provider");
+        assertThat(response.getBody().getCode()).isEqualTo("AI_UNAVAILABLE");
     }
 
     @Test

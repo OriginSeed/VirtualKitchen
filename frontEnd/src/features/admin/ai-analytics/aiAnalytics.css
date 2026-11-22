@@ -28,7 +28,7 @@
 .aia-muted { color: var(--flow-text-muted); }
 .aia-small { font-size: 0.8rem; }
 .aia-mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 0.85em; }
-.aia-sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
+.aia-sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
 .aia-page { display: flex; flex-direction: column; gap: 1rem; }
 
 /* Tabs */
@@ -66,15 +66,17 @@
 /* Filters */
 .aia-filters { margin-bottom: 1rem; }
 .aia-filter-row { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; }
-.aia-segmented { display: inline-flex; border: 1px solid var(--flow-border-strong); border-radius: var(--flow-radius-sm); overflow: hidden; flex-wrap: wrap; }
+.aia-segmented {
+  display: inline-flex; flex-wrap: wrap; gap: 1px; overflow: hidden;
+  border: 1px solid var(--flow-border-strong); border-radius: var(--flow-radius-sm); background: var(--flow-border);
+}
 .aia-segmented button {
   border: none; background: var(--flow-surface); color: var(--flow-text-muted); padding: 0.4rem 0.7rem; font: inherit; font-size: 0.85rem; cursor: pointer;
 }
-.aia-segmented button + button { border-left: 1px solid var(--flow-border); }
 .aia-segmented button.is-active { background: var(--flow-accent-soft); color: var(--flow-accent-strong); font-weight: 600; }
-.aia-date-range { display: inline-flex; align-items: center; gap: 0.35rem; }
+.aia-date-range { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 0.35rem; }
 .aia-filter-panel {
-  margin-top: 0.75rem; padding: 0.75rem; display: grid; gap: 0.75rem; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr));
+  margin-top: 0.75rem; padding: 0.75rem; display: grid;
   background: var(--flow-surface); border: 1px solid var(--flow-border); border-radius: var(--flow-radius-md);
 }
 .aia-field { display: flex; flex-direction: column; gap: 0.25rem; font-size: 0.8rem; color: var(--flow-text); }
@@ -104,8 +106,9 @@
 .aia-dropdown-menu {
   position: absolute; left: 0; top: calc(100% + 4px); z-index: 20; display: flex; flex-direction: column; gap: 0.35rem;
   padding: 0.6rem 0.8rem; background: var(--flow-surface); border: 1px solid var(--flow-border); border-radius: var(--flow-radius-md);
-  box-shadow: var(--flow-shadow-panel); min-width: 200px; max-height: 320px; overflow-y: auto;
+  box-shadow: var(--flow-shadow-panel); min-width: 200px; max-width: calc(100vw - 2rem); max-height: 320px; overflow-y: auto;
 }
+.aia-dropdown-menu.is-right { left: auto; right: 0; }
 .aia-dropdown-reset { align-self: center; margin-top: 1rem; }
 @media (max-width: 640px) {
   .aia-dropdown, .aia-dropdown--wide { width: calc(50% - 0.3rem); }
@@ -151,11 +154,13 @@
 .aia-error-text { color: var(--flow-danger); font-size: 0.85rem; margin: 0.25rem 0; overflow-wrap: anywhere; }
 
 /* Tables */
-.aia-table-scroll { overflow-x: auto; max-width: 100%; }
+/* position: relative keeps screen-reader-only header text (absolute) inside the scroll area; placed against
+   the page instead, a wide table's last header stretched the whole page sideways. */
+.aia-table-scroll { position: relative; overflow-x: auto; max-width: 100%; }
 .aia-table-scroll.is-loading { opacity: 0.6; }
 .aia-table { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
 .aia-table th, .aia-table td { padding: 0.5rem 0.6rem; border-bottom: 1px solid var(--flow-border); text-align: left; white-space: nowrap; }
-.aia-table th { font-weight: 600; color: var(--flow-text-muted); font-size: 0.78rem; position: sticky; top: 0; background: var(--flow-surface); }
+.aia-table th { font-weight: 600; color: var(--flow-text-muted); font-size: 0.78rem; background: var(--flow-surface); }
 .aia-table--compact th, .aia-table--compact td { padding: 0.35rem 0.5rem; }
 .aia-num { text-align: right !important; font-variant-numeric: tabular-nums; }
 .aia-clickable { cursor: pointer; }
@@ -187,8 +192,8 @@
 .aia-tag--warn { background: var(--flow-warning-soft); border-color: var(--flow-warning-border); color: var(--flow-text); }
 .aia-cost { position: relative; display: inline-flex; align-items: center; outline: none; }
 .aia-popover {
-  position: absolute; right: 0; top: calc(100% + 6px); z-index: 30; display: flex; flex-direction: column; gap: 0.2rem;
-  min-width: 240px; max-width: 360px; padding: 0.6rem 0.75rem; text-align: left; white-space: normal;
+  position: absolute; right: 0; top: calc(100% + 6px); z-index: 1100; display: flex; flex-direction: column; gap: 0.2rem;
+  min-width: min(240px, calc(100vw - 16px)); max-width: min(360px, calc(100vw - 16px)); padding: 0.6rem 0.75rem; text-align: left; white-space: normal;
   background: var(--flow-surface); border: 1px solid var(--flow-border-strong); border-radius: var(--flow-radius-md);
   box-shadow: var(--flow-shadow-panel); font-size: 0.8rem; color: var(--flow-text);
 }
@@ -241,7 +246,7 @@
 }
 .aia-modal-backdrop { display: flex; align-items: center; justify-content: center; padding: 1rem; }
 .aia-modal {
-  width: min(1100px, 100%); max-height: calc(100vh - 2rem); overflow-y: auto; background: var(--flow-surface); color: var(--flow-text);
+  width: min(1100px, 100%); max-height: calc(100vh - 2rem); max-height: calc(100dvh - 2rem); overflow-y: auto; background: var(--flow-surface); color: var(--flow-text);
   border-radius: var(--flow-radius-lg); box-shadow: var(--flow-shadow-panel); padding: 1rem 1.25rem 1.5rem; box-sizing: border-box;
 }
 .aia-modal-header { display: flex; justify-content: space-between; align-items: flex-start; gap: 1rem; margin-bottom: 0.75rem; }
@@ -264,7 +269,7 @@
 .aia-modal-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 0.75rem; margin: 0.75rem 0; }
 .aia-provenance { font-size: 0.8rem; color: var(--flow-text-muted); margin: 0 0 0.5rem; }
 .aia-provenance--warn { color: var(--flow-text); background: var(--flow-warning-soft); border: 1px solid var(--flow-warning-border); padding: 0.35rem 0.6rem; border-radius: var(--flow-radius-sm); }
-.aia-summary { font-size: 0.85rem; font-weight: 600; margin: 0 0 0.5rem; }
+.aia-result-summary { font-size: 0.85rem; font-weight: 600; margin: 0 0 0.5rem; }
 .aia-pre {
   margin: 0; padding: 0.75rem; max-height: 60vh; overflow: auto; background: var(--flow-surface-muted); border: 1px solid var(--flow-border);
   border-radius: var(--flow-radius-md); font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 0.78rem; line-height: 1.45;
@@ -285,4 +290,33 @@
   .aia-bar-value { min-width: 3.5rem; }
   .aia-drawer { padding: 1rem; }
   .aia-modal { padding: 1rem; }
+}
+
+/* Tablets and phones: the kitchen page already has side padding, so the admin pages don't add their own, and
+   the small text controls get finger-sized targets. */
+@media (max-width: 768px) {
+  .aia-root { padding-inline: 0; }
+  .aia-link { min-height: 36px; padding: 0.4rem 0.5rem; }
+  .aia-chip { min-height: 36px; padding: 0.35rem 0.8rem; }
+  .aia-segmented button { min-height: 36px; }
+  .aia-dropdown-button { min-height: 40px; }
+  .aia-tab { padding-block: 0.75rem; }
+}
+
+/* Phones: chart labels wrap (long model keys) instead of being cut off. */
+@media (max-width: 640px) {
+  .aia-bar-label { white-space: normal; overflow-wrap: anywhere; }
+}
+
+/* Touch screens: no stuck hover tint on table rows and bars after a tap. */
+@media (hover: none) {
+  .aia-clickable:hover td { background: none; }
+  .aia-bar-row:hover .aia-bar-fill { filter: none; }
+}
+
+/* Filters toggle: phones only. */
+.aia-filters-toggle { display: none; margin-top: 0.75rem; min-height: 40px; }
+@media (max-width: 640px) {
+  .aia-filters-toggle { display: inline-flex; align-items: center; }
+  .aia-dropdown-row:not(.is-open) { display: none; }
 }

@@ -29,6 +29,7 @@ import { workflowBadge, workflowChipLabel, workflowHeadline } from '../../workfl
 import type { RecipeAiTaskType } from '../../../../types/recipeAiWorkflow'
 import type { RecipeAiActions } from './AiActionsMenu'
 import { errorMessage } from '../../../../shared/errors'
+import { friendlyJobError } from '../../../../shared/errors'
 
 const GENERATION_STAGE_LABELS: Record<string, string> = {
   QUEUED: 'Queued…',
@@ -164,7 +165,7 @@ export default function RecipeEditorView({
 
   const generationError = generationJob && !isTrackedJobActive(generationJob)
     ? (generationJob.pollError ?? (generationJob.job.status === 'FAILED'
-      ? (generationJob.job.errorMessage || (generationJob.job.mode === 'EDIT' ? 'Unable to apply that change right now.' : 'Unable to generate this recipe right now.'))
+      ? friendlyJobError(generationJob.job.errorMessage, generationJob.job.mode === 'EDIT' ? 'Unable to apply that change right now.' : 'Unable to generate this recipe right now.')
       : null))
     : null
 
@@ -656,7 +657,7 @@ export default function RecipeEditorView({
   if (selectedProcessId == null) {
     return (
       <div className="flex h-full w-full">
-        <div style={{ width: 260, flexShrink: 0, borderRight: '1px solid var(--flow-border)', overflow: 'hidden' }}>
+        <div style={{ width: 'min(260px, 45%)', flexShrink: 0, borderRight: '1px solid var(--flow-border)', overflow: 'hidden' }}>
           {processListSidebar}
         </div>
         <div className="flex min-w-0 flex-1 flex-col items-center justify-center gap-3" style={{ color: 'var(--flow-text-muted)', fontSize: 13 }}>

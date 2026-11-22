@@ -1,5 +1,6 @@
 package com.processVisualisation.virtualKitchen.ai.recipe.edit.dto;
 
+import jakarta.validation.Valid;
 import com.processVisualisation.virtualKitchen.ai.recipe.generation.dto.GeneratedRecipeStepDTO;
 
 import jakarta.validation.constraints.NotBlank;
@@ -27,6 +28,7 @@ public class EditTargetNodeDTO {
     private Integer stepNumber;
 
     @NotNull(message = "node content is required")
+    @Valid
     private GeneratedRecipeStepDTO content;
 
     /** Targets of the node's ordinary (non-condition) outgoing edges. */

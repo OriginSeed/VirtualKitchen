@@ -345,8 +345,13 @@
   right: 0;
 
   width: 290px;
+  /* On phones it also holds the area links: keep it on screen (landscape phones are short) and let it scroll. */
+  max-height: calc(100vh - 80px);
+  max-height: calc(100dvh - 80px);
 
-  overflow: hidden;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
 
   border: 1px solid var(--flow-border);
   border-radius: var(--flow-radius-lg);
@@ -566,7 +571,15 @@
    Responsive
    ========================================================= */
 
+/* Small laptops and tablets in landscape: the equal side columns (220px minimum) can't hold the actions, cart,
+   theme, avatar and name, so the right side spilled over the centre links. Size the sides to their content and
+   drop the name (it is in the account menu). */
 @media (max-width: 1100px) {
+  .kitchen-navbar {
+    grid-template-columns: auto 1fr auto;
+    column-gap: 12px;
+  }
+
   .navbar-new-recipe-label {
     display: none;
   }
@@ -576,11 +589,14 @@
     justify-content: center;
     padding: 0;
   }
+
+  .profile-trigger-info {
+    display: none;
+  }
 }
 
 @media (max-width: 900px) {
   .kitchen-navbar {
-    grid-template-columns: auto 1fr auto;
     padding: 0 16px;
   }
 
@@ -591,9 +607,18 @@
   .navbar-nav-item {
     padding: 0 10px;
   }
+}
 
-  .profile-trigger-info {
-    display: none;
+/* Touch: icon buttons and the avatar grow to a finger-sized target. */
+@media (pointer: coarse) {
+  .navbar-icon-button,
+  .navbar-new-recipe {
+    min-width: 40px;
+    min-height: 40px;
+  }
+
+  .navbar-new-recipe {
+    width: 40px;
   }
 }
 

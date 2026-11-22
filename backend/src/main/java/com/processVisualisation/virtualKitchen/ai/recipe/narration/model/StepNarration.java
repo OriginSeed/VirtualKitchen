@@ -31,6 +31,8 @@ public class StepNarration {
     @Indexed(unique = true)
     private String narrationKey;
 
+    /** Indexed: copying a recipe looks up its narrations by recipe. */
+    @Indexed
     private Long recipeId;
 
     @Indexed

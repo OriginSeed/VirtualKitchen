@@ -18,6 +18,7 @@ import { useCookMode } from './useCookMode'
 import { downloadTextFile, exportRecipeFile } from '../session/recipeFile'
 import { useNotifications } from '../../../shared/components/notifications/notificationContext'
 import { errorMessage } from '../../../shared/errors'
+import { PHONE_MAX_WIDTH, useViewport } from '../../../shared/hooks/useViewport'
 
 const TABS: { id: RecipeToolView; label: string; icon: string }[] = [
   { id: 'editor', label: 'Recipe Editor', icon: '🧩' },
@@ -101,6 +102,8 @@ export default function RecipeToolNavbar({
   const isPublic = recipe.visibility === 'PUBLIC'
   const session = useRecipeSession()
   const { notifySuccess, notifyError } = useNotifications()
+  // Phones: Publish / Copy link move into the ⋯ menu so the bar fits.
+  const compact = useViewport().width <= PHONE_MAX_WIDTH
 
   // Owners only: the recipe as a file anyone can import from "New recipe". Saved first, so the file holds
   // what is on screen.
@@ -117,6 +120,10 @@ export default function RecipeToolNavbar({
   }
 
   const menuItems: ActionMenuItem[] = [
+    ...(compact && onToggleVisibility && !isPublic
+      ? [{ label: '🌐 Publish', onSelect: () => onToggleVisibility(readiness?.blockers.length ?? 0) }]
+      : []),
+    ...(compact && isPublic && onCopyLink ? [{ label: '🔗 Copy link', onSelect: onCopyLink }] : []),
     ...(onEditDetails ? [{ label: '✏️ Edit name & description', onSelect: onEditDetails }] : []),
     ...(session?.canEdit && !session.loading ? [{ label: '⤓ Export recipe', onSelect: () => void exportRecipe() }] : []),
     ...(onToggleVisibility && isPublic
@@ -193,7 +200,7 @@ export default function RecipeToolNavbar({
       </div>
 
       <div className="rt-navbar-right">
-        {onToggleVisibility && !isPublic && (
+        {!compact && onToggleVisibility && !isPublic && (
           <button
             type="button"
             onClick={() => onToggleVisibility(readiness?.blockers.length ?? 0)}
@@ -204,7 +211,7 @@ export default function RecipeToolNavbar({
             <span aria-hidden>🌐</span><span className="hidden lg:inline"> Publish</span>
           </button>
         )}
-        {isPublic && onCopyLink && (
+        {!compact && isPublic && onCopyLink && (
           <button type="button" onClick={onCopyLink} className="rt-button" title="Copy a link to this public recipe" aria-label="Copy link">
             <span aria-hidden>🔗</span><span className="hidden lg:inline"> Copy link</span>
           </button>

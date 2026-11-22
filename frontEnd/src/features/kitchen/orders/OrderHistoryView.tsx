@@ -85,12 +85,12 @@ function ShopOrderCard({ order }: { order: OrderResponse }) {
       <div className="order-items">
         {order.items.map((item) => (
           <div className="order-item-row" key={`${order.orderId}-${item.itemType}-${item.itemId}`}>
-            <span>{item.itemName}</span>
-            <span>
+            <span className="order-item-name">{item.itemName}</span>
+            <span data-label="Quantity">
               {item.quantity} {item.unit}
             </span>
-            <span>{formatMoney(item.price)}</span>
-            <span>{formatMoney(item.subTotal)}</span>
+            <span data-label="Unit price">{formatMoney(item.price)}</span>
+            <span data-label="Subtotal">{formatMoney(item.subTotal)}</span>
           </div>
         ))}
       </div>

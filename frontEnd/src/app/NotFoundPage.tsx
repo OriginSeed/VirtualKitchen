@@ -21,7 +21,7 @@ export default function NotFoundPage({ signedIn }: { signedIn: boolean }) {
   if (signedIn) return page
   // Outside the kitchen layout there is no page chrome, so centre it on the app background.
   return (
-    <div style={{ minHeight: '100vh', display: 'grid', placeItems: 'center', padding: 16, background: 'var(--flow-bg)' }}>
+    <div style={{ minHeight: '100dvh', display: 'grid', placeItems: 'center', padding: 16, background: 'var(--flow-bg)' }}>
       {page}
     </div>
   )

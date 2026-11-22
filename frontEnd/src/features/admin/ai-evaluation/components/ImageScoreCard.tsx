@@ -99,6 +99,19 @@ export default function ImageScoreCard({ setKey, image, rubric, onSaved, onEnlar
         </details>
       )}
 
+      <details className="aia-details aie-rating-guide">
+        <summary>Rating guide</summary>
+        <dl>
+          {RATING_FIELDS.map(({ field, dimension: id }) => dimension(id)?.description && (
+            <div key={field}>
+              <dt>{dimension(id)?.label ?? id}</dt>
+              <dd>{dimension(id)?.description}</dd>
+            </div>
+          ))}
+        </dl>
+        <p className="aia-small aia-muted">Defects with a dashed border are major.</p>
+      </details>
+
       <div className="aie-ratings">
         {RATING_FIELDS.map(({ field, dimension: id }) => (
           <div key={field} className="aie-rating" role="radiogroup" aria-label={dimension(id)?.label ?? id}>
