@@ -11,6 +11,7 @@ import com.processVisualisation.virtualKitchen.auth.model.UserType;
 import com.processVisualisation.virtualKitchen.auth.repository.UserRepository;
 import com.processVisualisation.virtualKitchen.auth.security.JwtService;
 import com.processVisualisation.virtualKitchen.common.persistence.SequenceGeneratorService;
+import com.processVisualisation.virtualKitchen.common.web.ErrorCode;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.context.ApplicationEventPublisher;
@@ -81,8 +82,13 @@ public class AuthService {
         }
 
         if (userRepository.existsByEmail(request.getEmail())) {
-            log.warn("event=auth_signup_rejected reason=account_exists");
-            throw new AuthException("An account with this email already exists", HttpStatus.CONFLICT);
+            // An unverified local account gets a distinct code, so the client can offer to send a new code.
+            boolean unverified = userRepository.findByEmail(request.getEmail().trim().toLowerCase())
+                    .map(existing -> !existing.isEmailVerified() && existing.getAuthProvider() == AuthProvider.LOCAL)
+                    .orElse(false);
+            log.warn("event=auth_signup_rejected reason={}", unverified ? "account_unverified" : "account_exists");
+            throw new AuthException("An account with this email already exists", HttpStatus.CONFLICT,
+                    unverified ? ErrorCode.EMAIL_NOT_VERIFIED : null);
         }
 
         User user = new User();
@@ -127,7 +133,8 @@ public class AuthService {
 
         if (!user.isEmailVerified()) {
             log.warn("event=auth_login_failed method=password reason=email_unverified userId={}", user.getId());
-            throw new AuthException("Please verify your email before signing in", HttpStatus.FORBIDDEN);
+            throw new AuthException("Please verify your email before signing in", HttpStatus.FORBIDDEN,
+                    ErrorCode.EMAIL_NOT_VERIFIED);
         }
 
         return buildAuthResponse(user, "password");

@@ -14,7 +14,7 @@ import java.security.SecureRandom;
 import java.util.Base64;
 
 /**
- * Encrypts admin-entered secrets (API keys, the SMTP password) before they are stored in Mongo: AES-256-GCM with a
+ * Encrypts admin-entered secrets (provider and Resend API keys) before they are stored in Mongo: AES-256-GCM with a
  * key derived from {@code VK_CONFIG_ENC_KEY}. Without that variable secrets can't be stored, so secret editing is off.
  */
 @Component

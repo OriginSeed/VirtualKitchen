@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import type { User } from '../../types/User'
-import { AuthenticationApi, KitchenApi } from '../../api'
+import { ApiError, AuthenticationApi, KitchenApi } from '../../api'
 import type { Kitchen } from '../../types/kitchen'
 import { setStoredToken } from '../../api/authToken'
 import GoogleSignInButton from './GoogleSignInButton'
@@ -80,10 +80,13 @@ export default function Auth({ onLoginSuccess, onClose, initialMode, notice }: L
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [info, setInfo] = useState('')
+  // Set when sign-in or sign-up hit an account whose email was never verified: offers to send a fresh code.
+  const [needsVerification, setNeedsVerification] = useState(false)
 
   const resetMessages = () => {
     setError('')
     setInfo('')
+    setNeedsVerification(false)
   }
 
   const switchMode = (mode: 'signup' | 'login') => {
@@ -116,6 +119,7 @@ export default function Auth({ onLoginSuccess, onClose, initialMode, notice }: L
       await action()
     } catch (err) {
       setError(errorMessage(err, 'An error occurred'))
+      setNeedsVerification(err instanceof ApiError && err.code === 'EMAIL_NOT_VERIFIED')
     } finally {
       setLoading(false)
     }
@@ -156,6 +160,19 @@ export default function Auth({ onLoginSuccess, onClose, initialMode, notice }: L
     withLoading(async () => {
       await AuthenticationApi.sendEmailVerificationOtp(email.trim())
       setInfo('A new verification code has been sent.')
+    })
+
+  /** From Login or Sign Up, for an account that was never verified: sends a new code and opens the code step. */
+  const handleStartEmailVerification = () =>
+    withLoading(async () => {
+      if (!email.trim()) {
+        throw new Error('Please enter your email')
+      }
+
+      await AuthenticationApi.sendEmailVerificationOtp(email.trim())
+      setOtp('')
+      setView('verify-signup-otp')
+      setInfo(`We sent a new verification code to ${email.trim()}.`)
     })
 
   const handleLogin = () =>
@@ -295,6 +312,13 @@ export default function Auth({ onLoginSuccess, onClose, initialMode, notice }: L
         {notice && !info && !error && <div className="auth-info" role="status">{notice}</div>}
         {info && <div className="auth-info" role="status">{info}</div>}
         {error && <div className="auth-error" role="alert">{error}</div>}
+        {needsVerification && (view === 'signup' || view === 'login') && (
+          <div className="auth-link-row">
+            <button type="button" className="auth-link-btn" onClick={handleStartEmailVerification} disabled={loading}>
+              Send verification code
+            </button>
+          </div>
+        )}
 
         {view === 'signup' && (
           <div className="auth-form">

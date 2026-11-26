@@ -12,6 +12,7 @@ export const ERROR_TEXT = {
   forbidden: "You don't have access to this.",
   notFound: "We couldn't find what you were looking for. It may have been removed.",
   conflict: 'This was changed somewhere else. Refresh the page and try again.',
+  emailNotVerified: "This email isn't verified yet. Send a new code to finish setting up your account.",
   tooLarge: "That's too large to send. Please make it smaller and try again.",
   aiBusy: 'The AI kitchen is busy right now. Please try again in a minute.',
   aiUnavailable: 'The AI service had a problem. Please try again in a moment.',
@@ -63,6 +64,7 @@ const friendlyText = (error: unknown, fallback: string): string => {
     case 'AI_UNAVAILABLE': return ERROR_TEXT.aiUnavailable
     case 'RATE_LIMITED': return rateLimitedText(numberProp(error, 'retryAfterSeconds'))
     case 'PAYLOAD_TOO_LARGE': return ERROR_TEXT.tooLarge
+    case 'EMAIL_NOT_VERIFIED': return ERROR_TEXT.emailNotVerified
   }
 
   if (status !== undefined) {
