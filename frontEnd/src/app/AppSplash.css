@@ -14,7 +14,11 @@
 .app-splash-logo {
   width: 64px;
   height: 64px;
-  object-fit: contain;
+  object-fit: cover;
+  /* Clip the chef PNG to its black disc, like the navbar and login logos. */
+  border-radius: 50%;
+  background: #000;
+  box-shadow: 0 0 0 1px var(--flow-border-strong);
   animation: app-splash-pulse 1.4s ease-in-out infinite;
 }
 
