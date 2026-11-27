@@ -19,6 +19,11 @@ public enum ErrorCode {
     NOT_FOUND,
     /** The resource changed or already exists. */
     CONFLICT,
+    /**
+     * The account exists but its email is not verified yet (sign-in, or signing up again). The client can request a
+     * new code through {@code POST /api/v1/auth/email/send-otp} and verify it.
+     */
+    EMAIL_NOT_VERIFIED,
     /** The request body was larger than the server accepts. */
     PAYLOAD_TOO_LARGE,
     UNSUPPORTED_MEDIA_TYPE,

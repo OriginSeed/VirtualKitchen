@@ -19,7 +19,8 @@ If a required variable is missing, the app fails at startup (for example `Could 
 | `MONGODB_URI` | MongoDB connection string, including the database name |
 | `JWT_SECRET` | JWT signing key, 32+ random characters (`openssl rand -hex 32`) |
 | `GOOGLE_CLIENT_ID` | Google sign-in; must match the frontend's `VITE_GOOGLE_CLIENT_ID` |
-| `MAIL_FROM`, `MAIL_USERNAME`, `MAIL_PASSWORD` | SMTP account for OTP, verification and reset emails |
+| `MAIL_FROM` | Sender of OTP, verification and reset emails, e.g. `Virtual Kitchen <no-reply@your-domain>`. Its domain must be verified in Resend. |
+| `RESEND_API_KEY` | Resend API key used to send those emails (see [Email (Resend)](#email-resend)). The app starts without it, but every email then fails with 502. |
 | `SUPABASE_URL`, `SUPABASE_SERVICE_KEY` | Image and audio storage |
 
 ## AI providers (blank = provider unavailable)
@@ -38,7 +39,7 @@ If a required variable is missing, the app fails at startup (for example `Could 
 | `SWAGGER_ENABLED` | `false` | Swagger UI (`/ui`) and `/v3/api-docs`. Local development only; leave unset in production. |
 | `RATE_LIMIT_ENABLED` | `true` | Per-client request rate limits (see below). |
 | `RATE_LIMIT_TRUST_FORWARDED` | `false` | Set `true` only behind a reverse proxy or load balancer that sets `X-Forwarded-For`; otherwise every client looks like the proxy. |
-| `MAIL_HOST`, `MAIL_PORT` | `smtp.gmail.com`, `587` | SMTP server. |
+| `RESEND_BASE_URL`, `RESEND_TIMEOUT_MS` | `https://api.resend.com`, `10000` | Resend API endpoint and per-send timeout. |
 | `JWT_EXPIRATION_MS` | `86400000` (24 h) | Access token lifetime. |
 | `VK_ADMIN_EMAILS` | empty | Emails promoted to ADMIN at sign-in. |
 | `VK_ADMIN_SECRET_EDITING` | `false` | Admin panel "Keys" section; also needs `VK_CONFIG_ENC_KEY`. |
@@ -46,6 +47,65 @@ If a required variable is missing, the app fails at startup (for example `Could 
 
 Other tuning variables (thread pools, model defaults, narration storage, ...) are listed next to their
 properties in `application.properties`.
+
+## Email (Resend)
+
+OTP emails (sign-up verification, sign-in codes, password reset) are sent through the
+[Resend](https://resend.com) REST API (`POST /emails`) by `auth/service/ResendEmailClient`. There is no SMTP
+configuration any more; the old `MAIL_USERNAME`, `MAIL_PASSWORD`, `MAIL_HOST` and `MAIL_PORT` variables are unused.
+
+### Set up Resend
+
+1. Create an account at resend.com.
+2. **Domains → Add domain**: add the domain you send from (e.g. `mail.your-domain.com`) and create the DNS records
+   it shows (SPF / DKIM, optionally DMARC) at your DNS provider. Wait until the domain shows **Verified**.
+   Until then only Resend's test sender `onboarding@resend.dev` works, and it only delivers to your own account's
+   address.
+3. **API Keys → Create API key**: permission **Sending access**, restricted to that domain. Copy the key (it starts
+   with `re_`); it is shown only once.
+4. Set `MAIL_FROM` to an address on the verified domain, optionally with a display name:
+   `Virtual Kitchen <no-reply@mail.your-domain.com>`.
+
+### Local development
+
+Add `RESEND_API_KEY=` and `MAIL_FROM=` with your values to `backend/.env` (see `env.template`). Never commit the key.
+
+### Google Cloud Run (Secret Manager)
+
+Keep the key in Secret Manager and expose it to the service as an environment variable; `MAIL_FROM` is not secret.
+Replace `PROJECT_ID`, `REGION`, `SERVICE` and the service account with your own values.
+
+```sh
+# 1. Store the key (paste it on stdin so it never lands in shell history)
+gcloud secrets create resend-api-key --replication-policy=automatic --project=PROJECT_ID
+gcloud secrets versions add resend-api-key --data-file=- --project=PROJECT_ID
+
+# 2. Let the service's runtime service account read it
+gcloud secrets add-iam-policy-binding resend-api-key --project=PROJECT_ID \
+  --member=serviceAccount:RUNTIME_SA@PROJECT_ID.iam.gserviceaccount.com \
+  --role=roles/secretmanager.secretAccessor
+
+# 3. Wire it into the service and drop the old SMTP variables (the MAIL_* ones that exist)
+gcloud run services update SERVICE --region=REGION --project=PROJECT_ID \
+  --set-secrets=RESEND_API_KEY=resend-api-key:latest \
+  --update-env-vars="MAIL_FROM=Virtual Kitchen <no-reply@mail.your-domain.com>" \
+  --remove-env-vars=MAIL_USERNAME,MAIL_HOST,MAIL_PORT
+```
+
+If `MAIL_PASSWORD` was mounted from a secret, remove it with `--remove-secrets=MAIL_PASSWORD` instead. To rotate
+the key, add a new secret version and deploy a new revision (`:latest` is resolved when a revision starts).
+
+### Test delivery
+
+1. Start the backend and use **Forgot password** (or sign up) with an address you can read.
+2. The backend logs `event=email_sent provider=resend purpose=... recipientDomain=... messageId=...`.
+3. In the Resend dashboard, **Emails** lists the message and its delivery status.
+
+On failure the client gets `502` "Unable to send verification email. Please try again later." and the backend logs
+`event=email_send_failed provider=resend reason=<NOT_CONFIGURED|REJECTED|PROVIDER_ERROR|NETWORK> status=...
+providerError=...`. `REJECTED` with status 401/403 usually means a wrong key or an unverified sender domain;
+`NOT_CONFIGURED` means `RESEND_API_KEY` or `MAIL_FROM` is empty. API keys, codes, recipient addresses and email
+bodies are never logged. The admin panel's **Keys** section can replace the key at runtime (stored encrypted).
 
 ## Rate limits
 

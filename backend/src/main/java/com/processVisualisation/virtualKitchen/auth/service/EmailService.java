@@ -5,28 +5,23 @@ import com.processVisualisation.virtualKitchen.auth.model.OtpPurpose;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
-import org.springframework.mail.MailException;
-import org.springframework.mail.SimpleMailMessage;
-import org.springframework.mail.javamail.JavaMailSender;
 import org.springframework.stereotype.Service;
 
 /**
- * SMTP-backed service that sends OTP notification
- * emails via a configured JavaMailSender, using the from address in
- * app.mail.from and subject/body text tailored to the OTP purpose
- * (email verification, login, or password reset).
+ * Sends OTP notification emails through Resend ({@link ResendEmailClient}), using the from address in
+ * app.mail.from and subject/body text tailored to the OTP purpose (email verification, login, or password reset).
  */
 @Service
 public class EmailService {
 
     private static final Logger log = LoggerFactory.getLogger(EmailService.class);
 
-    private final JavaMailSender mailSender;
+    private final ResendEmailClient emailClient;
 
     private final AppMailProperties mailProperties;
 
-    public EmailService(JavaMailSender mailSender, AppMailProperties mailProperties) {
-        this.mailSender = mailSender;
+    public EmailService(ResendEmailClient emailClient, AppMailProperties mailProperties) {
+        this.emailClient = emailClient;
         this.mailProperties = mailProperties;
     }
 
@@ -37,19 +32,16 @@ public class EmailService {
      * @param to the destination email address
      * @param otp the one-time passcode to include in the email body
      * @param purpose the reason the OTP was generated, used to select subject/body wording
-     * @throws AuthException if the underlying mail sender fails to deliver the message
+     * @throws AuthException if the email provider is not configured or fails to accept the message
      */
     public void sendOtpEmail(String to, String otp, OtpPurpose purpose) {
-        SimpleMailMessage message = new SimpleMailMessage();
-        message.setFrom(mailProperties.getFrom());
-        message.setTo(to);
-        message.setSubject(subjectFor(purpose));
-        message.setText(bodyFor(otp, purpose));
-
         try {
-            mailSender.send(message);
-        } catch (MailException e) {
-            log.error("event=email_send_failed purpose={} recipientDomain={}", purpose, domainOf(to), e);
+            String messageId = emailClient.send(mailProperties.getFrom(), to, subjectFor(purpose), bodyFor(otp, purpose));
+            log.info("event=email_sent provider=resend purpose={} recipientDomain={} messageId={}",
+                    purpose, domainOf(to), messageId);
+        } catch (EmailDeliveryException e) {
+            log.error("event=email_send_failed provider=resend purpose={} recipientDomain={} reason={} status={} providerError={}",
+                    purpose, domainOf(to), e.getReason(), e.getStatus(), e.getProviderError());
             throw new AuthException("Unable to send verification email. Please try again later.", HttpStatus.BAD_GATEWAY);
         }
     }

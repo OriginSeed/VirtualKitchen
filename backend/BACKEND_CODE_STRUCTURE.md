@@ -5,7 +5,7 @@ This document explains how the backend of the Virtual Kitchen application is org
 ## Tech stack
 
 - Java 17
-- Spring Boot 4.0.6 (Web, Security, Data MongoDB, Actuator, Validation, Mail)
+- Spring Boot 4.0.6 (Web, Security, Data MongoDB, Actuator, Validation); OTP emails via the Resend REST API
 - MongoDB (Spring Data MongoDB) as the primary datastore
 - Lombok for boilerplate reduction on models/DTOs; entity ↔ DTO mapping is hand-written (`*Mapper` components), not MapStruct
 - JWT-based authentication (`JwtService` + `JwtAuthenticationFilter`), Google ID-token sign-in, email OTPs
@@ -72,7 +72,7 @@ When a lower package needs something from a higher one, it inverts the dependenc
 
 - **controller** — `AuthController` (`/api/v1/auth`: signup, login, Google, email/login OTPs, password reset, `/me`), `UserController` (`/api/v1/users`), `DeliveryAddressController`.
 - **security** — `SecurityConfig` (filter chain, CORS, BCrypt, path rules), `JwtAuthenticationFilter`, `JwtService`, `CurrentUser` (the authenticated user id / admin check for controllers).
-- **service** — `AuthService` (all login flows, admin promotion via `AdminAllowlist`, publishes `UserRegisteredEvent`), `UserService`, `OtpService`, `EmailService`, `GoogleTokenVerifierService`.
+- **service** — `AuthService` (all login flows, admin promotion via `AdminAllowlist`, publishes `UserRegisteredEvent`), `UserService`, `OtpService`, `EmailService` (sends through `ResendEmailClient`), `GoogleTokenVerifierService`.
 - **event** — `UserRegisteredEvent`. **exception** — `AuthException`, `UserNotFoundException`. **mapper** — `UserMapper`.
 - **model / repository / dto** — `User` (+ embedded `DeliveryAddress`), `Otp`, their enums and repositories, auth DTOs.
 

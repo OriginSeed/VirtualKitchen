@@ -1,6 +1,7 @@
 package com.processVisualisation.virtualKitchen.auth.exception;
 
 import com.processVisualisation.virtualKitchen.common.web.ApiException;
+import com.processVisualisation.virtualKitchen.common.web.ErrorCode;
 import com.processVisualisation.virtualKitchen.common.web.GlobalExceptionHandler;
 
 import org.springframework.http.HttpStatus;
@@ -22,12 +23,25 @@ public class AuthException extends ApiException {
      * @param status the HTTP status to return for this failure
      */
     public AuthException(String message, HttpStatus status) {
-        super(message, status, null, Outcome.REJECTED);
+        this(message, status, null);
     }
 
     /**
-     * Returns the HTTP status associated with this failure.
+     * Creates the exception with a specific machine-readable code instead of the status' default one.
      *
-     * @return the {@link HttpStatus} to use when responding to the client
+     * @param message description of the auth failure
+     * @param status the HTTP status to return for this failure
+     * @param code the response's error code, or null for the status' default
      */
+    public AuthException(String message, HttpStatus status, ErrorCode code) {
+        super(message, status, null, Outcome.REJECTED);
+        this.code = code;
+    }
+
+    private final ErrorCode code;
+
+    @Override
+    public ErrorCode getCode() {
+        return code != null ? code : super.getCode();
+    }
 }

@@ -4,7 +4,7 @@ import lombok.Data;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.stereotype.Component;
 
-/** The app's own mail settings ({@code app.mail.*}); the SMTP connection itself is {@code spring.mail.*}. */
+/** The app's own mail settings ({@code app.mail.*}); the Resend connection itself is {@link ResendProperties}. */
 @Data
 @Component
 @ConfigurationProperties(prefix = "app.mail")

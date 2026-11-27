@@ -61,6 +61,9 @@ describe('errorMessage', () => {
       'You already have several AI tasks running.')
     assert.equal(errorMessage(failedRequest('Gemini said 500', undefined, 500, { code: 'AI_UNAVAILABLE' }), 'x'), ERROR_TEXT.aiUnavailable)
     assert.equal(errorMessage(failedRequest('raw', undefined, 413, { code: 'PAYLOAD_TOO_LARGE' }), 'x'), ERROR_TEXT.tooLarge)
+    // An unverified account says so, instead of the generic 403 "no access" / 409 "changed elsewhere" text.
+    assert.equal(errorMessage(failedRequest('raw', undefined, 403, { code: 'EMAIL_NOT_VERIFIED' }), 'x'), ERROR_TEXT.emailNotVerified)
+    assert.equal(errorMessage(failedRequest('raw', undefined, 409, { code: 'EMAIL_NOT_VERIFIED' }), 'x'), ERROR_TEXT.emailNotVerified)
   })
 
   it('explains requests that never reached the server', () => {
